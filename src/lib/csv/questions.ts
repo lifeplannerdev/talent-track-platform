@@ -1,6 +1,6 @@
 import type { NewQuestion } from '../types'
 import { OPTION_IDS, validateQuestionFields } from '../question-fields'
-import { readCsvRows, type CsvError } from './rows'
+import { readCsvRows, withoutRow, type CsvError } from './rows'
 
 export type QuestionCsvError = CsvError
 
@@ -22,7 +22,7 @@ export function parseQuestionsCsv(text: string): {
   errors: QuestionCsvError[]
 } {
   const { valid, errors } = parseQuestionsCsvWithRows(text)
-  return { valid: valid.map(({ row: _row, ...question }) => question), errors }
+  return { valid: valid.map(withoutRow), errors }
 }
 
 /** parseQuestionsCsv, with the data row number of each valid question (for import reports). */

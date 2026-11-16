@@ -1,5 +1,5 @@
 import { isValidUsername } from '../auth/username'
-import { readCsvRows, type CsvError } from './rows'
+import { readCsvRows, withoutRow, type CsvError } from './rows'
 
 export type Track = 'nursing' | 'other'
 export const TRACKS: readonly Track[] = ['nursing', 'other']
@@ -50,7 +50,7 @@ export function parseStudentsCsv(
   opts: { existingUsernames?: Iterable<string> } = {},
 ): { valid: NewStudent[]; errors: CsvError[] } {
   const { valid, errors } = parseStudentsCsvWithRows(text, opts)
-  return { valid: valid.map(({ row: _row, ...student }) => student), errors }
+  return { valid: valid.map(withoutRow), errors }
 }
 
 /** parseStudentsCsv, with the data row number of each valid student (for import reports). */

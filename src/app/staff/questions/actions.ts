@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { fetchAll, isUuid } from "@/lib/attempts";
 import { parseQuestionsCsvWithRows } from "@/lib/csv/questions";
+import { withoutRow } from "@/lib/csv/rows";
 import { OPTION_IDS, validateQuestionFields, type QuestionFields } from "@/lib/question-fields";
 import { createClient } from "@/lib/supabase/server";
 import type { NewQuestion, QuestionStatus } from "@/lib/types";
@@ -212,7 +213,7 @@ export async function importQuestions(input: {
 
   const { error } = await client
     .from("questions")
-    .insert(valid.map(({ row: _row, ...q }) => ({ ...toRow(q), exam_set_id: input.examSetId, status: input.status })));
+    .insert(valid.map((q) => ({ ...toRow(withoutRow(q)), exam_set_id: input.examSetId, status: input.status })));
   if (error) {
     console.error("importQuestions failed", error.code);
     return { ok: false, message: "Nothing was imported because the database refused the rows. Please try again.", errors: [] };

@@ -6,6 +6,9 @@ const LINKS = [
   { href: "/staff/review", label: "Review" },
   { href: "/staff/blocked", label: "Blocked" },
   { href: "/staff/grants", label: "Give attempts" },
+  { href: "/staff/students", label: "Students" },
+  { href: "/staff/curriculums", label: "Curriculums" },
+  { href: "/staff/questions", label: "Questions" },
 ] as const;
 
 /** Staff section links. `current` marks the page the user is on. */

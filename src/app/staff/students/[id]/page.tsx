@@ -1,0 +1,163 @@
+import { Suspense } from "react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireRole } from "@/lib/auth/require-role";
+import { getStudentDetail } from "@/lib/staff-manage";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { GrantButton } from "../../grants/grant-button";
+import { GrantStatusProvider } from "../../grants/grant-status";
+import { StaffNav } from "../../staff-nav";
+import { linkClass, statusVariant, trackLabel } from "../ui";
+import { AddCurriculumForm, MoveButtons, RemoveCurriculumButton } from "./assignment-controls";
+import { ResetPasswordForm } from "./reset-password-form";
+
+export const metadata: Metadata = { title: "Student | TalentTrack" };
+
+async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
+  await requireRole("staff");
+  const { id } = await params;
+  const s = await getStudentDetail(id);
+  if (!s) notFound();
+  const order = s.assignments.map((a) => a.curriculumId);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl" data-testid="student-name">
+            {s.fullName}
+          </CardTitle>
+          <CardDescription>Username {s.username}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-muted-foreground">Batch</dt>
+              <dd>{s.batch ?? "–"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Track</dt>
+              <dd data-testid="student-track">{trackLabel(s.track)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Curriculums</dt>
+              <dd>{s.assignments.length}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <section aria-labelledby="curriculums-heading" className="flex flex-col gap-3">
+        <h2 id="curriculums-heading" className="text-lg font-medium">
+          Curriculums
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          The student takes curriculums in this order: the first open one is next. Removing a curriculum keeps the
+          student&apos;s attempts and results.
+        </p>
+        <GrantStatusProvider>
+          {s.assignments.length === 0 ? (
+            <Empty className="border" data-testid="assignments-empty">
+              <EmptyHeader>
+                <EmptyTitle>No curriculums assigned</EmptyTitle>
+                <EmptyDescription>Add one below so the student can be given exams.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <Table data-testid="assignments-table" className="min-w-[46rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24">Order</TableHead>
+                  <TableHead>Curriculum</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Attempts</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {s.assignments.map((a, i) => (
+                  <TableRow key={a.curriculumId} className="align-top" data-testid="assignment-row">
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="w-4 tabular-nums">{i + 1}</span>
+                        <MoveButtons studentId={s.id} order={order} index={i} name={a.name} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      <span className="block font-medium">{a.name}</span>
+                      <span className="block text-muted-foreground">
+                        {a.examSets.length === 0 ? "No exam sets yet" : a.examSets.map((e) => e.name).join(", ")}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant(a.status)} data-testid="assignment-status">
+                        {a.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{a.attemptsUsed}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-2">
+                        {a.status !== "passed"
+                          ? a.examSets.map((e) => (
+                              <GrantButton
+                                key={e.id}
+                                studentId={s.id}
+                                examSetId={e.id}
+                                studentName={s.fullName}
+                                examSetName={e.name}
+                                label={a.examSets.length === 1 ? "Give attempt" : `Give attempt: ${e.name}`}
+                                note={a.status === "blocked" ? "This lifts the block." : undefined}
+                              />
+                            ))
+                          : null}
+                        <RemoveCurriculumButton
+                          studentId={s.id}
+                          studentName={s.fullName}
+                          curriculumId={a.curriculumId}
+                          curriculumName={a.name}
+                          attempts={a.attemptsTotal}
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </GrantStatusProvider>
+        <AddCurriculumForm studentId={s.id} options={s.unassigned} />
+      </section>
+
+      <ResetPasswordForm studentId={s.id} studentName={s.fullName} />
+    </div>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div role="status" aria-label="Loading student" className="flex flex-col gap-4">
+      <Skeleton className="h-32 w-full" />
+      <Skeleton className="h-48 w-full" />
+    </div>
+  );
+}
+
+export default function StudentPage(props: PageProps<"/staff/students/[id]">) {
+  return (
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
+      <h1 className="text-2xl font-semibold">Student</h1>
+      <StaffNav current="/staff/students" />
+      <Link href="/staff/students" className={linkClass}>
+        All students
+      </Link>
+      <Suspense fallback={<DetailSkeleton />}>
+        <StudentDetail params={props.params} />
+      </Suspense>
+    </main>
+  );
+}

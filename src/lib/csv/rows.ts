@@ -69,3 +69,10 @@ export function readCsvRows(
 
   return { rows, errors }
 }
+
+/** Copy of a parsed entry without its row number. */
+export function withoutRow<T extends { row: number }>(entry: T): Omit<T, 'row'> {
+  const copy: Partial<T> = { ...entry }
+  delete copy.row
+  return copy as Omit<T, 'row'>
+}
