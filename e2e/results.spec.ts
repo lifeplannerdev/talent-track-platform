@@ -21,7 +21,7 @@ async function choose(page: Page, option: string) {
 }
 
 /** Takes the student's exam answering in paper order and submits. Every question's key is "Nein". */
-async function takeExam(page: Page, picks: string[]): Promise<string> {
+async function takeExam(page: Page, picks: string[], beforeSubmit?: () => void): Promise<string> {
   await page.getByRole("button", { name: "Start exam" }).click();
   await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
   for (let i = 0; i < picks.length; i++) {
@@ -30,6 +30,7 @@ async function takeExam(page: Page, picks: string[]): Promise<string> {
     if (i < picks.length - 1) await page.getByRole("button", { name: "Next", exact: true }).click();
   }
   await page.getByRole("button", { name: "Review and submit" }).click();
+  beforeSubmit?.();
   await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
   await expect(page).toHaveURL(/\/results\/[0-9a-f-]{36}$/);
   return page.url().split("/").pop()!;
@@ -46,17 +47,21 @@ async function assignmentStatus(username: string, curriculumName: string) {
 test("held result: no marks before release, staff checks the bilingual evaluation and releases, the student then sees and prints the report", async ({
   page,
 }) => {
-  // Network level: nothing served for the result page may carry marks or the key before release.
-  let capturing = true;
-  const bodies: Promise<{ url: string; body: string }>[] = [];
+  // Network level: from the submit click on, nothing served to the student (documents and
+  // fetches, including the submit server action POST that redirects to the result page and
+  // the result page's RSC payloads) may carry marks or the key before release.
+  let capturing = false;
+  const bodies: Promise<{ url: string; method: string; body: string }>[] = [];
   page.on("response", (res) => {
-    if (capturing && new URL(res.url()).pathname.startsWith("/results/")) {
-      bodies.push(res.text().then((body) => ({ url: res.url(), body }), () => ({ url: res.url(), body: "" })));
-    }
+    if (!capturing || !["document", "fetch", "xhr"].includes(res.request().resourceType())) return;
+    const method = res.request().method();
+    bodies.push(res.text().then((body) => ({ url: res.url(), method, body }), () => ({ url: res.url(), method, body: "" })));
   });
 
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
-  const attemptId = await takeExam(page, ["Nein", "Nein", "Ja"]); // 2 of 3, pass mark 60 %
+  const attemptId = await takeExam(page, ["Nein", "Nein", "Ja"], () => {
+    capturing = true;
+  }); // 2 of 3, pass mark 60 %
   const resultUrl = page.url();
   await expect(page.getByTestId("result-status")).toHaveText(/Submitted, awaiting review/);
   await page.reload();
@@ -64,7 +69,8 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   expect(await page.locator("body").innerText()).not.toMatch(/\d+\s*(\/|of)\s*\d+|points|%|passed|bestanden/i);
   capturing = false;
   const seen = await Promise.all(bodies);
-  expect(seen.length).toBeGreaterThan(0);
+  expect(seen.some((r) => r.method === "POST" && r.url.includes("/exam/"))).toBe(true); // the submit action
+  expect(seen.some((r) => r.url.includes("/results/"))).toBe(true);
   for (const { url, body } of seen) {
     expect(body, url).not.toMatch(/"?(points|max_points|maxPoints|correct_option_id|percent|topics)"?\s*:/);
     expect(body, url).not.toContain("correct_option_id");
@@ -127,7 +133,7 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   await expect(page.getByTestId("no-exams")).toBeVisible();
   await page.goto(resultUrl);
   await expect(page.getByRole("heading", { name: "Ergebnis / Result" })).toBeVisible();
-  await expect(page.getByTestId("result-score")).toHaveText("2 of 3(66.7%)");
+  await expect(page.getByTestId("result-score")).toHaveText(/^2 of 3\s*\(66\.7%\)$/);
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
   const topics = page.getByTestId("topic-table");
   await expect(topics).toContainText("Thema / Topic");
@@ -155,7 +161,7 @@ test("a released result is only visible to its own student", async ({ page }) =>
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
   const attemptId = await takeExam(page, ["Nein", "Nein", "Nein"]); // not held: released at once
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
-  await expect(page.getByTestId("result-score")).toHaveText("3 of 3(100%)");
+  await expect(page.getByTestId("result-score")).toHaveText(/^3 of 3\s*\(100%\)$/);
 
   // Another student with a valid session gets not found and none of the numbers.
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);

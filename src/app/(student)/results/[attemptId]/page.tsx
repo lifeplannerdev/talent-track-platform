@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
-import { getStudentResult, type StudentResult } from "@/lib/results";
+import { getStudentResult, percentOf, type StudentResult } from "@/lib/results";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,7 +114,7 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
                       {t.points} / {t.max}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {t.max > 0 ? Math.round((t.points / t.max) * 1000) / 10 : 0}%
+                      {percentOf(t.points, t.max)}%
                     </TableCell>
                   </TableRow>
                 ))}
@@ -135,7 +135,9 @@ async function Result({ params }: { params: Promise<{ attemptId: string }> }) {
   const profile = await requireRole("student");
   const { attemptId } = await params;
   // Ownership is decided by the session (the view filters by auth.uid()); another
-  // student's attempt is simply not found.
+  // student's attempt is simply not found. notFound() runs inside the Suspense boundary, so
+  // the not-found UI is streamed with HTTP status 200 (the shell is already sent); no data of
+  // the attempt is ever rendered, which e2e/results.spec.ts checks on the response body.
   const result = await getStudentResult(profile.id, attemptId);
   if (!result) notFound();
   if (result.status === "in_progress") redirect(`/exam/${result.id}`);
