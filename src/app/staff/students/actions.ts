@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { findOpenAttemptId, isUuid } from "@/lib/attempts";
-import { MIN_PASSWORD_LENGTH, parseStudentsCsvWithRows, validateStudentFields, type StudentFields } from "@/lib/csv/students";
+import { checkPassword, parseStudentsCsvWithRows, validateStudentFields, type StudentFields } from "@/lib/csv/students";
+import { STUDENT_CSV_MAX_BYTES, utf8Bytes } from "@/lib/csv/limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { createStudentAccount, existingUsernames } from "@/lib/staff-students";
@@ -22,7 +23,6 @@ export type ImportStudentsResult =
   | { ok: true; created: { row: number; username: string }[]; failed: { row: number; username: string; message: string }[] }
   | { ok: false; message: string; errors: { row: number; message: string }[] };
 
-const MAX_CSV_LENGTH = 1_000_000;
 
 function asText(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -67,7 +67,7 @@ async function checkStudentsCsv(client: SupabaseClient, csvText: string) {
 }
 
 function tooLong(csvText: string) {
-  return csvText.length > MAX_CSV_LENGTH;
+  return utf8Bytes(csvText) > STUDENT_CSV_MAX_BYTES;
 }
 
 export async function previewStudentsImport(csvText: string): Promise<ImportPreview | { ok: false; message: string }> {
@@ -114,13 +114,22 @@ export async function resetPassword(studentId: string, newPassword: string): Pro
   const id = await findStudent(client, studentId);
   if (!id) return { ok: false, message: "Student not found" };
   const password = asText(newPassword);
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return { ok: false, message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` };
-  }
-  const { error } = await createAdminClient().auth.admin.updateUserById(id, { password });
+  const problem = checkPassword(password);
+  if (problem) return { ok: false, message: problem };
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.updateUserById(id, { password });
   if (error) {
     console.error("resetPassword failed", error.code ?? "unknown");
     return { ok: false, message: "The password could not be changed. Please try again." };
+  }
+  // End every existing session, so a leaked password or a signed-in device stops working at once.
+  const { error: revokeError } = await admin.rpc("revoke_user_sessions", { p_user_id: id });
+  if (revokeError) {
+    console.error("resetPassword: revoke_user_sessions failed", revokeError.code ?? "unknown");
+    return {
+      ok: false,
+      message: "The password was changed, but the student's existing sessions could not be ended. Please try again or contact the administrator.",
+    };
   }
   return { ok: true };
 }

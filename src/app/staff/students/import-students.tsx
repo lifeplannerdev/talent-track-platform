@@ -173,8 +173,8 @@ export function ImportStudents() {
                       ))}
                     </ul>
                     <p className="mt-2">
-                      The other rows were created. Running the same file again is safe: created students are reported
-                      as taken and are not created twice.
+                      The other rows were created. To finish, import a file that contains only the failed rows. Running
+                      the same file again creates nothing: the students already created are reported as taken.
                     </p>
                   </AlertDescription>
                 ) : null}

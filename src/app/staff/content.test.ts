@@ -19,6 +19,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 import { AttemptError, startAttempt } from "@/lib/attempts";
 import type { QuestionFields } from "@/lib/question-fields";
+import { QUESTION_CSV_MAX_BYTES } from "@/lib/csv/limits";
 import { saveCurriculum, saveExamSet } from "./curriculums/actions";
 import { importQuestions, previewQuestionsImport, saveQuestion, setQuestionStatus } from "./questions/actions";
 
@@ -303,6 +304,31 @@ describe("importQuestions", () => {
       errors: [],
     });
     expect(await questionsOf(setId)).toEqual([]);
+  });
+});
+
+describe("question CSV size cap (bytes)", () => {
+  it("accepts a file just under 2 MB through the actions and refuses one over 2 MB in bytes", async () => {
+    const setId = await newSet();
+    const good = csvRow(1);
+    // Padding rows fail validation (no topic) without touching the database.
+    const pad = ",easy,x,y,a,a,b,b,,,,,a,1\n";
+    const head = `${CSV_HEADER}\n${good}\n`;
+    const bytes = (t: string) => new TextEncoder().encode(t).length;
+    const under = head + pad.repeat(Math.floor((QUESTION_CSV_MAX_BYTES - bytes(head) - 1) / pad.length));
+    expect(bytes(under)).toBeLessThanOrEqual(QUESTION_CSV_MAX_BYTES);
+    expect(bytes(under)).toBeGreaterThan(QUESTION_CSV_MAX_BYTES - pad.length - 2);
+    expect(await previewQuestionsImport(setId, under)).toMatchObject({ ok: true, validCount: 1 });
+    expect(await importQuestions({ examSetId: setId, csvText: under, status: "draft", onlyValid: true })).toMatchObject({ ok: true, inserted: 1 });
+
+    const over = `${CSV_HEADER}\n` + "ü".repeat(Math.ceil(QUESTION_CSV_MAX_BYTES / 2) + 10);
+    expect(over.length).toBeLessThan(QUESTION_CSV_MAX_BYTES);
+    expect(await previewQuestionsImport(setId, over)).toEqual({ ok: false, message: "The file is too large (at most 2 MB)." });
+    expect(await importQuestions({ examSetId: setId, csvText: over, status: "draft", onlyValid: true })).toMatchObject({
+      ok: false,
+      message: "The file is too large (at most 2 MB).",
+    });
+    expect(await questionsOf(setId)).toHaveLength(1);
   });
 });
 

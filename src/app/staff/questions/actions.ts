@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { fetchAll, isUuid } from "@/lib/attempts";
 import { parseQuestionsCsvWithRows } from "@/lib/csv/questions";
 import { withoutRow } from "@/lib/csv/rows";
+import { QUESTION_CSV_MAX_BYTES, utf8Bytes } from "@/lib/csv/limits";
 import { OPTION_IDS, validateQuestionFields, type QuestionFields } from "@/lib/question-fields";
 import { createClient } from "@/lib/supabase/server";
 import type { NewQuestion, QuestionStatus } from "@/lib/types";
@@ -25,7 +26,6 @@ export type ImportQuestionsResult =
   | { ok: false; message: string; errors: RowError[] };
 
 const STATUSES: readonly QuestionStatus[] = ["draft", "approved"];
-const MAX_CSV_LENGTH = 2_000_000;
 const DUPLICATE_MESSAGE = "This German question text already exists in this exam set";
 
 function isStatus(v: unknown): v is QuestionStatus {
@@ -170,7 +170,7 @@ async function checkQuestionsCsv(client: SupabaseClient, examSetId: string, csvT
 export async function previewQuestionsImport(examSetId: string, csvText: string): Promise<QuestionsImportPreview> {
   await requireRole("staff");
   const csv = text(csvText);
-  if (csv.length > MAX_CSV_LENGTH) return { ok: false, message: "The file is too large (at most 2 MB)." };
+  if (utf8Bytes(csv) > QUESTION_CSV_MAX_BYTES) return { ok: false, message: "The file is too large (at most 2 MB)." };
   const client = await createClient();
   if (!(await examSetExists(client, examSetId))) return { ok: false, message: "Exam set not found" };
   const { valid, errors } = await checkQuestionsCsv(client, examSetId, csv);
@@ -194,7 +194,7 @@ export async function importQuestions(input: {
   if (typeof input !== "object" || input === null) return { ok: false, message: "Invalid request", errors: [] };
   if (!isStatus(input.status)) return { ok: false, message: "Choose draft or approved", errors: [] };
   const csv = text(input.csvText);
-  if (csv.length > MAX_CSV_LENGTH) return { ok: false, message: "The file is too large (at most 2 MB).", errors: [] };
+  if (utf8Bytes(csv) > QUESTION_CSV_MAX_BYTES) return { ok: false, message: "The file is too large (at most 2 MB).", errors: [] };
   const client = await createClient();
   if (!(await examSetExists(client, input.examSetId))) return { ok: false, message: "Exam set not found", errors: [] };
 

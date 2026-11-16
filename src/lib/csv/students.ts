@@ -12,9 +12,20 @@ export type StudentFields = { username: string; fullName: string; batch: string;
 const REQUIRED_COLUMNS = ['username', 'full_name', 'batch', 'track', 'password']
 
 /**
+ * The password rule for first passwords and resets (null when acceptable). Outer whitespace is
+ * refused rather than trimmed, so the manual form and the CSV import accept the same passwords.
+ * Messages never contain the password.
+ */
+export function checkPassword(password: string): string | null {
+  if (!password) return 'Missing password (staff set the first password)'
+  if (password.trim() !== password) return 'Password must not start or end with a space'
+  if (password.length < MIN_PASSWORD_LENGTH) return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+  return null
+}
+
+/**
  * One validation for a new student, shared by the CSV import and the Add student form.
- * Messages never contain the password. The password is not trimmed (CSV values are trimmed
- * by the reader before they get here).
+ * Messages never contain the password. The password is never trimmed (see checkPassword).
  */
 export function validateStudentFields(
   fields: StudentFields,
@@ -34,8 +45,8 @@ export function validateStudentFields(
   if (!(TRACKS as readonly string[]).includes(track)) {
     return fail(`Unknown track "${fields.track.trim()}" (must be nursing or other)`)
   }
-  if (!password) return fail('Missing password (staff set the first password)')
-  if (password.length < MIN_PASSWORD_LENGTH) return fail(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+  const passwordProblem = checkPassword(password)
+  if (passwordProblem) return fail(passwordProblem)
 
   return { ok: true, student: { username, fullName, batch, track: track as Track, password } }
 }
@@ -63,13 +74,13 @@ export function parseStudentsCsvWithRows(
   const existing = new Set([...(opts.existingUsernames ?? [])].map((u) => u.toLowerCase()))
   const firstRow = new Map<string, number>()
 
-  for (const { row, cell } of rows) {
+  for (const { row, cell, rawCell } of rows) {
     const result = validateStudentFields({
       username: cell('username'),
       fullName: cell('full_name'),
       batch: cell('batch'),
       track: cell('track'),
-      password: cell('password'),
+      password: rawCell('password'),
     })
     if (!result.ok) {
       errors.push({ row, message: result.message })

@@ -18,8 +18,35 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// The real service-role client, with its RPC calls observable (and one failure injectable).
+const adminSpy = vi.hoisted(() => ({ rpcCalls: [] as { fn: string; args: unknown }[], failRevoke: false, failDelete: false }));
+vi.mock("@/lib/supabase/admin", async () => {
+  const { createClient: create } = await import("@supabase/supabase-js");
+  return {
+    createAdminClient: () => {
+      const client = create(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const rpc = client.rpc.bind(client);
+      (client as { rpc: unknown }).rpc = (fn: string, args?: Record<string, unknown>) => {
+        adminSpy.rpcCalls.push({ fn, args });
+        if (fn === "revoke_user_sessions" && adminSpy.failRevoke) {
+          return Promise.resolve({ data: null, error: { message: "injected", code: "XX000" } });
+        }
+        return rpc(fn, args);
+      };
+      const deleteUser = client.auth.admin.deleteUser.bind(client.auth.admin);
+      client.auth.admin.deleteUser = ((id: string) =>
+        adminSpy.failDelete
+          ? Promise.resolve({ data: { user: null }, error: { message: "injected", code: "unexpected_failure", status: 500 } })
+          : deleteUser(id)) as typeof client.auth.admin.deleteUser;
+      return client;
+    },
+  };
+});
 
 import { usernameToEmail } from "@/lib/auth/username";
+import { STUDENT_CSV_MAX_BYTES } from "@/lib/csv/limits";
 import { startAttempt } from "@/lib/attempts";
 import {
   assignCurriculum,
@@ -44,6 +71,8 @@ const curriculumIds: string[] = [];
 let staffClient: SupabaseClient;
 let studentClient: SupabaseClient;
 let studentId = "";
+let studentEmail = "";
+let studentPassword = "";
 let staffId = "";
 let tempCurriculum = "";
 let tempCurriculum2 = "";
@@ -117,6 +146,8 @@ beforeAll(async () => {
   const student = await makeUser("student");
   studentClient = student.client;
   studentId = student.id;
+  studentEmail = student.email;
+  studentPassword = student.password;
   for (const name of [`T8 temp ${run}`, `T8 temp2 ${run}`]) {
     const c = await must(db.from("curriculums").insert({ name }).select("id").single());
     curriculumIds.push(c.id);
@@ -155,6 +186,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   session.client = null;
+  adminSpy.rpcCalls.length = 0;
+  adminSpy.failRevoke = false;
+  adminSpy.failDelete = false;
 });
 
 describe("createStudent", () => {
@@ -232,21 +266,28 @@ describe("createStudent", () => {
     expect(await profileId(username)).toBeNull();
   });
 
-  it("gives a clear error and creates nothing when a default curriculum is missing", async () => {
+  it("finds the default curriculums by their fixed ids, so renaming one does not break student creation", async () => {
     asStaff();
-    const username = `${prefix}.nocurr`;
-    const { error } = await db.from("curriculums").update({ name: `${LIFE} (renamed ${run})` }).eq("name", LIFE);
+    const username = `${prefix}.renamed`;
+    const renamed = `${LIFE} (renamed ${run})`;
+    const { error } = await db.from("curriculums").update({ name: renamed }).eq("name", LIFE);
     if (error) throw error;
     try {
-      const result = await createStudent({ username, fullName: "No Curr", batch: "", track: "other", password: testPassword() });
-      expect(result).toEqual({
-        ok: false,
-        message: `The curriculum "${LIFE}" does not exist. Create it on the Curriculums page first.`,
-      });
-      expect(await profileId(username)).toBeNull();
+      expect(await createStudent({ username, fullName: "Renamed", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: true });
+      expect(await assignmentsOf((await profileId(username))!)).toEqual([[renamed, 1]]);
     } finally {
-      await db.from("curriculums").update({ name: LIFE }).eq("name", `${LIFE} (renamed ${run})`);
+      await db.from("curriculums").update({ name: LIFE }).eq("name", renamed);
     }
+  });
+
+  it("refuses a password with leading or trailing spaces", async () => {
+    asStaff();
+    const username = `${prefix}.spaces`;
+    expect(await createStudent({ username, fullName: "Spaces", batch: "", track: "other", password: ` ${testPassword()}` })).toEqual({
+      ok: false,
+      message: "Password must not start or end with a space",
+    });
+    expect(await profileId(username)).toBeNull();
   });
 });
 
@@ -309,22 +350,70 @@ describe("importStudents", () => {
 });
 
 describe("resetPassword", () => {
-  it("changes the password: the new one works and the old one stops working", async () => {
+  it("changes the password, ends every existing session of the student, and the old password stops working", async () => {
     asStaff();
     const target = await makeUser("student");
+    const second = await signIn(target.email, target.password);
+    expect((await target.client.auth.getUser()).error).toBeNull();
     const next = testPassword();
     const result = await resetPassword(target.id, next);
     expect(result).toEqual({ ok: true });
     expect(JSON.stringify(result)).not.toContain(next);
+    // Sessions signed in before the reset are rejected by the auth server at once.
+    const after = await target.client.auth.getUser();
+    expect(after.error).not.toBeNull();
+    expect(after.data.user).toBeNull();
+    expect((await second!.auth.getUser()).error).not.toBeNull();
+    // Their refresh tokens are gone too.
+    expect((await target.client.auth.refreshSession()).error).not.toBeNull();
     expect(await signIn(target.email, target.password)).toBeNull();
     expect(await signIn(target.email, next)).not.toBeNull();
+    // Sessions are ended explicitly through revoke_user_sessions (service role), not left to the
+    // auth server's own behaviour, which differs between versions.
+    expect(adminSpy.rpcCalls).toContainEqual({ fn: "revoke_user_sessions", args: { p_user_id: target.id } });
   });
 
-  it("refuses short passwords and staff accounts", async () => {
+  it("says the password was changed when the sessions could not be ended, without the password", async () => {
+    asStaff();
+    const target = await makeUser("student");
+    const next = testPassword();
+    adminSpy.failRevoke = true;
+    try {
+      const result = await resetPassword(target.id, next);
+      expect(result).toEqual({
+        ok: false,
+        message: "The password was changed, but the student's existing sessions could not be ended. Please try again or contact the administrator.",
+      });
+      expect(JSON.stringify(result)).not.toContain(next);
+      expect(await signIn(target.email, next)).not.toBeNull();
+    } finally {
+      adminSpy.failRevoke = false;
+    }
+  });
+
+  it("refuses short or space-padded passwords and staff accounts", async () => {
     asStaff();
     expect(await resetPassword(studentId, "short")).toEqual({ ok: false, message: "Password must be at least 8 characters" });
+    expect(await resetPassword(studentId, `${testPassword()} `)).toEqual({ ok: false, message: "Password must not start or end with a space" });
     expect(await resetPassword(staffId, testPassword())).toEqual({ ok: false, message: "Student not found" });
     expect(await resetPassword("not-a-uuid", testPassword())).toEqual({ ok: false, message: "Student not found" });
+  });
+});
+
+describe("CSV size cap (bytes)", () => {
+  const header = "username,full_name,batch,track,password\n";
+  it("accepts a file just under 1 MB and refuses one over 1 MB in bytes", async () => {
+    asStaff();
+    const line = "x,A,,other,test-pass-1\n";
+    const under = header + line.repeat(Math.floor((STUDENT_CSV_MAX_BYTES - header.length - 1) / line.length));
+    expect(new TextEncoder().encode(under).length).toBeLessThanOrEqual(STUDENT_CSV_MAX_BYTES);
+    const preview = await previewStudentsImport(under);
+    expect(preview).toMatchObject({ ok: true, rows: [] });
+    // Fewer characters than the cap, but more bytes (umlauts are 2 bytes in UTF-8).
+    const over = header + "ä".repeat(Math.ceil(STUDENT_CSV_MAX_BYTES / 2) + 10);
+    expect(over.length).toBeLessThan(STUDENT_CSV_MAX_BYTES);
+    expect(await previewStudentsImport(over)).toEqual({ ok: false, message: "The file is too large (at most 1 MB)." });
+    expect(await importStudents(over)).toMatchObject({ ok: false, message: "The file is too large (at most 1 MB)." });
   });
 });
 
@@ -399,6 +488,9 @@ describe("a student session cannot use any student management action", () => {
     await expect(importStudents(`username,full_name,batch,track,password\n${username},X,,other,${pw}`)).rejects.toThrow(/REDIRECT/);
     await expect(previewStudentsImport("username,full_name,batch,track,password")).rejects.toThrow(/REDIRECT/);
     await expect(resetPassword(studentId, pw)).rejects.toThrow(/REDIRECT/);
+    // The student's own password still works and the new one does not.
+    expect(await signIn(studentEmail, studentPassword)).not.toBeNull();
+    expect(await signIn(studentEmail, pw)).toBeNull();
     await expect(assignCurriculum(studentId, tempCurriculum)).rejects.toThrow(/REDIRECT/);
     await expect(removeCurriculum(studentId, tempCurriculum, { confirm: true })).rejects.toThrow(/REDIRECT/);
     await expect(reorderCurriculums(studentId, [])).rejects.toThrow(/REDIRECT/);

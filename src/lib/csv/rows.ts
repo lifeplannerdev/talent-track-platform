@@ -2,13 +2,16 @@ import Papa from 'papaparse'
 
 export type CsvError = { row: number; message: string }
 
-/** One non-blank data row. `cell` returns the trimmed value of a (lower-case) column, or ''. */
-export type CsvRow = { row: number; cell: (column: string) => string }
+/**
+ * One non-blank data row. `cell` returns the trimmed value of a (lower-case) column, or '';
+ * `rawCell` the value exactly as written (for passwords, where trimming would change the value).
+ */
+export type CsvRow = { row: number; cell: (column: string) => string; rawCell: (column: string) => string }
 
 /**
  * Shared CSV conventions for staff imports (questions, students):
  * - UTF-8 BOM stripped; delimiter auto-detected (comma, semicolon as written by German-locale
- *   Excel, tab); headers compared trimmed and lower-case; values trimmed.
+ *   Excel, tab); headers compared trimmed and lower-case; values trimmed by `cell`.
  * - Row numbers are 1-based data rows: the header is not counted and blank rows still count,
  *   so the number matches the data row position in the file. Blank rows are skipped.
  * - A missing required column is one error with row 0 and no rows.
@@ -28,7 +31,6 @@ export function readCsvRows(
     skipEmptyLines: false,
     delimitersToGuess: [',', ';', '\t'],
     transformHeader: (h) => h.replace(/^﻿/, '').trim().toLowerCase(),
-    transform: (v) => v.trim(),
   })
 
   const fields = parsed.meta.fields ?? []
@@ -60,11 +62,11 @@ export function readCsvRows(
       return
     }
 
-    const cell = (column: string) => {
+    const rawCell = (column: string) => {
       const v = Object.hasOwn(raw, column) ? raw[column] : undefined
-      return typeof v === 'string' ? v.trim() : ''
+      return typeof v === 'string' ? v : ''
     }
-    rows.push({ row, cell })
+    rows.push({ row, cell: (column) => rawCell(column).trim(), rawCell })
   })
 
   return { rows, errors }

@@ -9,12 +9,17 @@ import type { NewStudent, Track } from "@/lib/csv/students";
 // on_auth_user_created trigger reads (role, username, full_name, batch, track). Passwords are
 // passed straight to the admin API and never logged, stored or returned.
 
-export const PFLEGE_CURRICULUM = "Pflege Ausbildung";
-export const LIFE_CURRICULUM = "Life in Germany";
+// Fixed ids from migration 0010. Looked up by id, so staff can rename the curriculums freely.
+export const PFLEGE_CURRICULUM_ID = "00000000-0000-4000-8000-00000000c001";
+export const LIFE_CURRICULUM_ID = "00000000-0000-4000-8000-00000000c002";
+const DEFAULT_NAMES: Record<string, string> = {
+  [PFLEGE_CURRICULUM_ID]: "Pflege Ausbildung",
+  [LIFE_CURRICULUM_ID]: "Life in Germany",
+};
 
-/** Curriculums a new student gets, in position order. */
+/** Curriculum ids a new student gets, in position order. */
 export function curriculumsForTrack(track: Track): string[] {
-  return track === "nursing" ? [PFLEGE_CURRICULUM, LIFE_CURRICULUM] : [LIFE_CURRICULUM];
+  return track === "nursing" ? [PFLEGE_CURRICULUM_ID, LIFE_CURRICULUM_ID] : [LIFE_CURRICULUM_ID];
 }
 
 export type CreateAccountResult = { ok: true; studentId: string } | { ok: false; message: string };
@@ -38,21 +43,23 @@ export async function existingUsernames(client: SupabaseClient, usernames: strin
 }
 
 /**
- * Looks up the default curriculums for `track` by name. Returns ids in position order, or a
- * staff-facing message naming the missing curriculum.
+ * Checks that the default curriculums for `track` exist (by their fixed ids). Returns the ids in
+ * position order, or a staff-facing message naming the missing curriculum.
  */
 export async function defaultCurriculumIds(
   client: SupabaseClient,
   track: Track,
 ): Promise<{ ok: true; ids: string[] } | { ok: false; message: string }> {
-  const names = curriculumsForTrack(track);
-  const { data, error } = await client.from("curriculums").select("id, name").in("name", names);
+  const ids = curriculumsForTrack(track);
+  const { data, error } = await client.from("curriculums").select("id").in("id", ids);
   if (error) throw new Error(`Could not read curriculums: ${error.message}`);
-  const ids: string[] = [];
-  for (const name of names) {
-    const row = data?.find((c) => c.name === name);
-    if (!row) return { ok: false, message: `The curriculum "${name}" does not exist. Create it on the Curriculums page first.` };
-    ids.push(row.id);
+  for (const id of ids) {
+    if (!data?.some((c) => c.id === id)) {
+      return {
+        ok: false,
+        message: `The default curriculum "${DEFAULT_NAMES[id]}" is missing. Re-apply the database migrations (0010) before adding students.`,
+      };
+    }
   }
   return { ok: true, ids };
 }
@@ -99,7 +106,14 @@ export async function createStudentAccount(staff: SupabaseClient, student: NewSt
   );
   if (assignError) {
     console.error("createStudentAccount: assignments failed, removing the new user", assignError.code);
-    await admin.auth.admin.deleteUser(studentId);
+    const { error: deleteError } = await admin.auth.admin.deleteUser(studentId);
+    if (deleteError) {
+      console.error("createStudentAccount: cleanup failed", deleteError.code ?? deleteError.status ?? "unknown");
+      return {
+        ok: false,
+        message: `The student could not be created, and the cleanup failed, contact admin: an incomplete account "${student.username}" may exist.`,
+      };
+    }
     return { ok: false, message: "The student could not be created. Please try again." };
   }
   return { ok: true, studentId };

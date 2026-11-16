@@ -114,6 +114,9 @@ export function RemoveCurriculumButton({
                 ? `${studentName} has ${attempts} attempt${attempts === 1 ? "" : "s"} in this curriculum. Only the assignment is removed; the attempts and results are kept for the record. Unused attempts that were given are withdrawn.`
                 : `${studentName} will no longer see this curriculum. Unused attempts that were given are withdrawn.`}
             </DialogDescription>
+            <DialogDescription data-testid="remove-reset-note">
+              If you add this curriculum again later, it starts as open: a passed or blocked status is not kept.
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>

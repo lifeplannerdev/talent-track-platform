@@ -111,6 +111,12 @@ describe('parseStudentsCsv', () => {
     expect(r.valid[0].username).toBe('constructor')
   })
 
+  it('reports a quoted CSV password with outer spaces instead of trimming it', () => {
+    const r = parseStudentsCsv([HEADER, 'anna.k,Anna,B1,nursing," test-pass-anna"'].join('\n'))
+    expect(r.valid).toEqual([])
+    expect(r.errors).toEqual([{ row: 1, message: 'Password must not start or end with a space' }])
+  })
+
   it('never puts a password into an error message', () => {
     const r = parseStudentsCsv([HEADER, 'bad name,Anna,B1,nursing,test-secret-pw', 'ok.name,Anna,B1,weird,test-secret-pw2'].join('\n'))
     expect(JSON.stringify(r.errors)).not.toContain('test-secret-pw')
@@ -124,9 +130,18 @@ describe('validateStudentFields', () => {
     ).toEqual({ ok: true, student: { username: 'anna.k', fullName: 'Anna', batch: 'B1', track: 'nursing', password: 'test-pass-anna' } })
   })
 
-  it('does not trim the password (spaces are part of it)', () => {
-    const r = validateStudentFields({ username: 'anna.k', fullName: 'A', batch: '', track: 'other', password: ' test-pass ' })
-    expect(r).toMatchObject({ ok: true, student: { password: ' test-pass ' } })
+  it('keeps inner spaces in the password', () => {
+    const r = validateStudentFields({ username: 'anna.k', fullName: 'A', batch: '', track: 'other', password: 'test pass word' })
+    expect(r).toMatchObject({ ok: true, student: { password: 'test pass word' } })
+  })
+
+  it('rejects a password with leading or trailing whitespace (the CSV reader would trim it silently)', () => {
+    for (const password of [' test-pass', 'test-pass ', '\ttest-pass']) {
+      expect(validateStudentFields({ username: 'anna.k', fullName: 'A', batch: '', track: 'other', password })).toEqual({
+        ok: false,
+        message: 'Password must not start or end with a space',
+      })
+    }
   })
 
   it('returns the first problem as a message', () => {
