@@ -20,7 +20,7 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 
 ## Data and security conventions
 - Every public table has RLS. Anon has no privileges.
-- Students never read `questions` or `attempts` directly. They use the views `student_questions` (no `correct_option_id`) and `student_attempts` (points, max_points, passed are NULL until status = 'released').
+- Students never read `questions`, `attempts` or `assignments` directly. They use the views `student_assignments` (status masked to open while a held attempt is submitted), `student_questions` (no `correct_option_id`) and `student_attempts` (points, max_points, passed are NULL until status = 'released').
 - Staff can read everything but cannot write `attempts`, `attempt_questions`: scoring, release and attempt creation run in server code with the service role.
 - Profiles are created by the `on_auth_user_created` trigger from `raw_app_meta_data` (role, username, full_name, batch, track), which only the admin API can set. Usernames map to internal emails (for example `username@students.talenttrack.invalid`). Public sign-up is off.
 - Questions: German with English translations (`stem_de`, `stem_en`, options `{id, de, en}`).
