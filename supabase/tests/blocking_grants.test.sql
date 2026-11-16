@@ -1,6 +1,6 @@
 -- Blocking in release_attempt and staff grants via grant_attempt (0008, pgTAP). Run: npm run db:test
 begin;
-select plan(42);
+select plan(55);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -24,27 +24,34 @@ set constraints all deferred;
 insert into public.curriculums (id, name) values
   ('10000000-0000-0000-0000-0000000007c1', 'BG held'),
   ('10000000-0000-0000-0000-0000000007c2', 'BG open'),
-  ('10000000-0000-0000-0000-0000000007c3', 'BG mix');
+  ('10000000-0000-0000-0000-0000000007c3', 'BG mix'),
+  ('10000000-0000-0000-0000-0000000007c5', 'BG multi');
 insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result, topic_mix) values
   ('20000000-0000-0000-0000-0000000007e1', '10000000-0000-0000-0000-0000000007c1', 'Held', 2, 15, 50, 2, true, '{}'),
   ('20000000-0000-0000-0000-0000000007e2', '10000000-0000-0000-0000-0000000007c2', 'Open', 2, 15, 50, 1, false, '{}'),
-  ('20000000-0000-0000-0000-0000000007e3', '10000000-0000-0000-0000-0000000007c3', 'Mix', 2, 15, 50, 1, true, '{"x": 1, "y": 1}');
+  ('20000000-0000-0000-0000-0000000007e3', '10000000-0000-0000-0000-0000000007c3', 'Mix', 2, 15, 50, 1, true, '{"x": 1, "y": 1}'),
+  ('20000000-0000-0000-0000-0000000007e5', '10000000-0000-0000-0000-0000000007c5', 'Multi A', 2, 15, 50, 1, true, '{}'),
+  ('20000000-0000-0000-0000-0000000007e6', '10000000-0000-0000-0000-0000000007c5', 'Multi B', 2, 15, 50, 1, true, '{}');
 -- Held: q01-q05 approved, q06 draft. Open: q07-q10. Mix: q11-q13 all topic x (no y at all).
+-- Multi A: q14-q15. Multi B: q16-q17.
 insert into public.questions (id, exam_set_id, topic, difficulty, stem_de, stem_en, options, correct_option_id, status)
 select ('30000000-0000-0000-0000-0000000007' || lpad(n::text, 2, '0'))::uuid,
        case when n <= 6 then '20000000-0000-0000-0000-0000000007e1'
             when n <= 10 then '20000000-0000-0000-0000-0000000007e2'
-            else '20000000-0000-0000-0000-0000000007e3' end::uuid,
-       case when n >= 11 then 'x' else 't' end, 'easy', 'Frage ' || n, 'Question ' || n,
+            when n <= 13 then '20000000-0000-0000-0000-0000000007e3'
+            when n <= 15 then '20000000-0000-0000-0000-0000000007e5'
+            else '20000000-0000-0000-0000-0000000007e6' end::uuid,
+       case when n between 11 and 13 then 'x' else 't' end, 'easy', 'Frage ' || n, 'Question ' || n,
        '[{"id":"a","de":"Ja","en":"Yes"},{"id":"b","de":"Nein","en":"No"}]'::jsonb, 'b',
        case when n = 6 then 'draft' else 'approved' end
-from generate_series(1, 13) n;
+from generate_series(1, 17) n;
 
 insert into public.assignments (student_id, curriculum_id, position, status) values
   ('00000000-0000-0000-0000-0000000007b1', '10000000-0000-0000-0000-0000000007c1', 1, 'open'),
   ('00000000-0000-0000-0000-0000000007b2', '10000000-0000-0000-0000-0000000007c1', 1, 'open'),
   ('00000000-0000-0000-0000-0000000007b3', '10000000-0000-0000-0000-0000000007c2', 1, 'open'),
-  ('00000000-0000-0000-0000-0000000007b4', '10000000-0000-0000-0000-0000000007c3', 1, 'open');
+  ('00000000-0000-0000-0000-0000000007b4', '10000000-0000-0000-0000-0000000007c3', 1, 'open'),
+  ('00000000-0000-0000-0000-0000000007b5', '10000000-0000-0000-0000-0000000007c5', 1, 'open');
 
 create temp table ids (name text primary key, id uuid);
 grant all on ids to public;
@@ -131,6 +138,10 @@ insert into ids select 'a2', pg_temp.take('00000000-0000-0000-0000-0000000007b1'
   '30000000-0000-0000-0000-000000000703', '30000000-0000-0000-0000-000000000704', false);
 select is(pg_temp.status('00000000-0000-0000-0000-0000000007b1', '10000000-0000-0000-0000-0000000007c1'), 'open',
   'a held failed last attempt does not block before release');
+select throws_ok($$select public.grant_attempt('00000000-0000-0000-0000-0000000007b1', '20000000-0000-0000-0000-0000000007e1', '00000000-0000-0000-0000-0000000007a1')$$,
+  'P0001', 'result_pending', 'no grant while a result in the curriculum is held');
+select is((select count(*)::int from public.attempt_grants where student_id = '00000000-0000-0000-0000-0000000007b1' and used_attempt_id is null), 0,
+  'the refused grant writes nothing');
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000007b1","role":"authenticated"}', true);
 set local role authenticated;
 select is((select status from public.student_assignments where curriculum_id = '10000000-0000-0000-0000-0000000007c1'), 'open',
@@ -194,6 +205,37 @@ insert into ids select 'c1', pg_temp.take('00000000-0000-0000-0000-0000000007b3'
 select is((select status from public.attempts where id = (select id from ids where name = 'c1')), 'released', 'non-held: released at once');
 select is(pg_temp.status('00000000-0000-0000-0000-0000000007b3', '10000000-0000-0000-0000-0000000007c2'), 'blocked',
   'non-held: failing the only allowed attempt blocks in the same call');
+
+-- Recovery: a blocked assignment with an unused grant (legacy or racing state) ----------
+insert into public.attempt_grants (student_id, exam_set_id) values ('00000000-0000-0000-0000-0000000007b3', '20000000-0000-0000-0000-0000000007e2');
+select is(public.grant_attempt('00000000-0000-0000-0000-0000000007b3', '20000000-0000-0000-0000-0000000007e2', '00000000-0000-0000-0000-0000000007a1'),
+  '{"ok": true}'::jsonb, 'granting to a blocked student who already holds an unused grant succeeds');
+select is(pg_temp.status('00000000-0000-0000-0000-0000000007b3', '10000000-0000-0000-0000-0000000007c2'), 'open',
+  'and lifts the block');
+select is((select count(*)::int from public.attempt_grants where student_id = '00000000-0000-0000-0000-0000000007b3' and used_attempt_id is null), 1,
+  'without stacking a second grant');
+
+-- Multi-set curriculum: an attempt in progress or held on one set blocks grants on every set --
+select is(public.grant_attempt('00000000-0000-0000-0000-0000000007b5', '20000000-0000-0000-0000-0000000007e5', '00000000-0000-0000-0000-0000000007a1'),
+  '{"ok": true}'::jsonb, 'Eve gets an attempt on Multi A');
+insert into ids select 'e1', public.start_attempt('00000000-0000-0000-0000-0000000007b5', '20000000-0000-0000-0000-0000000007e5',
+  '[{"question_id":"30000000-0000-0000-0000-000000000714","option_order":["a","b"]},{"question_id":"30000000-0000-0000-0000-000000000715","option_order":["a","b"]}]');
+select throws_ok($$select public.grant_attempt('00000000-0000-0000-0000-0000000007b5', '20000000-0000-0000-0000-0000000007e6', '00000000-0000-0000-0000-0000000007a1')$$,
+  'P0001', 'in_progress', 'no grant on Multi B while Multi A is in progress');
+do $d$ begin
+  perform public.close_attempt((select id from ids where name = 'e1'), false);
+  perform public.record_score((select id from ids where name = 'e1'), 0, 2, false, pg_temp.snap((select id from ids where name = 'e1'), array[0, 0]));
+end $d$;
+select throws_ok($$select public.grant_attempt('00000000-0000-0000-0000-0000000007b5', '20000000-0000-0000-0000-0000000007e6', '00000000-0000-0000-0000-0000000007a1')$$,
+  'P0001', 'result_pending', 'no grant on Multi B while the Multi A result is held');
+select is(pg_temp.grants('00000000-0000-0000-0000-0000000007b5'), 1, 'only the used Multi A grant exists');
+select is(public.release_attempt((select id from ids where name = 'e1'), '00000000-0000-0000-0000-0000000007a1'), true, 'Multi A released as a fail');
+select is(pg_temp.status('00000000-0000-0000-0000-0000000007b5', '10000000-0000-0000-0000-0000000007c5'), 'blocked',
+  'the curriculum is blocked with no unused grant left behind');
+select is(public.grant_attempt('00000000-0000-0000-0000-0000000007b5', '20000000-0000-0000-0000-0000000007e6', '00000000-0000-0000-0000-0000000007a1'),
+  '{"ok": true}'::jsonb, 'after release staff can grant Multi B');
+select is(pg_temp.status('00000000-0000-0000-0000-0000000007b5', '10000000-0000-0000-0000-0000000007c5'), 'open',
+  'which lifts the block');
 
 -- Topic mix: unseen questions must cover every topic of the mix ----------------------
 select is(public.grant_attempt('00000000-0000-0000-0000-0000000007b4', '20000000-0000-0000-0000-0000000007e3', '00000000-0000-0000-0000-0000000007a1'),
