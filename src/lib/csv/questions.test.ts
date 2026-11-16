@@ -124,9 +124,7 @@ describe('parseQuestionsCsv', () => {
   })
 
   it('auto-detects a semicolon-delimited file (German Excel)', () => {
-    const semi = [HEADER, row1, row2]
-      .map((l) => (l === HEADER ? l.replaceAll(',', ';') : l.replaceAll(',', ';')))
-      .join('\r\n')
+    const semi = [HEADER, row1, row2].map((l) => l.replaceAll(',', ';')).join('\r\n')
     const r = parseQuestionsCsv('\uFEFF' + semi)
     expect(r.errors).toEqual([])
     expect(r.valid).toHaveLength(2)
@@ -138,5 +136,63 @@ describe('parseQuestionsCsv', () => {
     expect(r.valid).toEqual([])
     expect(r.errors).toHaveLength(1)
     expect(r.errors[0].message).toMatch(/column/i)
+  })
+
+  it('reports a malformed-quote row as an error only, never also as valid', () => {
+    // The stray quote sits in the free-text difficulty cell, so every cell of
+    // the row would otherwise pass validation.
+    const badQuote = 'Logik,"ea"sy",Frage vier,Question four,A,A,B,B,,,,,a,1'
+    const r = parseQuestionsCsv([HEADER, row1, badQuote, row3].join('\n'))
+    expect(r.valid.map((q) => q.stemDe)).toEqual(['Frage eins', 'Frage drei'])
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0].row).toBe(2)
+    expect(r.errors[0].message).toMatch(/quot/i)
+  })
+
+  it('rejects a row with too many columns (unquoted separator in text)', () => {
+    const extra = 'Logik,easy,Frage, vier,Question four,A,A,B,B,,,,,a,1'
+    const r = parseQuestionsCsv([HEADER, extra].join('\n'))
+    expect(r.valid).toEqual([])
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0].row).toBe(1)
+    expect(r.errors[0].message).toMatch(/too many columns/i)
+  })
+
+  it('accepts trailing empty cells beyond the last column', () => {
+    const r = parseQuestionsCsv([HEADER, row1 + ',,'].join('\n'))
+    expect(r.errors).toEqual([])
+    expect(r.valid).toHaveLength(1)
+  })
+
+  it('rejects unsafe-integer points', () => {
+    const r = parseQuestionsCsv(
+      [HEADER, 'T,easy,F1,Q1,A,A,B,B,,,,,a,99999999999999999999'].join('\n'),
+    )
+    expect(r.valid).toEqual([])
+    expect(r.errors[0].message).toMatch(/points/i)
+  })
+
+  it('handles quoted fields with comma, semicolon, newline and embedded quotes', () => {
+    const line =
+      'Logik,easy,"Wann, wo; wie\nwarum?","When, where; how\nwhy?","Er sagte ""ja""","He said ""yes""",Nein,No,,,,,a,1'
+    const r = parseQuestionsCsv([HEADER, line].join('\n'))
+    expect(r.errors).toEqual([])
+    expect(r.valid[0].stemDe).toBe('Wann, wo; wie\nwarum?')
+    expect(r.valid[0].stemEn).toBe('When, where; how\nwhy?')
+    expect(r.valid[0].options[0]).toEqual({ id: 'a', de: 'Er sagte "ja"', en: 'He said "yes"' })
+  })
+
+  it('returns nothing for a header-only file', () => {
+    expect(parseQuestionsCsv(HEADER)).toEqual({ valid: [], errors: [] })
+    expect(parseQuestionsCsv(HEADER + '\n')).toEqual({ valid: [], errors: [] })
+  })
+
+  it('accepts mixed-case padded headers', () => {
+    const header = HEADER.split(',')
+      .map((h, i) => (i % 2 ? ` ${h.toUpperCase()} ` : `  ${h[0].toUpperCase()}${h.slice(1)}`))
+      .join(',')
+    const r = parseQuestionsCsv([header, row1].join('\n'))
+    expect(r.errors).toEqual([])
+    expect(r.valid).toHaveLength(1)
   })
 })

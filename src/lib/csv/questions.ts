@@ -44,10 +44,14 @@ export function parseQuestionsCsv(text: string): {
   }
 
   // Only malformed quoting is a real problem; field-count mismatches on blank
-  // or short rows are handled by the per-row validation.
+  // or short rows are handled by the per-row validation. A row with a quoting
+  // error is reported once and skipped, so it never also appears in `valid`.
+  // Papa error rows are already 1-based data rows (header excluded).
+  const quoteErrorRows = new Set<number>()
   for (const e of parsed.errors) {
-    if (e.type === 'Quotes' && typeof e.row === 'number') {
-      errors.push({ row: e.row + 1, message: `Malformed quoting: ${e.message}` })
+    if (e.type === 'Quotes' && typeof e.row === 'number' && !quoteErrorRows.has(e.row - 1)) {
+      quoteErrorRows.add(e.row - 1)
+      errors.push({ row: e.row, message: `Malformed quoting: ${e.message}` })
     }
   }
 
@@ -55,12 +59,20 @@ export function parseQuestionsCsv(text: string): {
 
   parsed.data.forEach((raw, index) => {
     const row = index + 1
+    if (quoteErrorRows.has(index)) return
     const cell = (key: string) => (raw[key] ?? '').trim()
 
     if (Object.values(raw).every((v) => !v || !String(v).trim())) return
 
     const fail = (message: string) => {
       errors.push({ row, message })
+    }
+
+    // Papa puts cells beyond the header width in __parsed_extra; trailing empty
+    // cells are harmless, anything else means data would be silently dropped.
+    const extra = (raw as Record<string, unknown>).__parsed_extra
+    if (Array.isArray(extra) && extra.some((v) => typeof v === 'string' && v.trim())) {
+      return fail('Too many columns; put text containing the separator in quotes')
     }
 
     const stemDe = cell('stem_de')
@@ -93,7 +105,7 @@ export function parseQuestionsCsv(text: string): {
     const pointsRaw = cell('points')
     let points = 1
     if (pointsRaw) {
-      if (!/^\d+$/.test(pointsRaw) || Number(pointsRaw) < 1) {
+      if (!/^\d+$/.test(pointsRaw) || !Number.isSafeInteger(Number(pointsRaw)) || Number(pointsRaw) < 1) {
         return fail(`Invalid points "${pointsRaw}" (must be a positive integer)`)
       }
       points = Number(pointsRaw)

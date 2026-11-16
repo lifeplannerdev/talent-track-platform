@@ -84,4 +84,23 @@ describe('scoreAttempt', () => {
     const r = scoreAttempt([], {}, 0)
     expect(r).toEqual({ points: 0, max: 0, percent: 0, passed: false, byTopic: {} })
   })
+
+  it('7 of 10 passes a 70 percent mark', () => {
+    const qs = Array.from({ length: 10 }, (_, i) => q(String(i), 'T', 1))
+    const answers = Object.fromEntries(qs.map((x, i) => [x.id, i < 7 ? 'a' : 'b']))
+    const r = scoreAttempt(qs, answers, 70)
+    expect(r.percent).toBe(70)
+    expect(r.passed).toBe(true)
+  })
+
+  it('handles topics named like prototype keys', () => {
+    const qs = [q('1', '__proto__', 2), q('2', 'constructor', 1)]
+    const r = scoreAttempt(qs, { '1': 'a', '2': 'a' }, 50)
+    expect(Object.keys(r.byTopic).sort()).toEqual(['__proto__', 'constructor'])
+    expect(Object.getOwnPropertyDescriptor(r.byTopic, '__proto__')?.value).toEqual({
+      points: 2,
+      max: 2,
+    })
+    expect(Object.getPrototypeOf(r.byTopic)).toBe(Object.prototype)
+  })
 })

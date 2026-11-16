@@ -17,15 +17,27 @@ export function scoreAttempt(
 ): ScoreResult {
   let points = 0
   let max = 0
-  const byTopic: ScoreResult['byTopic'] = {}
+  // Map avoids prototype hazards for topics like "__proto__".
+  const topics = new Map<string, { points: number; max: number }>()
 
   for (const question of questions) {
     const earned = answers[question.id] === question.correctOptionId ? question.points : 0
     points += earned
     max += question.points
-    const topic = (byTopic[question.topic] ??= { points: 0, max: 0 })
+    const topic = topics.get(question.topic) ?? { points: 0, max: 0 }
     topic.points += earned
     topic.max += question.points
+    topics.set(question.topic, topic)
+  }
+
+  const byTopic: ScoreResult['byTopic'] = {}
+  for (const [name, totals] of topics) {
+    Object.defineProperty(byTopic, name, {
+      value: totals,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
   }
 
   if (max === 0) return { points: 0, max: 0, percent: 0, passed: false, byTopic }
