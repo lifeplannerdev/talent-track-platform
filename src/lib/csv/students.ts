@@ -49,7 +49,16 @@ export function parseStudentsCsv(
   text: string,
   opts: { existingUsernames?: Iterable<string> } = {},
 ): { valid: NewStudent[]; errors: CsvError[] } {
-  const valid: NewStudent[] = []
+  const { valid, errors } = parseStudentsCsvWithRows(text, opts)
+  return { valid: valid.map(({ row: _row, ...student }) => student), errors }
+}
+
+/** parseStudentsCsv, with the data row number of each valid student (for import reports). */
+export function parseStudentsCsvWithRows(
+  text: string,
+  opts: { existingUsernames?: Iterable<string> } = {},
+): { valid: (NewStudent & { row: number })[]; errors: CsvError[] } {
+  const valid: (NewStudent & { row: number })[] = []
   const { rows, errors } = readCsvRows(text, REQUIRED_COLUMNS)
   const existing = new Set([...(opts.existingUsernames ?? [])].map((u) => u.toLowerCase()))
   const firstRow = new Map<string, number>()
@@ -77,7 +86,7 @@ export function parseStudentsCsv(
       errors.push({ row, message: `Username "${username}" is already taken` })
       continue
     }
-    valid.push(result.student)
+    valid.push({ ...result.student, row })
   }
 
   return { valid, errors }
