@@ -1,9 +1,8 @@
-import Papa from 'papaparse'
-import type { NewQuestion, QuestionOption } from '../types'
+import type { NewQuestion } from '../types'
+import { OPTION_IDS, validateQuestionFields } from '../question-fields'
+import { readCsvRows, type CsvError } from './rows'
 
-export type QuestionCsvError = { row: number; message: string }
-
-const OPTION_IDS = ['a', 'b', 'c', 'd'] as const
+export type QuestionCsvError = CsvError
 
 const REQUIRED_COLUMNS = [
   'topic',
@@ -17,113 +16,42 @@ const REQUIRED_COLUMNS = [
 
 // Row numbers are 1-based data rows: the header is not counted, and blank rows
 // still count (so the number matches the data row position in the file).
+// The per-question rules are shared with the manual form (validateQuestionFields).
 export function parseQuestionsCsv(text: string): {
   valid: NewQuestion[]
   errors: QuestionCsvError[]
 } {
   const valid: NewQuestion[] = []
-  const errors: QuestionCsvError[] = []
-
-  const parsed = Papa.parse<Record<string, string>>(text.replace(/^\uFEFF/, ''), {
-    header: true,
-    // Blank rows are skipped below so that row numbers stay positional.
-    skipEmptyLines: false,
-    // Delimiter is auto-detected; German-locale Excel writes semicolons.
-    delimitersToGuess: [',', ';', '\t'],
-    transformHeader: (h) => h.replace(/^\uFEFF/, '').trim().toLowerCase(),
-    transform: (v) => v.trim(),
-  })
-
-  const fields = parsed.meta.fields ?? []
-  const missing = REQUIRED_COLUMNS.filter((c) => !fields.includes(c))
-  if (missing.length > 0) {
-    return {
-      valid,
-      errors: [{ row: 0, message: `Missing required column(s): ${missing.join(', ')}` }],
-    }
-  }
-
-  // Only malformed quoting is a real problem; field-count mismatches on blank
-  // or short rows are handled by the per-row validation. A row with a quoting
-  // error is reported once and skipped, so it never also appears in `valid`.
-  // Papa error rows are already 1-based data rows (header excluded).
-  const quoteErrorRows = new Set<number>()
-  for (const e of parsed.errors) {
-    if (e.type === 'Quotes' && typeof e.row === 'number' && !quoteErrorRows.has(e.row - 1)) {
-      quoteErrorRows.add(e.row - 1)
-      errors.push({ row: e.row, message: `Malformed quoting: ${e.message}` })
-    }
-  }
-
+  const { rows, errors } = readCsvRows(text, REQUIRED_COLUMNS)
   const seenStems = new Set<string>()
 
-  parsed.data.forEach((raw, index) => {
-    const row = index + 1
-    if (quoteErrorRows.has(index)) return
-    const cell = (key: string) => (raw[key] ?? '').trim()
-
-    if (Object.values(raw).every((v) => !v || !String(v).trim())) return
-
-    const fail = (message: string) => {
-      errors.push({ row, message })
-    }
-
-    // Papa puts cells beyond the header width in __parsed_extra; trailing empty
-    // cells are harmless, anything else means data would be silently dropped.
-    const extra = (raw as Record<string, unknown>).__parsed_extra
-    if (Array.isArray(extra) && extra.some((v) => typeof v === 'string' && v.trim())) {
-      return fail('Too many columns; put text containing the separator in quotes')
-    }
-
-    const stemDe = cell('stem_de')
-    const stemEn = cell('stem_en')
-    if (!cell('topic')) return fail('Missing topic')
-    if (!stemDe) return fail('Missing German question text (stem_de)')
-    if (!stemEn) return fail('Missing English question text (stem_en)')
-
-    const options: QuestionOption[] = []
-    for (const id of OPTION_IDS) {
-      const de = cell(`option_${id}_de`)
-      const en = cell(`option_${id}_en`)
-      if (!de && !en) {
-        if (id === 'a' || id === 'b') return fail(`Option ${id.toUpperCase()} is required`)
-        continue
-      }
-      if (!de) return fail(`Option ${id.toUpperCase()} is missing German text (option_${id}_de)`)
-      if (!en) return fail(`Option ${id.toUpperCase()} is missing English text (option_${id}_en)`)
-      options.push({ id, de, en })
-    }
-
-    const correct = cell('correct').toLowerCase()
-    if (!(OPTION_IDS as readonly string[]).includes(correct)) {
-      return fail(`Invalid correct option "${cell('correct')}" (must be one of a, b, c, d)`)
-    }
-    if (!options.some((o) => o.id === correct)) {
-      return fail(`Correct option "${correct}" has no text`)
-    }
-
-    const pointsRaw = cell('points')
-    let points = 1
-    if (pointsRaw) {
-      if (!/^\d+$/.test(pointsRaw) || !Number.isSafeInteger(Number(pointsRaw)) || Number(pointsRaw) < 1) {
-        return fail(`Invalid points "${pointsRaw}" (must be a positive integer)`)
-      }
-      points = Number(pointsRaw)
-    }
-
-    if (seenStems.has(stemDe)) return fail(`Duplicate German question text: "${stemDe}"`)
-    seenStems.add(stemDe)
-
-    valid.push({
+  for (const { row, cell } of rows) {
+    const result = validateQuestionFields({
       topic: cell('topic'),
-      difficulty: cell('difficulty') || 'medium',
-      stemDe,
-      stemEn,
-      options,
-      correctOptionId: correct,
-      points,
+      difficulty: cell('difficulty'),
+      stemDe: cell('stem_de'),
+      stemEn: cell('stem_en'),
+      options: {
+        a: { de: cell('option_a_de'), en: cell('option_a_en') },
+        b: { de: cell('option_b_de'), en: cell('option_b_en') },
+        c: { de: cell('option_c_de'), en: cell('option_c_en') },
+        d: { de: cell('option_d_de'), en: cell('option_d_en') },
+      },
+      correct: cell('correct'),
+      points: cell('points'),
     })
-  })
+    if (!result.ok) {
+      errors.push({ row, message: result.message })
+      continue
+    }
+    const { stemDe } = result.question
+    if (seenStems.has(stemDe)) {
+      errors.push({ row, message: `Duplicate German question text: "${stemDe}"` })
+      continue
+    }
+    seenStems.add(stemDe)
+    valid.push(result.question)
+  }
 
   return { valid, errors }
 }

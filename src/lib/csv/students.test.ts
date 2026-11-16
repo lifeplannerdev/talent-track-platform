@@ -1,0 +1,142 @@
+import { describe, expect, it } from 'vitest'
+import { parseStudentsCsv, validateStudentFields } from './students'
+
+// TEST-ONLY passwords (never real credentials).
+const HEADER = 'username,full_name,batch,track,password'
+const anna = 'anna.k,Anna Kurian,B1,nursing,test-pass-anna'
+const ben = 'ben_t,Ben Thomas,B2,other,test-pass-ben1'
+
+describe('parseStudentsCsv', () => {
+  it('parses a valid file', () => {
+    const r = parseStudentsCsv([HEADER, anna, ben].join('\n'))
+    expect(r.errors).toEqual([])
+    expect(r.valid).toEqual([
+      { username: 'anna.k', fullName: 'Anna Kurian', batch: 'B1', track: 'nursing', password: 'test-pass-anna' },
+      { username: 'ben_t', fullName: 'Ben Thomas', batch: 'B2', track: 'other', password: 'test-pass-ben1' },
+    ])
+  })
+
+  it('lower-cases usernames and tracks, and accepts case/whitespace-insensitive headers', () => {
+    const r = parseStudentsCsvHeader(' Username , FULL_NAME,Batch ,TRACK,password')
+    expect(r.errors).toEqual([])
+    expect(r.valid[0]).toMatchObject({ username: 'anna.k', track: 'nursing' })
+  })
+
+  it('strips a UTF-8 BOM', () => {
+    const r = parseStudentsCsv('﻿' + [HEADER, anna].join('\r\n'))
+    expect(r.errors).toEqual([])
+    expect(r.valid).toHaveLength(1)
+  })
+
+  it('detects semicolon-separated files (German Excel)', () => {
+    const r = parseStudentsCsv(['username;full_name;batch;track;password', 'anna.k;Anna Kurian;B1;nursing;test-pass-anna'].join('\n'))
+    expect(r.errors).toEqual([])
+    expect(r.valid[0].fullName).toBe('Anna Kurian')
+  })
+
+  it('reports duplicate usernames within the file per row and keeps them out of valid', () => {
+    const r = parseStudentsCsv([HEADER, anna, ben, 'Anna.K,Anna Two,B1,other,test-pass-two'].join('\n'))
+    expect(r.valid.map((v) => v.username)).toEqual(['anna.k', 'ben_t'])
+    expect(r.errors).toEqual([{ row: 3, message: 'Duplicate username "anna.k" (also on row 1)' }])
+  })
+
+  it('reports usernames that already exist', () => {
+    const r = parseStudentsCsv([HEADER, anna, ben].join('\n'), { existingUsernames: ['ben_t'] })
+    expect(r.valid.map((v) => v.username)).toEqual(['anna.k'])
+    expect(r.errors).toEqual([{ row: 2, message: 'Username "ben_t" is already taken' }])
+  })
+
+  it('rejects a blank password and a short password', () => {
+    const r = parseStudentsCsv([HEADER, 'anna.k,Anna Kurian,B1,nursing,', 'ben_t,Ben Thomas,B2,other,short7!'].join('\n'))
+    expect(r.valid).toEqual([])
+    expect(r.errors).toEqual([
+      { row: 1, message: 'Missing password (staff set the first password)' },
+      { row: 2, message: 'Password must be at least 8 characters' },
+    ])
+  })
+
+  it('rejects an unknown track', () => {
+    const r = parseStudentsCsv([HEADER, 'anna.k,Anna Kurian,B1,medicine,test-pass-anna'].join('\n'))
+    expect(r.valid).toEqual([])
+    expect(r.errors).toEqual([{ row: 1, message: 'Unknown track "medicine" (must be nursing or other)' }])
+  })
+
+  it('rejects invalid username characters and lengths', () => {
+    const r = parseStudentsCsv(
+      [HEADER, 'anna k,A,B1,other,test-pass-1', 'anna@x,A,B1,other,test-pass-1', 'ab,A,B1,other,test-pass-1', 'änna,A,B1,other,test-pass-1', `${'a'.repeat(41)},A,B1,other,test-pass-1`].join('\n'),
+    )
+    expect(r.valid).toEqual([])
+    expect(r.errors.map((e) => e.row)).toEqual([1, 2, 3, 4, 5])
+    for (const e of r.errors) {
+      expect(e.message).toMatch(/Username .* 3-40 characters: letters, digits, dot, underscore or hyphen/)
+    }
+  })
+
+  it('requires the full name and the username', () => {
+    const r = parseStudentsCsv([HEADER, 'anna.k,,B1,nursing,test-pass-anna', ',Ben,B1,other,test-pass-ben1'].join('\n'))
+    expect(r.errors).toEqual([
+      { row: 1, message: 'Missing full name' },
+      { row: 2, message: 'Missing username' },
+    ])
+  })
+
+  it('allows a blank batch', () => {
+    const r = parseStudentsCsv([HEADER, 'anna.k,Anna Kurian,,nursing,test-pass-anna'].join('\n'))
+    expect(r.errors).toEqual([])
+    expect(r.valid[0].batch).toBe('')
+  })
+
+  it('skips blank rows but keeps row numbers positional', () => {
+    const r = parseStudentsCsv([HEADER, anna, '', ' , , , , ', 'xavier,No Track,B1,,test-pass-xx1'].join('\n'))
+    expect(r.valid).toHaveLength(1)
+    expect(r.errors).toEqual([{ row: 4, message: 'Unknown track "" (must be nursing or other)' }])
+  })
+
+  it('reports a missing column once as row 0', () => {
+    const r = parseStudentsCsv(['username,full_name,batch,password', 'anna.k,Anna,B1,test-pass-anna'].join('\n'))
+    expect(r.valid).toEqual([])
+    expect(r.errors).toEqual([{ row: 0, message: 'Missing required column(s): track' }])
+  })
+
+  it('rejects rows with extra non-empty columns, but tolerates trailing empty cells', () => {
+    const r = parseStudentsCsv([HEADER, anna + ',surprise', ben + ',,'].join('\n'))
+    expect(r.valid.map((v) => v.username)).toEqual(['ben_t'])
+    expect(r.errors).toEqual([{ row: 1, message: 'Too many columns; put text containing the separator in quotes' }])
+  })
+
+  it('is safe against prototype keys in the header and values', () => {
+    const r = parseStudentsCsv(['__proto__,username,full_name,batch,track,password', 'x,constructor,Proto,B1,other,test-pass-proto'].join('\n'))
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(r.errors).toEqual([])
+    expect(r.valid[0].username).toBe('constructor')
+  })
+
+  it('never puts a password into an error message', () => {
+    const r = parseStudentsCsv([HEADER, 'bad name,Anna,B1,nursing,test-secret-pw', 'ok.name,Anna,B1,weird,test-secret-pw2'].join('\n'))
+    expect(JSON.stringify(r.errors)).not.toContain('test-secret-pw')
+  })
+})
+
+describe('validateStudentFields', () => {
+  it('returns the normalised student for a valid input', () => {
+    expect(
+      validateStudentFields({ username: ' Anna.K ', fullName: ' Anna ', batch: ' B1 ', track: 'Nursing', password: 'test-pass-anna' }),
+    ).toEqual({ ok: true, student: { username: 'anna.k', fullName: 'Anna', batch: 'B1', track: 'nursing', password: 'test-pass-anna' } })
+  })
+
+  it('does not trim the password (spaces are part of it)', () => {
+    const r = validateStudentFields({ username: 'anna.k', fullName: 'A', batch: '', track: 'other', password: ' test-pass ' })
+    expect(r).toMatchObject({ ok: true, student: { password: ' test-pass ' } })
+  })
+
+  it('returns the first problem as a message', () => {
+    expect(validateStudentFields({ username: 'anna.k', fullName: 'A', batch: '', track: 'other', password: 'short' })).toEqual({
+      ok: false,
+      message: 'Password must be at least 8 characters',
+    })
+  })
+})
+
+function parseStudentsCsvHeader(header: string) {
+  return parseStudentsCsv([header, anna].join('\n'))
+}
