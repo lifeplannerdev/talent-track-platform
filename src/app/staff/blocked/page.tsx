@@ -1,19 +1,19 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { ShieldCheckIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { listBlockedStudents } from "@/lib/staff-overview";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { PageHeader } from "@/components/app/page-header";
+import { linkClass, staffMain } from "@/components/app/styles";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { GrantButton } from "../grants/grant-button";
 import { GrantStatusProvider } from "../grants/grant-status";
-import { StaffNav } from "../staff-nav";
 
 export const metadata: Metadata = { title: "Blocked students | TalentTrack" };
 
-const linkClass =
-  "text-sm underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 async function BlockedList() {
   await requireRole("staff");
@@ -23,6 +23,9 @@ async function BlockedList() {
     return (
       <Empty className="border" data-testid="blocked-empty">
         <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ShieldCheckIcon aria-hidden="true" />
+          </EmptyMedia>
           <EmptyTitle>No blocked students</EmptyTitle>
           <EmptyDescription>
             A student is blocked when they fail their last allowed attempt. They will appear here.
@@ -47,7 +50,7 @@ async function BlockedList() {
         {rows.map((r) => (
           <TableRow key={`${r.studentId}:${r.curriculumId}`} className="align-top">
             <TableCell>
-              <span className="block font-medium">{r.studentName}</span>
+              <span className="block font-semibold">{r.studentName}</span>
               <span className="block text-muted-foreground">{r.batch ? `Batch ${r.batch}` : "No batch"}</span>
             </TableCell>
             <TableCell>
@@ -97,13 +100,11 @@ function ListSkeleton() {
 
 export default function BlockedPage() {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Blocked students</h1>
-      <StaffNav current="/staff/blocked" />
-      <p className="text-sm text-muted-foreground">
-        These students failed their last allowed attempt. Give another attempt (only with questions they have not
-        seen) or reassign their curriculums.
-      </p>
+    <main className={staffMain}>
+      <PageHeader
+        title="Blocked students"
+        description="These students failed their last allowed attempt. Give another attempt (only with questions they have not seen) or reassign their curriculums."
+      />
       <GrantStatusProvider>
         <Suspense fallback={<ListSkeleton />}>
           <BlockedList />

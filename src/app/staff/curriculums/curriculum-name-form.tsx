@@ -40,7 +40,7 @@ export function CurriculumNameForm({ id, name = "", openAfterCreate = false }: {
       <Button type="submit" variant={id ? "outline" : "default"} disabled={pending || !value.trim() || value.trim() === name}>
         {pending ? "Saving…" : id ? "Rename" : "Create curriculum"}
       </Button>
-      <p aria-live="polite" role="status" className={`w-full text-sm ${message?.ok === false ? "text-destructive" : "text-muted-foreground"}`}>
+      <p aria-live="polite" role="status" className={`w-full text-sm ${message?.ok === false ? "text-destructive" : "text-success"}`}>
         {message?.text}
       </p>
     </form>

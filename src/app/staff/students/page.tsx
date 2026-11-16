@@ -1,17 +1,19 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { UsersIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { listStudents } from "@/lib/staff-manage";
+import { PageHeader, SectionHeading } from "@/components/app/page-header";
+import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { StaffNav } from "../staff-nav";
 import { AddStudentForm } from "./add-student-form";
 import { ImportStudents } from "./import-students";
 import { linkClass, statusVariant, trackLabel } from "./ui";
@@ -33,7 +35,7 @@ async function StudentList({ searchParams }: { searchParams: Promise<Record<stri
 
   return (
     <div className="flex flex-col gap-4">
-      <form method="get" role="search" aria-label="Filter students" className="flex flex-wrap items-end gap-3">
+      <form method="get" role="search" aria-label="Filter students" className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
           <Label htmlFor="q">Search</Label>
           <Input id="q" name="q" type="search" defaultValue={filters.q} placeholder="Name or username" />
@@ -70,6 +72,9 @@ async function StudentList({ searchParams }: { searchParams: Promise<Record<stri
       {rows.length === 0 ? (
         <Empty className="border" data-testid="students-empty">
           <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <UsersIcon aria-hidden="true" />
+            </EmptyMedia>
             <EmptyTitle>{filtered ? "No students match these filters" : "No students yet"}</EmptyTitle>
             <EmptyDescription>
               {filtered ? "Change the search or clear the filters." : "Add a student below or import a CSV file."}
@@ -93,7 +98,7 @@ async function StudentList({ searchParams }: { searchParams: Promise<Record<stri
             {rows.map((r) => (
               <TableRow key={r.id} className="align-top">
                 <TableCell>
-                  <span className="block font-medium">{r.fullName}</span>
+                  <span className="block font-semibold">{r.fullName}</span>
                   <span className="block text-muted-foreground">{r.username}</span>
                 </TableCell>
                 <TableCell>{r.batch ?? "–"}</TableCell>
@@ -143,22 +148,23 @@ function ListSkeleton() {
 async function StaffForms() {
   await requireRole("staff");
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <AddStudentForm />
-      <ImportStudents />
-    </div>
+    <section aria-labelledby="add-heading" className="flex flex-col gap-3">
+      <SectionHeading id="add-heading">Add students</SectionHeading>
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <AddStudentForm />
+        <ImportStudents />
+      </div>
+    </section>
   );
 }
 
 export default function StudentsPage(props: PageProps<"/staff/students">) {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Students</h1>
-      <StaffNav current="/staff/students" />
-      <p className="text-sm text-muted-foreground">
-        Students sign in with the username and password you give them. Nursing students get Pflege Ausbildung and Life in
-        Germany; every other track gets Life in Germany. You can change curriculums on each student&apos;s page.
-      </p>
+    <main className={staffMain}>
+      <PageHeader
+        title="Students"
+        description="Students sign in with the username and password you give them. Nursing students get Pflege Ausbildung and Life in Germany; every other track gets Life in Germany. You can change curriculums on each student’s page."
+      />
       <Suspense fallback={<ListSkeleton />}>
         <StudentList searchParams={props.searchParams} />
       </Suspense>

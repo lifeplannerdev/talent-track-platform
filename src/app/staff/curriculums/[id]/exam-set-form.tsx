@@ -206,7 +206,7 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
           </Alert>
         ) : null}
         {saved ? (
-          <Alert data-testid="exam-set-saved">
+          <Alert variant={saved.warnings.length > 0 ? "warning" : "success"} data-testid="exam-set-saved">
             <AlertTitle>{isNew ? "Exam set created." : "Settings saved."}</AlertTitle>
             {saved.warnings.length > 0 ? (
               <AlertDescription>

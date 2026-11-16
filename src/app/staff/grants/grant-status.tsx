@@ -18,7 +18,7 @@ export function GrantStatusProvider({ children }: { children: ReactNode }) {
     <GrantStatusContext.Provider value={setMessage}>
       <div aria-live="polite">
         {message ? (
-          <Alert>
+          <Alert variant="success" className="mb-1">
             <AlertDescription data-testid="grant-success">{message}</AlertDescription>
           </Alert>
         ) : null}

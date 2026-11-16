@@ -6,12 +6,14 @@ import { requireRole } from "@/lib/auth/require-role";
 import { isUuid } from "@/lib/attempts";
 import { examSetWarnings, formatTopicMix } from "@/lib/exam-set-fields";
 import { listCurriculumsWithSets } from "@/lib/staff-manage";
+import { ChevronLeftIcon, FileStackIcon } from "lucide-react";
+import { PageHeader, SectionHeading } from "@/components/app/page-header";
+import { staffMain } from "@/components/app/styles";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StaffNav } from "../../staff-nav";
 import { linkClass } from "../../students/ui";
 import { CurriculumNameForm } from "../curriculum-name-form";
 import { ExamSetForm, NEW_EXAM_SET } from "./exam-set-form";
@@ -27,20 +29,21 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-semibold" data-testid="curriculum-name">
+      <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+        <h2 className="text-2xl font-semibold" data-testid="curriculum-name">
           {curriculum.name}
         </h2>
         <CurriculumNameForm id={curriculum.id} name={curriculum.name} />
       </div>
 
       <section aria-labelledby="sets-heading" className="flex flex-col gap-4">
-        <h2 id="sets-heading" className="text-lg font-medium">
-          Exam sets
-        </h2>
+        <SectionHeading id="sets-heading">Exam sets</SectionHeading>
         {curriculum.examSets.length === 0 ? (
           <Empty className="border" data-testid="exam-sets-empty">
             <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <FileStackIcon aria-hidden="true" />
+              </EmptyMedia>
               <EmptyTitle>No exam sets yet</EmptyTitle>
               <EmptyDescription>Create one below, then add questions to it on the Questions page.</EmptyDescription>
             </EmptyHeader>
@@ -59,7 +62,7 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   <p className="flex flex-wrap items-center gap-2 text-sm">
-                    <Badge variant="secondary">{s.approvedCount} approved</Badge>
+                    <Badge variant="success">{s.approvedCount} approved</Badge>
                     <Badge variant="outline">{s.draftCount} draft</Badge>
                     {Object.keys(s.topicMix).length > 0 ? (
                       <span className="text-muted-foreground">Topic mix: {formatTopicMix(s.topicMix).replaceAll("\n", ", ")}</span>
@@ -69,7 +72,7 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
                     </Link>
                   </p>
                   {warnings.length > 0 ? (
-                    <Alert>
+                    <Alert variant="warning">
                       <AlertDescription>
                         <ul className="list-disc pl-4">
                           {warnings.map((w) => (
@@ -79,7 +82,7 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
                       </AlertDescription>
                     </Alert>
                   ) : null}
-                  <details className="group rounded-lg border p-3">
+                  <details className="group rounded-md border bg-muted/40 p-3 open:bg-card">
                     <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                       Edit settings
                     </summary>
@@ -118,12 +121,14 @@ function DetailSkeleton() {
 
 export default function CurriculumPage(props: PageProps<"/staff/curriculums/[id]">) {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Curriculum</h1>
-      <StaffNav current="/staff/curriculums" />
-      <Link href="/staff/curriculums" className={linkClass}>
-        All curriculums
-      </Link>
+    <main className={staffMain}>
+      <div className="flex flex-col gap-2">
+        <Link href="/staff/curriculums" className={`${linkClass} inline-flex w-fit items-center gap-1 text-sm`}>
+          <ChevronLeftIcon aria-hidden="true" className="size-4" />
+          All curriculums
+        </Link>
+        <PageHeader title="Curriculum" />
+      </div>
       <Suspense fallback={<DetailSkeleton />}>
         <CurriculumDetail params={props.params} />
       </Suspense>

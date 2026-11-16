@@ -56,7 +56,7 @@ export function ResetPasswordForm({ studentId, studentName }: { studentId: strin
         </form>
         <div aria-live="polite" className="mt-3">
           {message ? (
-            <Alert variant={message.ok ? "default" : "destructive"}>
+            <Alert variant={message.ok ? "success" : "destructive"}>
               <AlertDescription data-testid="reset-password-message">{message.text}</AlertDescription>
             </Alert>
           ) : null}

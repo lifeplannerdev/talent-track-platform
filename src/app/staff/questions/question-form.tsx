@@ -224,7 +224,7 @@ export function QuestionForm({ sets, initial }: { sets: ExamSetChoice[]; initial
       </div>
       <div aria-live="polite">
         {message ? (
-          <Alert variant={message.ok ? "default" : "destructive"}>
+          <Alert variant={message.ok ? "success" : "destructive"}>
             <AlertDescription data-testid="question-form-message">{message.text}</AlertDescription>
           </Alert>
         ) : null}

@@ -158,7 +158,7 @@ export function ImportStudents() {
 
           {result ? (
             result.ok ? (
-              <Alert variant={result.failed.length > 0 ? "destructive" : "default"} data-testid="students-import-result">
+              <Alert variant={result.failed.length > 0 ? "destructive" : "success"} data-testid="students-import-result">
                 <AlertTitle>
                   Created {result.created.length} student{result.created.length === 1 ? "" : "s"}
                   {result.failed.length > 0 ? `; ${result.failed.length} could not be created` : "."}

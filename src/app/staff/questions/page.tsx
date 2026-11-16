@@ -1,18 +1,20 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { FileStackIcon, ListPlusIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { poolWarning } from "@/lib/exam-set-fields";
 import { getQuestion, listCurriculumsWithSets, listQuestions, type QuestionFilters } from "@/lib/staff-manage";
+import { PageHeader, SectionHeading } from "@/components/app/page-header";
+import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { StaffNav } from "../staff-nav";
 import { linkClass } from "../students/ui";
 import { QuestionForm, type ExamSetChoice } from "./question-form";
 import { QuestionImport } from "./question-import";
@@ -52,6 +54,9 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
     return (
       <Empty className="border" data-testid="questions-no-sets">
         <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <FileStackIcon aria-hidden="true" />
+          </EmptyMedia>
           <EmptyTitle>No exam sets yet</EmptyTitle>
           <EmptyDescription>
             Questions belong to an exam set. <Link href="/staff/curriculums" className={linkClass}>Create an exam set</Link> first.
@@ -63,7 +68,7 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
 
   return (
     <div className="flex flex-col gap-6">
-      <form method="get" aria-label="Filter questions" className="flex flex-wrap items-end gap-3">
+      <form method="get" aria-label="Filter questions" className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="f-curriculum">Curriculum</Label>
           <NativeSelect id="f-curriculum" name="curriculum" defaultValue={filters.curriculum}>
@@ -122,9 +127,7 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
       </form>
 
       <section aria-labelledby="pool-heading" className="flex flex-col gap-2">
-        <h2 id="pool-heading" className="text-lg font-medium">
-          Question pools
-        </h2>
+        <SectionHeading id="pool-heading">Question pools</SectionHeading>
         <p className="text-sm text-muted-foreground">
           Retakes only get questions the student has not seen, so keep at least 3 times the questions per paper approved.
         </p>
@@ -153,11 +156,11 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
                   <TableCell className="whitespace-normal">
                     {warning ? (
                       <span className="flex flex-col gap-1">
-                        <Badge variant="outline">Below {3 * s.questionCount}</Badge>
+                        <Badge variant="warning">Below {3 * s.questionCount}</Badge>
                         <span className="text-xs text-muted-foreground">{warning}</span>
                       </span>
                     ) : (
-                      <Badge variant="secondary">Enough</Badge>
+                      <Badge variant="success">Enough</Badge>
                     )}
                   </TableCell>
                 </TableRow>
@@ -168,12 +171,15 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
       </section>
 
       <section aria-labelledby="list-heading" className="flex flex-col gap-3">
-        <h2 id="list-heading" className="text-lg font-medium">
-          Questions <span className="text-sm font-normal text-muted-foreground">({questions.length})</span>
-        </h2>
+        <SectionHeading id="list-heading" aside={<span className="text-sm text-muted-foreground tabular-nums">{questions.length} shown</span>}>
+          Questions
+        </SectionHeading>
         {questions.length === 0 ? (
           <Empty className="border" data-testid="questions-empty">
             <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ListPlusIcon aria-hidden="true" />
+              </EmptyMedia>
               <EmptyTitle>{filtered ? "No questions match these filters" : "No questions yet"}</EmptyTitle>
               <EmptyDescription>Add questions below by hand or import a CSV file.</EmptyDescription>
             </EmptyHeader>
@@ -184,32 +190,32 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
               <li key={q.id}>
                 <Card size="sm" data-testid="question-card">
                   <CardHeader>
-                    <CardDescription className="flex flex-wrap items-center gap-2">
+                    <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span>{setName.get(q.examSetId)}</span>
-                      <span>· {q.topic}</span>
-                      <span>· {q.difficulty}</span>
+                      <span>Topic: {q.topic}</span>
+                      {q.difficulty ? <span>Difficulty: {q.difficulty}</span> : null}
                       <span>
-                        · {q.points} point{q.points === 1 ? "" : "s"}
+                        {q.points} point{q.points === 1 ? "" : "s"}
                       </span>
-                      <Badge variant={q.status === "approved" ? "secondary" : "outline"} data-testid="question-status">
+                      <Badge variant={q.status === "approved" ? "success" : "outline"} data-testid="question-status">
                         {q.status}
                       </Badge>
                     </CardDescription>
-                    <CardTitle className="grid gap-3 font-normal md:grid-cols-2">
+                    <CardTitle className="grid gap-3 font-sans font-normal tracking-normal md:grid-cols-2">
                       <p lang="de">
-                        <span className="block text-xs text-muted-foreground">Deutsch</span>
-                        <span className="font-medium">{q.stemDe}</span>
+                        <span className="block text-xs font-semibold text-muted-foreground">Deutsch</span>
+                        <span className="text-base font-semibold">{q.stemDe}</span>
                       </p>
                       <p lang="en">
-                        <span className="block text-xs text-muted-foreground">English</span>
-                        <span className="font-medium">{q.stemEn}</span>
+                        <span className="block text-xs font-semibold text-muted-foreground">English</span>
+                        <span className="text-base">{q.stemEn}</span>
                       </p>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3">
                     <ul className="grid gap-1 text-sm" aria-label="Options">
                       {q.options.map((o) => (
-                        <li key={o.id} className="grid gap-x-3 md:grid-cols-[2rem_1fr_1fr]" data-correct={o.id === q.correctOptionId || undefined}>
+                        <li key={o.id} className="grid gap-x-3 rounded-sm px-2 py-1 data-correct:bg-success-muted md:grid-cols-[2rem_1fr_1fr]" data-correct={o.id === q.correctOptionId || undefined}>
                           <span className="font-medium">
                             {o.id.toUpperCase()}
                             {o.id === q.correctOptionId ? <span className="sr-only"> (correct)</span> : null}
@@ -288,9 +294,11 @@ function ContentSkeleton() {
 
 export default function QuestionsPage(props: PageProps<"/staff/questions">) {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Questions</h1>
-      <StaffNav current="/staff/questions" />
+    <main className={staffMain}>
+      <PageHeader
+        title="Questions"
+        description="Every question has German and English text. Students see only the German; you check both here and in the evaluation."
+      />
       <Suspense fallback={<ContentSkeleton />}>
         <QuestionsContent searchParams={props.searchParams} />
       </Suspense>

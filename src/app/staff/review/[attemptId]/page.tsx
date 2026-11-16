@@ -6,7 +6,8 @@ import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
 import { getAttemptReview, type ReviewQuestion } from "@/lib/review";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { linkClass, staffMain } from "@/components/app/styles";
+import { ChevronLeftIcon } from "lucide-react";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReleaseButton } from "./release-button";
@@ -28,19 +29,19 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
               Not scored
             </Badge>
           ) : (
-            <Badge variant={q.awardedPoints > 0 ? "secondary" : "destructive"} data-testid="awarded-points">
+            <Badge variant={q.awardedPoints > 0 ? "success" : "destructive"} data-testid="awarded-points">
               {q.awardedPoints} / {q.maxPoints} points
             </Badge>
           )}
         </CardAction>
-        <CardTitle className="grid gap-3 font-normal md:grid-cols-2">
+        <CardTitle className="grid gap-3 font-sans font-normal tracking-normal md:grid-cols-2">
           <p lang="de">
-            <span className="block text-xs text-muted-foreground">Deutsch</span>
-            <span className="font-medium">{q.stemDe}</span>
+            <span className="block text-xs font-semibold text-muted-foreground">Deutsch</span>
+            <span className="text-base font-semibold">{q.stemDe}</span>
           </p>
           <p lang="en">
-            <span className="block text-xs text-muted-foreground">English</span>
-            <span className="font-medium">{q.stemEn}</span>
+            <span className="block text-xs font-semibold text-muted-foreground">English</span>
+            <span className="text-base">{q.stemEn}</span>
           </p>
         </CardTitle>
       </CardHeader>
@@ -56,7 +57,7 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
                 data-testid="review-option"
                 data-correct={correct || undefined}
                 data-chosen={chosen || undefined}
-                className="flex flex-col gap-2 rounded-lg border p-3 data-correct:border-foreground/40 data-correct:bg-muted md:flex-row md:items-center"
+                className="flex flex-col gap-2 rounded-md border p-3 data-chosen:not-data-correct:border-destructive/40 data-chosen:not-data-correct:bg-destructive-muted data-correct:border-success/40 data-correct:bg-success-muted md:flex-row md:items-center"
               >
                 <span className="grid flex-1 gap-1 md:grid-cols-2">
                   <span lang="de">{o.de}</span>
@@ -64,11 +65,11 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
                     {o.en}
                   </span>
                 </span>
-                <span className="flex gap-1">
+                <span className="flex shrink-0 flex-wrap gap-1">
                   {chosen ? (
-                    <Badge variant={correct ? "secondary" : "destructive"}>Student&apos;s answer</Badge>
+                    <Badge variant={correct ? "success" : "destructive"}>Student&apos;s answer</Badge>
                   ) : null}
-                  {correct ? <Badge>Correct answer</Badge> : null}
+                  {correct ? <Badge variant="success">Correct answer</Badge> : null}
                 </span>
               </li>
             );
@@ -96,11 +97,11 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
           <CardDescription>
             {review.curriculumName} · {review.examSetName}
           </CardDescription>
-          <CardTitle className="text-xl">
-            <h1>{review.studentName}</h1>
+          <CardTitle>
+            <h1 className="text-2xl font-semibold">{review.studentName}</h1>
           </CardTitle>
           <CardAction>
-            <Badge variant={released ? "secondary" : "outline"} data-testid="review-status">
+            <Badge variant={released ? "success" : "warning"} data-testid="review-status">
               {released ? "Released" : "Awaiting release"}
             </Badge>
           </CardAction>
@@ -113,7 +114,7 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
             </div>
             <div>
               <dt className="text-muted-foreground">Score</dt>
-              <dd className="font-medium tabular-nums" data-testid="review-score">
+              <dd className="font-heading text-lg font-semibold tabular-nums" data-testid="review-score">
                 {scored ? `${review.points} / ${review.maxPoints} · ${review.passed ? "Pass" : "Fail"}` : "Scoring pending"}
               </dd>
             </div>
@@ -138,7 +139,7 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
         </CardContent>
       </Card>
 
-      <h2 className="text-lg font-semibold">Answers</h2>
+      <h2 className="mt-2 text-lg font-semibold">Answers</h2>
       {review.questions.map((q) => (
         <QuestionCard key={q.attemptQuestionId} q={q} />
       ))}
@@ -158,9 +159,10 @@ function EvaluationSkeleton() {
 
 export default function EvaluationPage(props: PageProps<"/staff/review/[attemptId]">) {
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-10">
+    <main className={staffMain}>
       <div>
-        <Link href="/staff/review" className={buttonVariants({ variant: "outline" })}>
+        <Link href="/staff/review" className={`${linkClass} inline-flex items-center gap-1 text-sm`}>
+          <ChevronLeftIcon aria-hidden="true" className="size-4" />
           Back to review list
         </Link>
       </div>

@@ -1,10 +1,9 @@
 // Small presentation helpers shared by the student pages.
 
-export const linkClass =
-  "text-sm font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+export { linkClass } from "@/components/app/styles";
 
-export function statusVariant(status: string): "secondary" | "destructive" | "outline" {
-  if (status === "passed") return "secondary";
+export function statusVariant(status: string): "success" | "destructive" | "outline" {
+  if (status === "passed") return "success";
   if (status === "blocked") return "destructive";
   return "outline";
 }

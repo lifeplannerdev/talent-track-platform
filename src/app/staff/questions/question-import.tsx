@@ -185,7 +185,7 @@ export function QuestionImport({ sets, defaultExamSetId }: { sets: ExamSetChoice
         ) : null}
         {result ? (
           result.ok ? (
-            <Alert data-testid="question-import-result">
+            <Alert variant="success" data-testid="question-import-result">
               <AlertDescription>
                 Imported {result.inserted} question{result.inserted === 1 ? "" : "s"}
                 {result.skipped > 0 ? `; skipped ${result.skipped} row${result.skipped === 1 ? "" : "s"} with errors` : ""}.

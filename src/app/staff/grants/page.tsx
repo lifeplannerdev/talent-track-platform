@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { CircleCheckIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
 import { listGrantable } from "@/lib/staff-overview";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { PageHeader } from "@/components/app/page-header";
+import { staffMain } from "@/components/app/styles";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { GrantStatusProvider } from "./grant-status";
-import { StaffNav } from "../staff-nav";
 import { GrantButton } from "./grant-button";
 
 export const metadata: Metadata = { title: "Give attempts | TalentTrack" };
@@ -19,6 +21,9 @@ async function GrantableList() {
     return (
       <Empty className="border" data-testid="grants-empty">
         <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <CircleCheckIcon aria-hidden="true" />
+          </EmptyMedia>
           <EmptyTitle>Nobody is waiting for an attempt</EmptyTitle>
           <EmptyDescription>
             Students with an open curriculum and no attempt available, in progress or awaiting review appear here.
@@ -42,7 +47,7 @@ async function GrantableList() {
         {rows.map((r) => (
           <TableRow key={`${r.studentId}:${r.examSetId}`} className="align-top">
             <TableCell>
-              <span className="block font-medium">{r.studentName}</span>
+              <span className="block font-semibold">{r.studentName}</span>
               <span className="block text-muted-foreground">{r.batch ? `Batch ${r.batch}` : "No batch"}</span>
             </TableCell>
             <TableCell>
@@ -80,13 +85,11 @@ function ListSkeleton() {
 
 export default function GrantsPage() {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Give attempts</h1>
-      <StaffNav current="/staff/grants" />
-      <p className="text-sm text-muted-foreground">
-        Attempts are never given automatically. Give a first attempt or a retake here; blocked students are on the
-        Blocked page.
-      </p>
+    <main className={staffMain}>
+      <PageHeader
+        title="Give attempts"
+        description="Attempts are never given automatically. Give a first attempt or a retake here; blocked students are on the Blocked page."
+      />
       <GrantStatusProvider>
         <Suspense fallback={<ListSkeleton />}>
           <GrantableList />

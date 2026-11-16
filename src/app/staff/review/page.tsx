@@ -1,14 +1,16 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { InboxIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
 import { listSubmittedAttempts } from "@/lib/review";
 import { Badge } from "@/components/ui/badge";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { PageHeader } from "@/components/app/page-header";
+import { linkClass, staffMain } from "@/components/app/styles";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { StaffNav } from "../staff-nav";
 
 export const metadata: Metadata = { title: "Review | TalentTrack" };
 
@@ -20,6 +22,9 @@ async function ReviewList() {
     return (
       <Empty className="border" data-testid="review-empty">
         <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <InboxIcon aria-hidden="true" />
+          </EmptyMedia>
           <EmptyTitle>Nothing to review</EmptyTitle>
           <EmptyDescription>Submitted exams with held results appear here until you release them.</EmptyDescription>
         </EmptyHeader>
@@ -41,10 +46,7 @@ async function ReviewList() {
         {attempts.map((a) => (
           <TableRow key={a.id}>
             <TableCell>
-              <Link
-                href={`/staff/review/${a.id}`}
-                className="font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
+              <Link href={`/staff/review/${a.id}`} className={linkClass}>
                 {a.studentName}
               </Link>
             </TableCell>
@@ -61,7 +63,7 @@ async function ReviewList() {
                   <span className="tabular-nums">
                     {a.points} / {a.maxPoints}
                   </span>
-                  <Badge variant={a.passed ? "secondary" : "destructive"}>{a.passed ? "Pass" : "Fail"}</Badge>
+                  <Badge variant={a.passed ? "success" : "destructive"}>{a.passed ? "Pass" : "Fail"}</Badge>
                 </span>
               )}
             </TableCell>
@@ -84,13 +86,11 @@ function ListSkeleton() {
 
 export default function ReviewPage() {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Results awaiting release</h1>
-      <StaffNav current="/staff/review" />
-      <p className="text-sm text-muted-foreground">
-        Scores are calculated automatically and cannot be changed. Open an exam to check it, then release the result
-        to the student.
-      </p>
+    <main className={staffMain}>
+      <PageHeader
+        title="Results awaiting release"
+        description="Scores are calculated automatically and cannot be changed. Open an exam to check it, then release the result to the student."
+      />
       <Suspense fallback={<ListSkeleton />}>
         <ReviewList />
       </Suspense>

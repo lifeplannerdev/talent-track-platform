@@ -106,7 +106,7 @@ export function AddStudentForm() {
               </Alert>
             ) : null}
             {created ? (
-              <Alert>
+              <Alert variant="success">
                 <AlertDescription data-testid="add-student-success">
                   Student {created.username} created.{" "}
                   <Link href={`/staff/students/${created.id}`} className={linkClass}>

@@ -4,14 +4,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { getStudentDetail } from "@/lib/staff-manage";
+import { ChevronLeftIcon, LibraryIcon } from "lucide-react";
+import { PageHeader, SectionHeading } from "@/components/app/page-header";
+import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { GrantButton } from "../../grants/grant-button";
 import { GrantStatusProvider } from "../../grants/grant-status";
-import { StaffNav } from "../../staff-nav";
 import { linkClass, statusVariant, trackLabel } from "../ui";
 import { AddCurriculumForm, MoveButtons, RemoveCurriculumButton } from "./assignment-controls";
 import { ResetPasswordForm } from "./reset-password-form";
@@ -29,8 +31,10 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl" data-testid="student-name">
-            {s.fullName}
+          <CardTitle>
+            <h2 className="text-2xl font-semibold" data-testid="student-name">
+              {s.fullName}
+            </h2>
           </CardTitle>
           <CardDescription>Username {s.username}</CardDescription>
         </CardHeader>
@@ -53,9 +57,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
       </Card>
 
       <section aria-labelledby="curriculums-heading" className="flex flex-col gap-3">
-        <h2 id="curriculums-heading" className="text-lg font-medium">
-          Curriculums
-        </h2>
+        <SectionHeading id="curriculums-heading">Curriculums</SectionHeading>
         <p className="text-sm text-muted-foreground">
           The student takes curriculums in this order: the first open one is next. Removing a curriculum keeps the
           student&apos;s attempts and results.
@@ -64,6 +66,9 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
           {s.assignments.length === 0 ? (
             <Empty className="border" data-testid="assignments-empty">
               <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <LibraryIcon aria-hidden="true" />
+                </EmptyMedia>
                 <EmptyTitle>No curriculums assigned</EmptyTitle>
                 <EmptyDescription>Add one below so the student can be given exams.</EmptyDescription>
               </EmptyHeader>
@@ -89,7 +94,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-normal">
-                      <span className="block font-medium">{a.name}</span>
+                      <span className="block font-semibold">{a.name}</span>
                       <span className="block text-muted-foreground">
                         {a.examSets.length === 0 ? "No exam sets yet" : a.examSets.map((e) => e.name).join(", ")}
                       </span>
@@ -149,12 +154,14 @@ function DetailSkeleton() {
 
 export default function StudentPage(props: PageProps<"/staff/students/[id]">) {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Student</h1>
-      <StaffNav current="/staff/students" />
-      <Link href="/staff/students" className={linkClass}>
-        All students
-      </Link>
+    <main className={staffMain}>
+      <div className="flex flex-col gap-2">
+        <Link href="/staff/students" className={`${linkClass} inline-flex w-fit items-center gap-1 text-sm`}>
+          <ChevronLeftIcon aria-hidden="true" className="size-4" />
+          All students
+        </Link>
+        <PageHeader title="Student" />
+      </div>
       <Suspense fallback={<DetailSkeleton />}>
         <StudentDetail params={props.params} />
       </Suspense>
