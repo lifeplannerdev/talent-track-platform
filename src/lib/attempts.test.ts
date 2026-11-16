@@ -31,9 +31,10 @@ const OPTIONS = [
   { id: "c", de: "Vielleicht", en: "Maybe" },
 ];
 
-async function must<T>(p: PromiseLike<{ data: T; error: unknown }>): Promise<T> {
+async function must<T>(p: PromiseLike<{ data: T; error: unknown }>): Promise<NonNullable<T>> {
   const { data, error } = await p;
   if (error) throw error;
+  if (data === null || data === undefined) throw new Error("no data");
   return data;
 }
 
@@ -70,8 +71,13 @@ async function makeExamSet(name: string, holdResult: boolean) {
     points: ((n - 1) % 3) + 1,
     status: n === 7 ? "draft" : "approved",
   }));
-  await must(db.from("questions").insert(rows));
+  await ok(db.from("questions").insert(rows));
   return { curriculumId: curriculum.id as string, setId: set.id as string };
+}
+
+async function ok(p: PromiseLike<{ error: unknown }>): Promise<void> {
+  const { error } = await p;
+  if (error) throw error;
 }
 
 let studentCounter = 0;
@@ -86,7 +92,7 @@ async function makeStudent(): Promise<string> {
   });
   if (error) throw error;
   userIds.push(data.user.id);
-  await must(
+  await ok(
     db.from("assignments").insert([
       { student_id: data.user.id, curriculum_id: heldCurriculumId, position: 1 },
       { student_id: data.user.id, curriculum_id: openCurriculumId, position: 2 },
@@ -96,7 +102,7 @@ async function makeStudent(): Promise<string> {
 }
 
 async function grant(studentId: string, examSetId: string) {
-  await must(db.from("attempt_grants").insert({ student_id: studentId, exam_set_id: examSetId }));
+  await ok(db.from("attempt_grants").insert({ student_id: studentId, exam_set_id: examSetId }));
 }
 
 async function attemptRow(attemptId: string) {
@@ -104,19 +110,24 @@ async function attemptRow(attemptId: string) {
 }
 
 async function paper(attemptId: string) {
-  return must(
+  const rows = await must(
     db
       .from("attempt_questions")
       .select("id, question_id, position, option_order, questions(points)")
       .eq("attempt_id", attemptId)
       .order("position"),
-  ) as Promise<
-    { id: string; question_id: string; position: number; option_order: string[]; questions: { points: number } }[]
-  >;
+  );
+  return rows as unknown as {
+    id: string;
+    question_id: string;
+    position: number;
+    option_order: string[];
+    questions: { points: number };
+  }[];
 }
 
 async function expire(attemptId: string) {
-  await must(
+  await ok(
     db
       .from("attempts")
       .update({
@@ -333,13 +344,13 @@ describe("submitAttempt", () => {
     await saveAnswer(student, attemptId, q1.id, "b");
     await expire(attemptId);
     // q1 was saved before the deadline; q2 arrives after it (written directly, as a late save would).
-    await must(
+    await ok(
       db
         .from("answers")
         .update({ saved_at: new Date(Date.now() - 2 * 60_000).toISOString() })
         .eq("attempt_question_id", q1.id),
     );
-    await must(db.from("answers").insert({ attempt_question_id: q2.id, option_id: "b" }));
+    await ok(db.from("answers").insert({ attempt_question_id: q2.id, option_id: "b" }));
 
     await submitAttempt(attemptId);
     const row = await attemptRow(attemptId);
@@ -394,10 +405,10 @@ describe("submitAttempt", () => {
     await saveAnswer(student, attemptId, q1.id, "b");
     await submitAttempt(attemptId);
     const before = await attemptRow(attemptId);
-    await must(db.from("questions").update({ correct_option_id: "a" }).eq("id", q1.question_id));
+    await ok(db.from("questions").update({ correct_option_id: "a" }).eq("id", q1.question_id));
     await submitAttempt(attemptId);
     expect(await attemptRow(attemptId)).toEqual(before);
-    await must(db.from("questions").update({ correct_option_id: "b" }).eq("id", q1.question_id));
+    await ok(db.from("questions").update({ correct_option_id: "b" }).eq("id", q1.question_id));
   });
 });
 

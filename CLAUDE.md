@@ -12,7 +12,7 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 
 ## Commands
 - `npm run dev` / `npm run build` / `npm run lint`
-- `npm test` (Vitest), `npm run test:e2e` (Playwright; run `npx playwright install` once first)
+- `npm test` (Vitest; `src/lib/attempts.test.ts` and the cron route test need the local stack running), `npm run test:e2e` (Playwright; run `npx playwright install` once first)
 - `npm run db:start` / `db:stop` (Docker must be running)
 - `npm run db:reset` re-applies `supabase/migrations/*` to the local database
 - `npm run db:test` runs pgTAP tests in `supabase/tests/` (RLS and privacy rules)
@@ -25,6 +25,13 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 - Profiles are created by the `on_auth_user_created` trigger from `raw_app_meta_data` (role, username, full_name, batch, track), which only the admin API can set. The trigger is a deferred constraint trigger (0003) because the Auth admin API sets app metadata after the insert. Usernames map to internal emails via `usernameToEmail` (`username@students.talenttrack.internal`). Public sign-up is off.
 - Questions: German with English translations (`stem_de`, `stem_en`, options `{id, de, en}`).
 - Any change to RLS needs a failing test in `supabase/tests/rls.test.sql` first.
+
+## Attempts (exam lifecycle)
+- `src/lib/attempts.ts` (server only, service role): `startAttempt`, `getAttemptForStudent` (resume), `saveAnswer`, `submitAttempt`, `sweepExpired`. Callers authenticate with `requireRole('student')` and pass the session user id, never a client id.
+- Atomic writes are SQL functions from `0004_attempt_lifecycle.sql` (`start_attempt`, `save_answer`, `close_attempt`, `close_expired_attempts`, `record_score`, `db_now`), executable only by `service_role`. Deadlines use database `now()`.
+- Students cannot write `answers` directly any more; saves go through the `saveAnswerAction` server action.
+- Submit = close (in_progress -> submitted) then score once with `scoreAttempt` (`record_score` guards `points is null`). Non-held sets are released at once and `applyOutcome` (`src/lib/outcome.ts`) runs only then; held sets change nothing student-visible until release.
+- Expiry is lazy (on every read/save of an attempt); `/api/cron/sweep` (Bearer `CRON_SECRET`, exempt from the proxy) is a daily backup because Vercel Hobby only allows daily crons.
 
 ## Auth and sessions
 - Next 16 uses `src/proxy.ts` (the renamed middleware) for auth redirects: unauthenticated to `/login`, students to `/consent` until `consent_at`, staff and students kept to their own areas. It calls `getUser()` so a session ended by a newer login is rejected at once.

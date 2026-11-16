@@ -1,6 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { usernameToEmail } from "../src/lib/auth/username";
-import { NEXT_CURRICULUM, STAFF, STUDENT_CONSENTED, STUDENT_NEW } from "./fixtures";
+import {
+  EXAM_CURRICULUM_HELD,
+  EXAM_CURRICULUM_OPEN,
+  NEXT_CURRICULUM,
+  STAFF,
+  STUDENT_CONSENTED,
+  STUDENT_EXAM,
+  STUDENT_EXAM_OPEN,
+  STUDENT_NEW,
+} from "./fixtures";
 
 export function adminDb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -14,7 +23,13 @@ export async function seed() {
 
   const { data: list, error: listError } = await db.auth.admin.listUsers({ perPage: 1000 });
   if (listError) throw listError;
-  const emails = [STAFF.email, usernameToEmail(STUDENT_NEW.username), usernameToEmail(STUDENT_CONSENTED.username)];
+  const emails = [
+    STAFF.email,
+    usernameToEmail(STUDENT_NEW.username),
+    usernameToEmail(STUDENT_CONSENTED.username),
+    usernameToEmail(STUDENT_EXAM.username),
+    usernameToEmail(STUDENT_EXAM_OPEN.username),
+  ];
   for (const u of list.users.filter((u) => u.email && emails.includes(u.email))) {
     const { error } = await db.auth.admin.deleteUser(u.id);
     if (error) throw error;
@@ -68,4 +83,85 @@ export async function seed() {
     { student_id: newId, curriculum_id: id("E2E Curriculum A"), position: 1, status: "passed" },
   ]);
   if (aError) throw aError;
+
+  await seedExam(STUDENT_EXAM, EXAM_CURRICULUM_HELD, true, create);
+  await seedExam(STUDENT_EXAM_OPEN, EXAM_CURRICULUM_OPEN, false, create);
+}
+
+/**
+ * A consented student with one assigned curriculum, a 3-question German exam set and one
+ * attempt grant. Users were deleted above (cascading their attempts), so the curriculum and
+ * its exam set can be recreated from scratch.
+ */
+async function seedExam(
+  student: { username: string; password: string; fullName: string },
+  curriculumName: string,
+  holdResult: boolean,
+  create: (email: string, password: string, meta: Record<string, string>) => Promise<string>,
+) {
+  const db = adminDb();
+  const studentId = await create(usernameToEmail(student.username), student.password, {
+    role: "student",
+    username: student.username,
+    full_name: student.fullName,
+  });
+  const { error: consentError } = await db
+    .from("profiles")
+    .update({ consent_at: new Date().toISOString() })
+    .eq("id", studentId);
+  if (consentError) throw consentError;
+
+  const { error: delError } = await db.from("curriculums").delete().eq("name", curriculumName);
+  if (delError) throw delError;
+  const { data: curriculum, error: cError } = await db
+    .from("curriculums")
+    .insert({ name: curriculumName })
+    .select("id")
+    .single();
+  if (cError) throw cError;
+  const { data: set, error: sError } = await db
+    .from("exam_sets")
+    .insert({
+      curriculum_id: curriculum.id,
+      name: holdResult ? "Grundlagen (held)" : "Grundlagen",
+      question_count: 3,
+      time_limit_min: 30,
+      pass_mark_percent: 60,
+      hold_result: holdResult,
+    })
+    .select("id")
+    .single();
+  if (sError) throw sError;
+
+  const options = [
+    { id: "a", de: "Ja", en: "Yes" },
+    { id: "b", de: "Nein", en: "No" },
+    { id: "c", de: "Vielleicht", en: "Maybe" },
+  ];
+  const stems = [
+    ["Ist Berlin die Hauptstadt von Frankreich?", "Is Berlin the capital of France?"],
+    ["Hat eine Woche acht Tage?", "Does a week have eight days?"],
+    ["Ist Wasser bei Raumtemperatur fest?", "Is water solid at room temperature?"],
+  ];
+  const { error: qError } = await db.from("questions").insert(
+    stems.map(([de, en]) => ({
+      exam_set_id: set.id,
+      topic: "allgemein",
+      difficulty: "easy",
+      stem_de: de,
+      stem_en: en,
+      options,
+      correct_option_id: "b",
+      points: 1,
+      status: "approved",
+    })),
+  );
+  if (qError) throw qError;
+
+  const { error: aError } = await db
+    .from("assignments")
+    .insert({ student_id: studentId, curriculum_id: curriculum.id, position: 1, status: "open" });
+  if (aError) throw aError;
+  const { error: gError } = await db.from("attempt_grants").insert({ student_id: studentId, exam_set_id: set.id });
+  if (gError) throw gError;
 }

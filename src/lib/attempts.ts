@@ -50,6 +50,12 @@ function toError(error: DbError, what: string): Error {
   return new Error(`${what}: ${error.message}`);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Ids from URLs and clients are checked before they reach a uuid column. */
+export function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}
+
 function secureRandom(): number {
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
@@ -78,7 +84,8 @@ export type StudentAttempt = {
   answers: Record<string, string>;
 };
 
-async function findOpenAttemptId(studentId: string, examSetId: string): Promise<string | null> {
+/** The student's open (unexpired) attempt for the exam set, submitting an expired one first. */
+export async function findOpenAttemptId(studentId: string, examSetId: string): Promise<string | null> {
   const db = createAdminClient();
   const { data, error } = await db
     .from("attempts")
@@ -190,6 +197,7 @@ export async function startAttempt(studentId: string, examSetId: string): Promis
  * Never includes correct answers or points. Submits the attempt first if it has expired.
  */
 export async function getAttemptForStudent(studentId: string, attemptId: string): Promise<StudentAttempt | null> {
+  if (!isUuid(attemptId)) return null;
   const db = createAdminClient();
   const read = () =>
     db
@@ -260,6 +268,7 @@ export async function getAttemptForStudent(studentId: string, attemptId: string)
 
 /** Status of the student's own attempt, or null if it is not theirs. Lightweight ownership check. */
 export async function getAttemptStatus(studentId: string, attemptId: string): Promise<AttemptStatus | null> {
+  if (!isUuid(attemptId)) return null;
   const db = createAdminClient();
   const { data, error } = await db
     .from("attempts")

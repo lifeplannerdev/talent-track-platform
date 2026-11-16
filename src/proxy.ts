@@ -75,5 +75,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // "\\." in a JS string is the regex "\.": only real file extensions (".png") skip the proxy.
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  // /api/cron/ skips it too: cron route handlers check their own Bearer secret.
+  matcher: ["/((?!_next/static|_next/image|api/cron/|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };

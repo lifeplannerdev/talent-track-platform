@@ -86,6 +86,9 @@ select is((select role || '/' || username from public.profiles where id = '00000
   'profile is built from app metadata set after the insert (Auth admin API flow)');
 -- Total profiles as seen by postgres (the dev DB may hold e2e users); staff must see exactly this many.
 select set_config('test.profile_total', (select count(*)::text from public.profiles), true);
+-- Same for attempts and questions: the dev DB may hold e2e exam data (Task 5 seed).
+select set_config('test.attempt_total', (select count(*)::text from public.attempts), true);
+select set_config('test.question_total', (select count(*)::text from public.questions), true);
 select hasnt_column('public', 'student_questions', 'correct_option_id', 'student question view has no correct_option_id');
 
 -- ---------------------------------------------------------------------------
@@ -151,8 +154,8 @@ reset role;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
 set local role authenticated;
 
-select is((select count(*)::int from public.attempts), 5, 'staff can read every attempt');
-select is((select count(*)::int from public.questions where correct_option_id is not null), 3, 'staff can read correct_option_id');
+select is((select count(*)::int from public.attempts), current_setting('test.attempt_total')::int, 'staff can read every attempt');
+select is((select count(*)::int from public.questions where correct_option_id is not null), current_setting('test.question_total')::int, 'staff can read correct_option_id on every question');
 select is((select count(*)::int from public.profiles where id::text like '00000000-0000-0000-0000-0000000000%'), 4, 'staff can read every fixture profile');
 select is((select count(*)::int from public.profiles), current_setting('test.profile_total')::int, 'staff can read every profile, no more and no fewer than exist');
 select throws_ok($$update public.attempts set points = 99 where id = '40000000-0000-0000-0000-000000000002'$$, '42501',
