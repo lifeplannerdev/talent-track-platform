@@ -1,7 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { drawPaper, InsufficientPoolError } from "./draw";
-import { applyOutcome } from "./outcome";
 import { scoreAttempt } from "./scoring";
 import type { Question, QuestionOption } from "./types";
 
@@ -54,6 +53,22 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Ids from URLs and clients are checked before they reach a uuid column. */
 export function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
+}
+
+const PAGE_SIZE = 1000; // PostgREST's default max rows per response
+
+/** Reads every row by paging, so the PostgREST row cap can never truncate a result silently. */
+async function fetchAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: DbError | null }>,
+  what: string,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) throw toError(error, what);
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
 }
 
 function secureRandom(): number {
@@ -133,22 +148,32 @@ export async function startAttempt(studentId: string, examSetId: string): Promis
   if (grantError) throw toError(grantError, "Could not read grants");
   if (!grant?.length) throw new AttemptError("no_grant");
 
-  const { data: pool, error: poolError } = await db
-    .from("questions")
-    .select("id, topic, difficulty, options, status, points")
-    .eq("exam_set_id", examSetId)
-    .eq("status", "approved");
-  if (poolError) throw toError(poolError, "Could not read questions");
+  const pool = await fetchAll(
+    (from, to) =>
+      db
+        .from("questions")
+        .select("id, topic, difficulty, options, status, points")
+        .eq("exam_set_id", examSetId)
+        .eq("status", "approved")
+        .order("id")
+        .range(from, to),
+    "Could not read questions",
+  );
 
   // Seen = every question of this exam set in any earlier attempt of this student.
-  const { data: seen, error: seenError } = await db
-    .from("attempt_questions")
-    .select("question_id, attempts!inner(student_id), questions!inner(exam_set_id)")
-    .eq("attempts.student_id", studentId)
-    .eq("questions.exam_set_id", examSetId);
-  if (seenError) throw toError(seenError, "Could not read seen questions");
+  const seen = await fetchAll(
+    (from, to) =>
+      db
+        .from("attempt_questions")
+        .select("id, question_id, attempts!inner(student_id), questions!inner(exam_set_id)")
+        .eq("attempts.student_id", studentId)
+        .eq("questions.exam_set_id", examSetId)
+        .order("id")
+        .range(from, to),
+    "Could not read seen questions",
+  );
 
-  const questions: Question[] = (pool ?? []).map((q) => ({
+  const questions: Question[] = pool.map((q) => ({
     id: q.id,
     examSetId,
     topic: q.topic,
@@ -166,7 +191,7 @@ export async function startAttempt(studentId: string, examSetId: string): Promis
   try {
     draw = drawPaper({
       pool: questions,
-      seenIds: new Set((seen ?? []).map((s) => s.question_id as string)),
+      seenIds: new Set(seen.map((s) => s.question_id as string)),
       count: set.question_count,
       topicMix,
       rng: secureRandom,
@@ -368,15 +393,15 @@ async function finalizeAttempt(attemptId: string): Promise<void> {
   }));
   const result = scoreAttempt(questions, chosen, attempt.exam_sets.pass_mark_percent);
 
-  const { data: status, error: scoreError } = await db.rpc("record_score", {
+  const { error: scoreError } = await db.rpc("record_score", {
     p_attempt_id: attemptId,
     p_points: result.points,
     p_max_points: result.max,
     p_passed: result.passed,
   });
   if (scoreError) throw toError(scoreError, "Could not record score");
-  // Only the call that released the attempt applies its outcome.
-  if (status === "released") await applyOutcome(attemptId);
+  // For sets without held results record_score has already released the attempt and set the
+  // assignment outcome in the same transaction (release_attempt, migration 0005).
 }
 
 /** Submits the attempt (idempotent) and scores it once. Releases at once only for non-held sets. */
@@ -394,13 +419,18 @@ export async function sweepExpired(): Promise<number> {
   if (error) throw toError(error, "Could not sweep attempts");
 
   // Score the ones just closed plus any submitted attempt left unscored by an interrupted submit.
-  const { data: pending, error: pendingError } = await db
-    .from("attempts")
-    .select("id")
-    .eq("status", "submitted")
-    .is("points", null);
-  if (pendingError) throw toError(pendingError, "Could not read unscored attempts");
-  for (const { id } of pending ?? []) await finalizeAttempt(id);
+  const pending = await fetchAll(
+    (from, to) => db.from("attempts").select("id").eq("status", "submitted").is("points", null).order("id").range(from, to),
+    "Could not read unscored attempts",
+  );
+  // One failing attempt must not stop the rest; it stays unscored and is retried next sweep.
+  for (const { id } of pending) {
+    try {
+      await finalizeAttempt(id);
+    } catch (e) {
+      console.error(`sweepExpired: could not score attempt ${id}`, e);
+    }
+  }
 
   return (closed as string[] | null)?.length ?? 0;
 }

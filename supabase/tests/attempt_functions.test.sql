@@ -1,6 +1,6 @@
 -- Attempt lifecycle functions from 0004 (pgTAP). Run: npm run db:test
 begin;
-select plan(25);
+select plan(39);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -23,6 +23,10 @@ select ('30000000-0000-0000-0000-0000000005' || lpad(n::text, 2, '0'))::uuid,
        case when n = 6 then 'draft' else 'approved' end
 from generate_series(1, 8) n;
 
+insert into public.assignments (student_id, curriculum_id, position, status) values
+  ('00000000-0000-0000-0000-0000000005b1', '10000000-0000-0000-0000-0000000005c1', 1, 'open'),
+  ('00000000-0000-0000-0000-0000000005b2', '10000000-0000-0000-0000-0000000005c1', 1, 'open');
+
 create temp table ids (name text primary key, id uuid);
 grant all on ids to public;
 
@@ -34,6 +38,8 @@ select throws_ok($$select public.save_answer('00000000-0000-0000-0000-0000000005
   '42501', null, 'authenticated users cannot call save_answer');
 select throws_ok($$select public.record_score(gen_random_uuid(), 1, 1, true)$$,
   '42501', null, 'authenticated users cannot call record_score');
+select throws_ok($$select public.release_attempt(gen_random_uuid())$$,
+  '42501', null, 'authenticated users cannot call release_attempt');
 reset role;
 set local role anon;
 select throws_ok($$select public.close_expired_attempts()$$, '42501', null, 'anon cannot call close_expired_attempts');
@@ -109,6 +115,49 @@ insert into ids select 'b1', public.start_attempt('00000000-0000-0000-0000-00000
   '[{"question_id":"30000000-0000-0000-0000-000000000507","option_order":["a","b"]},{"question_id":"30000000-0000-0000-0000-000000000508","option_order":["a","b"]}]');
 select is((select count(*)::int from public.close_expired_attempts() c where c = (select id from ids where name = 'b1')), 0,
   'the sweep leaves attempts before their deadline alone');
+
+-- release_attempt -------------------------------------------------------------
+select is((select public.release_attempt((select id from ids where name = 'b1'))), false,
+  'an in-progress attempt cannot be released');
+select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b1'), 'open',
+  'a scored held attempt leaves the assignment untouched before release');
+select is((select status || '/' || coalesce(released_at::text, 'null') from public.attempts where id = (select id from ids where name = 'a1')),
+  'submitted/null', 'a scored held attempt stays submitted until release');
+select is((select public.release_attempt((select id from ids where name = 'a1'))), true, 'a scored submitted attempt is released');
+select is((select status from public.attempts where id = (select id from ids where name = 'a1')), 'released', 'status is released');
+select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b1'), 'passed',
+  'releasing a passed attempt marks the assignment passed');
+select is((select public.release_attempt((select id from ids where name = 'a1'))), false, 'releasing twice is a no-op');
+
+-- Atomicity: if the assignment update fails, the score and the release roll back together.
+do $d$ begin perform public.close_attempt((select id from ids where name = 'b1'), false); end $d$;
+reset role;
+create function pg_temp.block_assignments() returns trigger language plpgsql as $f$
+begin raise exception 'assignment update blocked'; end $f$;
+create trigger block_assignments before update on public.assignments for each row execute function pg_temp.block_assignments();
+set local role service_role;
+select throws_ok($$select public.record_score((select id from ids where name = 'b1'), 2, 2, true)$$,
+  'P0001', 'assignment update blocked', 'non-held: a failing assignment update aborts the release');
+select is((select status || '/' || coalesce(points::text, 'null') || '/' || coalesce(released_at::text, 'null') from public.attempts where id = (select id from ids where name = 'b1')),
+  'submitted/null/null', 'nothing of the score or release was committed');
+reset role;
+drop trigger block_assignments on public.assignments;
+set local role service_role;
+select is((select public.record_score((select id from ids where name = 'b1'), 2, 2, true)), 'released',
+  'non-held: record_score releases in the same call');
+select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b2'), 'passed',
+  'non-held pass: the assignment is passed together with the release');
+
+-- A failed attempt is released but leaves the assignment open.
+update public.assignments set status = 'open' where student_id = '00000000-0000-0000-0000-0000000005b2';
+insert into public.attempt_grants (student_id, exam_set_id) values ('00000000-0000-0000-0000-0000000005b2', '20000000-0000-0000-0000-0000000005e1');
+insert into ids select 'b2', public.start_attempt('00000000-0000-0000-0000-0000000005b2', '20000000-0000-0000-0000-0000000005e1',
+  '[{"question_id":"30000000-0000-0000-0000-000000000501","option_order":["a","b"]},{"question_id":"30000000-0000-0000-0000-000000000502","option_order":["a","b"]}]');
+do $d$ begin perform public.close_attempt((select id from ids where name = 'b2'), false); end $d$;
+do $d$ begin perform public.record_score((select id from ids where name = 'b2'), 0, 2, false); end $d$;
+select is((select public.release_attempt((select id from ids where name = 'b2'))), true, 'a failed held attempt is released');
+select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b2'), 'open',
+  'a failed release leaves the assignment open');
 
 select * from finish();
 rollback;

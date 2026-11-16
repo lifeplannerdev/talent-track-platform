@@ -28,9 +28,9 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 
 ## Attempts (exam lifecycle)
 - `src/lib/attempts.ts` (server only, service role): `startAttempt`, `getAttemptForStudent` (resume), `saveAnswer`, `submitAttempt`, `sweepExpired`. Callers authenticate with `requireRole('student')` and pass the session user id, never a client id.
-- Atomic writes are SQL functions from `0004_attempt_lifecycle.sql` (`start_attempt`, `save_answer`, `close_attempt`, `close_expired_attempts`, `record_score`, `db_now`), executable only by `service_role`. Deadlines use database `now()`.
+- Atomic writes are SQL functions from `0004_attempt_lifecycle.sql` and `0005_release_attempt.sql` (`start_attempt`, `save_answer`, `close_attempt`, `close_expired_attempts`, `record_score`, `release_attempt`, `db_now`), executable only by `service_role`. Deadlines use database `now()`.
 - Students cannot write `answers` directly any more; saves go through the `saveAnswerAction` server action.
-- Submit = close (in_progress -> submitted) then score once with `scoreAttempt` (`record_score` guards `points is null`). Non-held sets are released at once and `applyOutcome` (`src/lib/outcome.ts`) runs only then; held sets change nothing student-visible until release.
+- Submit = close (in_progress -> submitted) then score once with `scoreAttempt` (`record_score` guards `points is null`). Release is the SQL function `release_attempt` (0005): submitted with a score -> released and, if passed, the assignment set to 'passed' in the same transaction; idempotent. `record_score` calls it for non-held sets; staff release (Task 6) and blocking (Task 7) belong in it too. Held sets change nothing student-visible until release.
 - Expiry is lazy (on every read/save of an attempt); `/api/cron/sweep` (Bearer `CRON_SECRET`, exempt from the proxy) is a daily backup because Vercel Hobby only allows daily crons.
 
 ## Auth and sessions

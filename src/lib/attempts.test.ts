@@ -412,6 +412,52 @@ describe("submitAttempt", () => {
   });
 });
 
+describe("release_attempt (staff release, reused by Task 6)", () => {
+  const release = async (attemptId: string) => {
+    const { data, error } = await db.rpc("release_attempt", { p_attempt_id: attemptId });
+    if (error) throw error;
+    return data as boolean;
+  };
+
+  it("held pass: untouched until release, then released and the assignment passed together; twice is a no-op", async () => {
+    const student = await makeStudent();
+    await grant(student, heldSetId);
+    const { attemptId } = await startAttempt(student, heldSetId);
+    for (const q of await paper(attemptId)) await saveAnswer(student, attemptId, q.id, "b");
+    await submitAttempt(attemptId);
+    expect((await attemptRow(attemptId)).status).toBe("submitted");
+    expect(await assignmentStatus(student, heldCurriculumId)).toBe("open");
+
+    expect(await release(attemptId)).toBe(true);
+    const released = await attemptRow(attemptId);
+    expect(released.status).toBe("released");
+    expect(released.released_at).not.toBeNull();
+    expect(await assignmentStatus(student, heldCurriculumId)).toBe("passed");
+
+    expect(await release(attemptId)).toBe(false);
+    expect(await attemptRow(attemptId)).toEqual(released);
+  });
+
+  it("held fail: released but the assignment stays open", async () => {
+    const student = await makeStudent();
+    await grant(student, heldSetId);
+    const { attemptId } = await startAttempt(student, heldSetId);
+    await submitAttempt(attemptId);
+    expect(await release(attemptId)).toBe(true);
+    expect((await attemptRow(attemptId)).passed).toBe(false);
+    expect(await assignmentStatus(student, heldCurriculumId)).toBe("open");
+  });
+
+  it("an in-progress attempt cannot be released", async () => {
+    const student = await makeStudent();
+    await grant(student, heldSetId);
+    const { attemptId } = await startAttempt(student, heldSetId);
+    expect(await release(attemptId)).toBe(false);
+    expect((await attemptRow(attemptId)).status).toBe("in_progress");
+    expect(await assignmentStatus(student, heldCurriculumId)).toBe("open");
+  });
+});
+
 describe("sweepExpired", () => {
   it("submits only in-progress attempts past their deadline", async () => {
     const late = await makeStudent();

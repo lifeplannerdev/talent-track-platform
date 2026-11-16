@@ -1,7 +1,7 @@
 -- RLS and privacy tests for the Phase 1 schema (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(43);
+select plan(42);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Auth users are created like the staff action will
@@ -114,15 +114,13 @@ select is((select count(*)::int from public.student_questions), 4, 'student sees
 select is((select count(*)::int from public.profiles), 1, 'student sees only their own profile');
 select is_empty($$update public.profiles set role = 'staff' where id = '00000000-0000-0000-0000-0000000000b1' returning id$$,
   'student cannot update their profile (no privilege escalation)');
+-- Students have no INSERT/UPDATE privilege on answers at all (0004): every save goes through
+-- server code and public.save_answer, whose ownership, deadline and option checks are tested
+-- in attempt_functions.test.sql.
 select throws_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000002', 'a')$$, '42501',
-  null, 'student cannot write answers directly, even in their own open attempt (server code only, 0004)');
-select throws_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000003', 'a')$$, '42501',
-  null, 'student cannot save an answer into another student''s attempt');
-
-select throws_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000004', 'a')$$, '42501',
-  null, 'student cannot save an answer after the attempt is submitted');
-select throws_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000005', 'a')$$, '42501',
-  null, 'student cannot save an answer after the deadline');
+  null, 'student cannot insert answers directly, not even into their own open attempt');
+select throws_ok($$update public.answers set option_id = 'a' where attempt_question_id = '50000000-0000-0000-0000-000000000003'$$, '42501',
+  null, 'student cannot update answers directly');
 select is((select count(*)::int from public.answers where attempt_question_id = '50000000-0000-0000-0000-000000000003'), 0,
   'student cannot read another student''s answers');
 select is((select count(*)::int from public.student_assignments), 1, 'student sees only their own assignment through the view');
@@ -154,6 +152,7 @@ reset role;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
 set local role authenticated;
 
+select is((select count(*)::int from public.attempts where id::text like '40000000-%'), 5, 'staff can read all 5 fixture attempts');
 select is((select count(*)::int from public.attempts), current_setting('test.attempt_total')::int, 'staff can read every attempt');
 select is((select count(*)::int from public.questions where correct_option_id is not null), current_setting('test.question_total')::int, 'staff can read correct_option_id on every question');
 select is((select count(*)::int from public.profiles where id::text like '00000000-0000-0000-0000-0000000000%'), 4, 'staff can read every fixture profile');

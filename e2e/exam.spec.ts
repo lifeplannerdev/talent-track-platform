@@ -50,6 +50,14 @@ async function expectNoMarks(page: Page) {
 }
 
 test("held exam: start, refresh mid-way to the same paper, submit and see awaiting review without marks", async ({ page }) => {
+  // Network level: no response for the start or result pages (HTML, RSC payloads) may carry marks or the key.
+  const bodies: Promise<{ url: string; body: string }>[] = [];
+  page.on("response", (res) => {
+    const path = new URL(res.url()).pathname;
+    if (path.startsWith("/exam/start") || path.startsWith("/results/")) {
+      bodies.push(res.text().then((body) => ({ url: res.url(), body }), () => ({ url: res.url(), body: "" })));
+    }
+  });
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
   await expect(page.getByTestId("next-exam")).toContainText(EXAM_CURRICULUM_HELD);
   await expect(page.getByTestId("question-count")).toHaveText("3");
@@ -112,6 +120,15 @@ test("held exam: start, refresh mid-way to the same paper, submit and see awaiti
   await expect(page.getByRole("button", { name: "Start exam" })).toHaveCount(0);
   await page.goto(examUrl);
   await expect(page).toHaveURL(/\/results\//);
+
+  const seen = await Promise.all(bodies);
+  expect(seen.some((r) => r.url.includes("/results/"))).toBe(true);
+  expect(seen.some((r) => r.url.includes("/exam/start"))).toBe(true);
+  for (const { url, body } of seen) {
+    expect(body, url).not.toMatch(/"?(points|max_points|correct_option_id)"?\s*:/);
+    expect(body, url).not.toContain("correct_option_id");
+    expect(body, url).not.toContain("max_points");
+  }
 });
 
 test("non-held exam: released at once, the student sees Submitted without marks", async ({ page }) => {
@@ -175,6 +192,54 @@ test("offline: a banner shows and the answer is saved once the connection is bac
   const { data: aq } = await adminDb().from("attempt_questions").select("id").eq("attempt_id", attemptId).eq("position", 1).single();
   const { data: answer } = await adminDb().from("answers").select("option_id").eq("attempt_question_id", aq!.id).single();
   expect(answer!.option_id).toBe("c");
+});
+
+test("a submit that cannot reach the server keeps the exam and its unsaved answer; after reconnecting it saves first", async ({ page }) => {
+  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
+  await page.getByRole("button", { name: "Start exam" }).click();
+  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  const examUrl = page.url();
+  const attemptId = examUrl.split("/").pop()!;
+  await expect(page.getByTestId("timer")).not.toHaveText("--:--");
+
+  // The browser believes it is online, but server actions (POSTs to the exam URL) fail.
+  const blockActions = (route: import("@playwright/test").Route) =>
+    route.request().method() === "POST" ? route.abort("internetdisconnected") : route.continue();
+  await page.route(`**/exam/${attemptId}`, blockActions);
+  await page.getByRole("radio", { name: "Vielleicht", exact: true }).click();
+  await expect(page.getByTestId("save-status")).toHaveText("Not saved yet, will retry");
+
+  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
+  await expect(page.getByTestId("submit-error")).toHaveText(/Some answers are not saved yet; reconnect and try again/);
+  await expect(page).toHaveURL(examUrl);
+  await expect(page.getByTestId("question-stem")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Vielleicht", exact: true })).toBeChecked();
+  const { data: still } = await adminDb().from("attempts").select("status").eq("id", attemptId).single();
+  expect(still!.status).toBe("in_progress");
+
+  // Reconnect: submitting now sends the pending answer before the submit.
+  await page.unroute(`**/exam/${attemptId}`, blockActions);
+  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
+  await expect(page).toHaveURL(new RegExp(`/results/${attemptId}$`));
+  const { data: aq } = await adminDb().from("attempt_questions").select("id").eq("attempt_id", attemptId).eq("position", 1).single();
+  const { data: answer } = await adminDb().from("answers").select("option_id").eq("attempt_question_id", aq!.id).single();
+  expect(answer!.option_id).toBe("c");
+  const { data: done } = await adminDb().from("attempts").select("status").eq("id", attemptId).single();
+  expect(done!.status).toBe("submitted");
+});
+
+test("Submit is disabled while the browser is offline", async ({ page, context }) => {
+  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
+  await page.getByRole("button", { name: "Start exam" }).click();
+  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId("timer")).not.toHaveText("--:--");
+  await context.setOffline(true);
+  await expect(page.getByTestId("offline-banner")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit", exact: true })).toBeDisabled();
+  await context.setOffline(false);
+  await expect(page.getByRole("button", { name: "Submit", exact: true })).toBeEnabled();
 });
 
 test("the cron sweep route is not behind the login redirect and requires its secret", async ({ request }) => {

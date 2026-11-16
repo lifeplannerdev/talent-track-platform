@@ -39,6 +39,12 @@ function subscribeOnline(callback: () => void) {
   };
 }
 
+// Redirects and notFound from a server action surface as errors with a Next.js digest; let them through.
+function isNavigation(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+  return typeof digest === "string" && (digest.startsWith("NEXT_REDIRECT") || digest.startsWith("NEXT_HTTP_ERROR_FALLBACK"));
+}
+
 function formatRemaining(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -57,6 +63,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
   const [remaining, setRemaining] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [closedMessage, setClosedMessage] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, startSubmit] = useTransition();
   const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
 
@@ -64,14 +71,44 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
   const pending = useRef(new Map<string, string>());
   const queue = useRef<Promise<void>>(Promise.resolve());
   const submitted = useRef(false);
+  const lastAutoSubmit = useRef(0);
 
-  const finish = useCallback(() => {
-    if (submitted.current) return;
-    submitted.current = true;
-    startSubmit(async () => {
-      await submitExam(attemptId);
-    });
-  }, [attemptId]);
+  /**
+   * Submits once. Waits for in-flight saves first so a save sent just before the deadline is not
+   * overtaken by the submit. A manual submit is refused while answers are still unsaved; an
+   * automatic one (time is up) goes ahead because the server would refuse late saves anyway.
+   * Returns false when the submit did not start or failed; the exam then stays on screen.
+   */
+  const finish = useCallback(
+    async (auto: boolean): Promise<boolean> => {
+      if (submitted.current) return true;
+      submitted.current = true;
+      setSubmitError(null);
+      await queue.current;
+      if (!auto && pending.current.size > 0) {
+        submitted.current = false;
+        setSubmitError("Some answers are not saved yet; reconnect and try again.");
+        return false;
+      }
+      return new Promise<boolean>((resolve) => {
+        startSubmit(async () => {
+          try {
+            await submitExam(attemptId);
+            resolve(true);
+          } catch (e) {
+            if (isNavigation(e)) {
+              resolve(true);
+              throw e;
+            }
+            submitted.current = false;
+            setSubmitError("The exam could not be submitted. Check your connection and try again. Your answers are kept.");
+            resolve(false);
+          }
+        });
+      });
+    },
+    [attemptId],
+  );
 
   const persist = useCallback(
     (attemptQuestionId: string, optionId: string) => {
@@ -123,10 +160,13 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
     };
   }, [deadlineAt, serverNow]);
 
-  // At expiry the server submits the saved answers; ask it to do so now.
+  // At expiry the server submits the saved answers; ask it to do so now (retrying at most every 5 s).
   useEffect(() => {
-    if (remaining !== null && remaining <= 0) finish();
-  }, [remaining, finish]);
+    if (remaining === null || remaining > 0 || !online) return;
+    if (Date.now() - lastAutoSubmit.current < 5000) return;
+    lastAutoSubmit.current = Date.now();
+    void finish(true);
+  }, [remaining, online, finish]);
 
   useEffect(() => {
     const retry = () => void flushPending();
@@ -148,8 +188,10 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
 
   async function confirmSubmit() {
     await flushPending();
-    finish();
+    if (!(await finish(false))) setConfirmOpen(false);
   }
+
+  const submitDisabled = submitting || closedMessage !== null || !online;
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -173,7 +215,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
             >
               {remaining === null ? "--:--" : formatRemaining(remaining)}
             </div>
-            <Button onClick={() => setConfirmOpen(true)} disabled={submitting || closedMessage !== null}>
+            <Button onClick={() => setConfirmOpen(true)} disabled={submitDisabled}>
               Submit
             </Button>
           </div>
@@ -188,6 +230,13 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
             <AlertDescription>
               Your answers will be saved when the connection is back. The timer keeps running.
             </AlertDescription>
+          </Alert>
+        </div>
+      ) : null}
+      {submitError ? (
+        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+          <Alert variant="destructive">
+            <AlertDescription data-testid="submit-error">{submitError}</AlertDescription>
           </Alert>
         </div>
       ) : null}
@@ -256,7 +305,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
               Next <ChevronRightIcon data-icon="inline-end" />
             </Button>
           ) : (
-            <Button onClick={() => setConfirmOpen(true)} disabled={submitting || closedMessage !== null}>
+            <Button onClick={() => setConfirmOpen(true)} disabled={submitDisabled}>
               Review and submit
             </Button>
           )}
@@ -298,7 +347,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>Keep working</DialogClose>
-            <Button onClick={() => void confirmSubmit()} disabled={submitting}>
+            <Button onClick={() => void confirmSubmit()} disabled={submitDisabled}>
               {submitting ? "Submitting…" : "Submit exam"}
             </Button>
           </DialogFooter>

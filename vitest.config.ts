@@ -19,6 +19,8 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     passWithNoTests: true,
+    // DB-backed files (attempts, cron route) share the local database and sweepExpired; run files one at a time.
+    fileParallelism: false,
     testTimeout: 20_000,
     hookTimeout: 30_000,
   },
