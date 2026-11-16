@@ -58,7 +58,7 @@ export function isUuid(value: unknown): value is string {
 const PAGE_SIZE = 1000; // PostgREST's default max rows per response
 
 /** Reads every row by paging, so the PostgREST row cap can never truncate a result silently. */
-async function fetchAll<T>(
+export async function fetchAll<T>(
   page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: DbError | null }>,
   what: string,
 ): Promise<T[]> {
