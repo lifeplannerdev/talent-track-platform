@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { getAttemptForStudent } from "@/lib/attempts";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ExamClient } from "./exam-client";
 
 export const metadata: Metadata = { title: "Exam in progress | TalentTrack" };
@@ -31,8 +32,12 @@ export default function ExamPage(props: PageProps<"/exam/[attemptId]">) {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto w-full max-w-2xl px-4 py-10">
-          <p role="status">Loading exam…</p>
+        <main role="status" aria-label="Loading exam" className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pt-20">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-8 w-full max-w-lg" />
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
         </main>
       }
     >

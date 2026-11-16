@@ -5,6 +5,9 @@ import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
 import { getStudentResult, percentOf, type StudentResult } from "@/lib/results";
+import { ChevronLeftIcon, CircleCheckIcon, CircleXIcon, HourglassIcon } from "lucide-react";
+import { StudentHeader } from "@/components/app/student-header";
+import { studentMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,15 +25,16 @@ export const metadata: Metadata = { title: "Result | TalentTrack" };
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="font-medium">{children}</dd>
+      <dt className="text-xs font-semibold text-muted-foreground print:text-black">{label}</dt>
+      <dd className="text-base">{children}</dd>
     </div>
   );
 }
 
 function BackLink() {
   return (
-    <Link href="/exam/start" className={buttonVariants({ variant: "outline", className: "print:hidden" })}>
+    <Link href="/exam/start" className={buttonVariants({ variant: "outline", size: "lg", className: "print:hidden" })}>
+      <ChevronLeftIcon data-icon="inline-start" />
       Back to exams
     </Link>
   );
@@ -38,34 +42,44 @@ function BackLink() {
 
 function AwaitingReview({ result }: { result: Extract<StudentResult, { status: "submitted" }> }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{result.curriculumName}</CardDescription>
-        <CardTitle className="text-xl">Submitted</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        <p data-testid="result-status">Submitted, awaiting review. Your trainer will release your result.</p>
-        <p className="text-sm text-muted-foreground">
-          {result.examSetName} · submitted {formatDateTime(result.submittedAt)}
-        </p>
-      </CardContent>
-      <CardFooter>
+    <section aria-labelledby="awaiting-heading" className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-semibold text-primary">{result.curriculumName}</p>
+        <h1 id="awaiting-heading" className="text-[1.75rem] font-semibold">
+          Submitted
+        </h1>
+      </div>
+      <p
+        data-testid="result-status"
+        className="flex items-start gap-3 rounded-lg bg-secondary px-4 py-3 text-base text-secondary-foreground"
+      >
+        <HourglassIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+        <span>Submitted, awaiting review. Your trainer will release your result.</span>
+      </p>
+      <dl className="flex flex-col gap-3 sm:flex-row sm:gap-10">
+        <Fact label="Exam">{result.examSetName}</Fact>
+        <Fact label="Submitted">{formatDateTime(result.submittedAt)}</Fact>
+      </dl>
+      <div>
         <BackLink />
-      </CardFooter>
-    </Card>
+      </div>
+    </section>
   );
 }
 
 function Report({ result, studentName }: { result: Extract<StudentResult, { status: "released" }>; studentName: string }) {
   return (
-    <Card className="print:shadow-none print:ring-0" data-testid="result-report">
-      <CardHeader>
-        <CardDescription>TalentTrack · Life Planner</CardDescription>
-        <CardTitle className="text-2xl">
-          <h1>Ergebnis / Result</h1>
+    <Card className="print:gap-4 print:rounded-none print:py-0 print:shadow-none print:ring-0" data-testid="result-report">
+      <CardHeader className="print:px-0">
+        <CardDescription className="flex items-baseline gap-2 print:text-black">
+          <span className="font-heading font-semibold text-foreground print:text-black">TalentTrack</span>
+          <span>Life Planner</span>
+        </CardDescription>
+        <CardTitle>
+          <h1 className="text-[1.75rem] font-semibold">Ergebnis / Result</h1>
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6">
+      <CardContent className="flex flex-col gap-6 print:px-0">
         <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 print:grid-cols-2">
           <Fact label="Name / Name">{studentName}</Fact>
           <Fact label="Lehrplan / Curriculum">{result.curriculumName}</Fact>
@@ -78,24 +92,25 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-1">
-            <p className="text-sm text-muted-foreground">Punkte / Points</p>
-            <p className="text-3xl font-semibold tabular-nums" data-testid="result-score">
+            <p className="text-xs font-semibold text-muted-foreground print:text-black">Punkte / Points</p>
+            <p className="font-heading text-4xl font-semibold tabular-nums" data-testid="result-score">
               {result.points} of {result.maxPoints}
-              <span className="ml-2 text-xl font-normal text-muted-foreground">({result.percent}%)</span>
+              <span className="ml-2 font-sans text-xl font-normal text-muted-foreground print:text-black">({result.percent}%)</span>
             </p>
           </div>
           <Badge
-            variant={result.passed ? "default" : "destructive"}
-            className="h-auto px-3 py-1 text-sm"
+            variant={result.passed ? "success" : "destructive"}
+            className="h-auto gap-1.5 rounded-md px-3 py-1.5 text-base print:border-black print:bg-transparent print:text-black"
             data-testid="result-outcome"
           >
+            {result.passed ? <CircleCheckIcon aria-hidden="true" /> : <CircleXIcon aria-hidden="true" />}
             {result.passed ? "Bestanden / Passed" : "Nicht bestanden / Not passed"}
           </Badge>
         </div>
 
         {result.topics.length > 0 ? (
           <section className="flex flex-col gap-2" aria-labelledby="topics-heading">
-            <h2 id="topics-heading" className="font-medium">
+            <h2 id="topics-heading" className="text-lg font-semibold">
               Ergebnis nach Thema / Result by topic
             </h2>
             <Table data-testid="topic-table">
@@ -123,7 +138,7 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
           </section>
         ) : null}
       </CardContent>
-      <CardFooter className="flex flex-wrap gap-2 print:hidden">
+      <CardFooter className="flex flex-wrap gap-2 bg-transparent print:hidden">
         <PrintButton />
         <BackLink />
       </CardFooter>
@@ -156,10 +171,13 @@ function ResultSkeleton() {
 
 export default function ResultPage(props: PageProps<"/results/[attemptId]">) {
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-10 print:max-w-none print:p-0">
-      <Suspense fallback={<ResultSkeleton />}>
-        <Result params={props.params} />
-      </Suspense>
-    </main>
+    <>
+      <StudentHeader signOut />
+      <main className={`${studentMain} print:max-w-none print:p-0`}>
+        <Suspense fallback={<ResultSkeleton />}>
+          <Result params={props.params} />
+        </Suspense>
+      </main>
+    </>
   );
 }

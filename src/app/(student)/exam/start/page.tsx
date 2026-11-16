@@ -2,12 +2,16 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ClockIcon, HourglassIcon, InboxIcon, ListChecksIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
 import { getExamStartState, type ExamSetInfo } from "@/lib/exam-start";
-import { logout } from "@/app/login/actions";
+import { StudentHeader } from "@/components/app/student-header";
+import { studentMain } from "@/components/app/styles";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { startExam } from "../actions";
 
 export const metadata: Metadata = { title: "Exam | TalentTrack" };
@@ -19,18 +23,33 @@ const START_ERRORS: Record<string, string> = {
 
 function ExamFacts({ examSet }: { examSet: ExamSetInfo }) {
   return (
-    <dl className="grid grid-cols-2 gap-3 text-sm">
-      <div className="rounded-lg border p-3">
-        <dt className="text-muted-foreground">Questions</dt>
-        <dd className="text-lg font-semibold" data-testid="question-count">
+    <dl className="grid grid-cols-2 divide-x rounded-lg border">
+      <div className="flex flex-col gap-1 px-4 py-3">
+        <dt className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+          <ListChecksIcon aria-hidden="true" className="size-4 text-primary" />
+          Questions
+        </dt>
+        <dd className="font-heading text-xl font-semibold tabular-nums" data-testid="question-count">
           {examSet.questionCount}
         </dd>
       </div>
-      <div className="rounded-lg border p-3">
-        <dt className="text-muted-foreground">Time limit</dt>
-        <dd className="text-lg font-semibold">{examSet.timeLimitMin} min</dd>
+      <div className="flex flex-col gap-1 px-4 py-3">
+        <dt className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+          <ClockIcon aria-hidden="true" className="size-4 text-primary" />
+          Time limit
+        </dt>
+        <dd className="font-heading text-xl font-semibold tabular-nums">{examSet.timeLimitMin} min</dd>
       </div>
     </dl>
+  );
+}
+
+function StatusNote({ testId, children }: { testId: string; children: React.ReactNode }) {
+  return (
+    <p data-testid={testId} className="flex items-start gap-3 rounded-lg bg-secondary px-4 py-3 text-base text-secondary-foreground">
+      <HourglassIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -43,14 +62,17 @@ async function StartContent({ searchParams }: { searchParams: Promise<{ error?: 
 
   if (state.kind === "none") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No exam yet</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p data-testid="no-exams">No exams are assigned to you yet. Please check back later or ask your instructor.</p>
-        </CardContent>
-      </Card>
+      <Empty className="border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <InboxIcon aria-hidden="true" />
+          </EmptyMedia>
+          <EmptyTitle>No exam yet</EmptyTitle>
+          <EmptyDescription data-testid="no-exams">
+            No exams are assigned to you yet. Please check back later or ask your instructor.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
@@ -58,69 +80,83 @@ async function StartContent({ searchParams }: { searchParams: Promise<{ error?: 
   const curriculumName = examSet?.curriculumName ?? (state.kind === "waiting" ? state.curriculumName : "");
 
   return (
-    <Card>
-      <CardHeader>
-        <CardDescription>Your next exam</CardDescription>
-        <CardTitle className="text-xl" data-testid="next-exam">
+    <section aria-labelledby="next-exam-label" className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <p id="next-exam-label" className="text-sm font-semibold text-primary">
+          Your next exam
+        </p>
+        <h2 className="text-[1.75rem] leading-tight font-semibold" data-testid="next-exam">
           {curriculumName}
-          {examSet ? <span className="block text-base font-normal text-muted-foreground">{examSet.name}</span> : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {examSet ? <ExamFacts examSet={examSet} /> : null}
-        {errorText ? (
-          <Alert variant="destructive">
-            <AlertDescription>{errorText}</AlertDescription>
-          </Alert>
-        ) : null}
-        {state.kind === "ready" ? (
-          <p className="text-sm text-muted-foreground">
-            The questions are in German. The timer starts when you press Start and keeps running if you leave
-            the page. Your answers are saved automatically, and the exam is submitted when the time is up.
-          </p>
-        ) : null}
-        {state.kind === "in_progress" ? (
-          <p className="text-sm text-muted-foreground">You have an exam in progress. The timer is still running.</p>
-        ) : null}
-        {state.kind === "awaiting_review" ? (
-          <p data-testid="awaiting-review">Submitted, awaiting review. Your trainer will release your result.</p>
-        ) : null}
-        {state.kind === "waiting" ? (
-          <p data-testid="waiting-for-grant">Waiting for your trainer to give you an attempt.</p>
-        ) : null}
-      </CardContent>
+          {examSet ? (
+            <span className="mt-1 block font-sans text-lg font-normal tracking-normal text-muted-foreground">
+              {examSet.name}
+            </span>
+          ) : null}
+        </h2>
+      </div>
+      {examSet ? <ExamFacts examSet={examSet} /> : null}
+      {errorText ? (
+        <Alert variant="destructive">
+          <AlertDescription>{errorText}</AlertDescription>
+        </Alert>
+      ) : null}
       {state.kind === "ready" ? (
-        <CardFooter>
-          <form action={startExam} className="w-full">
-            <Button type="submit" size="lg" className="w-full">
+        <>
+          <Separator />
+          <ul className="flex max-w-[62ch] list-disc flex-col gap-2 pl-5 text-base leading-relaxed marker:text-primary">
+            <li>The questions are in German.</li>
+            <li>The timer starts when you press Start and keeps running if you leave the page.</li>
+            <li>Your answers are saved automatically, and the exam is submitted when the time is up.</li>
+          </ul>
+          <form action={startExam}>
+            <Button type="submit" size="lg" className="w-full sm:w-auto sm:min-w-48">
               Start exam
             </Button>
           </form>
-        </CardFooter>
+        </>
       ) : null}
       {state.kind === "in_progress" ? (
-        <CardFooter>
-          <Link href={`/exam/${state.attemptId}`} className={buttonVariants({ size: "lg", className: "w-full" })}>
+        <>
+          <StatusNote testId="in-progress">You have an exam in progress. The timer is still running.</StatusNote>
+          <Link
+            href={`/exam/${state.attemptId}`}
+            className={buttonVariants({ size: "lg", className: "w-full sm:w-auto sm:min-w-48" })}
+          >
             Resume exam
           </Link>
-        </CardFooter>
+        </>
       ) : null}
-    </Card>
+      {state.kind === "awaiting_review" ? (
+        <StatusNote testId="awaiting-review">Submitted, awaiting review. Your trainer will release your result.</StatusNote>
+      ) : null}
+      {state.kind === "waiting" ? (
+        <StatusNote testId="waiting-for-grant">Waiting for your trainer to give you an attempt.</StatusNote>
+      ) : null}
+    </section>
+  );
+}
+
+function StartSkeleton() {
+  return (
+    <div role="status" aria-label="Loading your exam" className="flex flex-col gap-4">
+      <Skeleton className="h-4 w-28" />
+      <Skeleton className="h-9 w-72 max-w-full" />
+      <Skeleton className="h-20 w-full" />
+      <Skeleton className="h-11 w-48" />
+    </div>
   );
 }
 
 export default function ExamStartPage(props: PageProps<"/exam/start">) {
   return (
-    <main className="mx-auto flex w-full max-w-xl flex-col gap-4 px-4 py-10">
-      <h1 className="text-2xl font-semibold">Exam</h1>
-      <Suspense fallback={<p role="status">Loading…</p>}>
-        <StartContent searchParams={props.searchParams as Promise<{ error?: string }>} />
-      </Suspense>
-      <form action={logout}>
-        <Button type="submit" variant="outline">
-          Sign out
-        </Button>
-      </form>
-    </main>
+    <>
+      <StudentHeader signOut />
+      <main className={studentMain}>
+        <h1 className="sr-only">Exam</h1>
+        <Suspense fallback={<StartSkeleton />}>
+          <StartContent searchParams={props.searchParams as Promise<{ error?: string }>} />
+        </Suspense>
+      </main>
+    </>
   );
 }

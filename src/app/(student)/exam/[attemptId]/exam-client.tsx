@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloudOffIcon, LoaderCircleIcon } from "lucide-react";
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, CloudOffIcon, LoaderCircleIcon } from "lucide-react";
 import { cn } from "cn";
 import type { ExamQuestion } from "@/lib/attempts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -195,25 +195,28 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
+      <header className="sticky top-0 z-10 border-b bg-card/95 backdrop-blur-sm">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{examSetName}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="truncate text-sm font-semibold">{examSetName}</p>
+            <p className="text-xs text-muted-foreground tabular-nums">
               {answeredCount} of {questions.length} answered
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div
               role="timer"
               aria-label="Time remaining"
               data-testid="timer"
               className={cn(
-                "rounded-md border px-2.5 py-1 font-mono text-base tabular-nums",
-                lowTime && "border-destructive/40 text-destructive",
+                "flex h-9 items-center gap-1.5 rounded-md border px-2.5 transition-colors",
+                lowTime ? "border-destructive/40 bg-destructive-muted text-destructive" : "border-border bg-muted/60",
               )}
             >
-              {remaining === null ? "--:--" : formatRemaining(remaining)}
+              <ClockIcon aria-hidden="true" className="size-4 shrink-0" />
+              <span className="font-heading text-base font-semibold tabular-nums">
+                {remaining === null ? "--:--" : formatRemaining(remaining)}
+              </span>
             </div>
             <Button onClick={() => setConfirmOpen(true)} disabled={submitDisabled}>
               Submit
@@ -223,8 +226,8 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
       </header>
 
       {!online ? (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
-          <Alert data-testid="offline-banner">
+        <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+          <Alert variant="warning" data-testid="offline-banner">
             <CloudOffIcon />
             <AlertTitle>You are offline</AlertTitle>
             <AlertDescription>
@@ -234,24 +237,24 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
         </div>
       ) : null}
       {submitError ? (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+        <div className="mx-auto w-full max-w-3xl px-4 pt-4">
           <Alert variant="destructive">
             <AlertDescription data-testid="submit-error">{submitError}</AlertDescription>
           </Alert>
         </div>
       ) : null}
       {closedMessage ? (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+        <div className="mx-auto w-full max-w-3xl px-4 pt-4">
           <Alert>
             <AlertDescription>{closedMessage}</AlertDescription>
           </Alert>
         </div>
       ) : null}
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-6">
-        <section aria-labelledby="question-heading" className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-2">
-            <h1 id="question-heading" className="text-sm font-medium text-muted-foreground">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pt-8 pb-16">
+        <section aria-labelledby="question-heading" className="flex flex-col gap-5">
+          <div className="flex min-h-5 items-center justify-between gap-2">
+            <h1 id="question-heading" className="font-sans text-sm font-semibold tracking-normal text-primary">
               Question {index + 1} of {questions.length}
             </h1>
             <p className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite" data-testid="save-status">
@@ -261,18 +264,18 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
                 </>
               ) : currentState === "saved" ? (
                 <>
-                  <CheckIcon className="size-3.5" aria-hidden /> Saved
+                  <CheckIcon className="size-3.5 text-success" aria-hidden /> Saved
                 </>
               ) : currentState === "pending" ? (
                 "Not saved yet, will retry"
               ) : currentState === "error" ? (
-                <span className="text-destructive">Could not save this answer</span>
+                <span className="font-semibold text-destructive">Could not save this answer</span>
               ) : null}
             </p>
           </div>
 
-          <div lang="de" className="flex flex-col gap-4">
-            <p className="text-lg leading-relaxed font-medium" data-testid="question-stem">
+          <div lang="de" className="flex flex-col gap-6">
+            <p className="max-w-[60ch] text-stem font-semibold text-foreground sm:text-[1.5rem]" data-testid="question-stem">
               {question.stemDe}
             </p>
             <RadioGroup
@@ -281,14 +284,14 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
               value={answers[question.attemptQuestionId] ?? null}
               onValueChange={(value) => choose(value as string)}
               disabled={submitting || closedMessage !== null}
-              className="gap-2"
+              className="gap-3"
             >
               {question.options.map((option) => (
                 <label
                   key={option.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-base transition-colors hover:bg-muted has-data-checked:border-primary has-data-checked:bg-muted"
+                  className="flex min-h-14 cursor-pointer items-center gap-4 rounded-lg border border-input/50 bg-card px-4 py-3 text-option transition-[background-color,border-color,box-shadow] duration-150 hover:border-input hover:bg-muted/60 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring has-data-checked:border-primary has-data-checked:bg-secondary has-data-checked:shadow-[inset_0_0_0_1px_var(--primary)] has-disabled:cursor-not-allowed"
                 >
-                  <RadioGroupItem value={option.id} />
+                  <RadioGroupItem value={option.id} className="size-6 border-2 border-input focus-visible:ring-0" />
                   <span>{option.de}</span>
                 </label>
               ))}
@@ -296,37 +299,57 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
           </div>
         </section>
 
-        <div className="flex items-center justify-between gap-2">
-          <Button variant="outline" onClick={() => setIndex((i) => i - 1)} disabled={index === 0}>
+        <div className="flex items-center justify-between gap-3">
+          <Button variant="outline" size="lg" onClick={() => setIndex((i) => i - 1)} disabled={index === 0}>
             <ChevronLeftIcon data-icon="inline-start" /> Previous
           </Button>
           {index < questions.length - 1 ? (
-            <Button variant="outline" onClick={() => setIndex((i) => i + 1)}>
+            <Button variant="outline" size="lg" onClick={() => setIndex((i) => i + 1)}>
               Next <ChevronRightIcon data-icon="inline-end" />
             </Button>
           ) : (
-            <Button onClick={() => setConfirmOpen(true)} disabled={submitDisabled}>
+            <Button size="lg" onClick={() => setConfirmOpen(true)} disabled={submitDisabled}>
               Review and submit
             </Button>
           )}
         </div>
 
-        <nav aria-label="Questions" className="border-t pt-4">
-          <p className="mb-2 text-xs text-muted-foreground">Go to question</p>
+        <nav aria-label="Questions" className="flex flex-col gap-3 border-t pt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p className="text-sm font-semibold">Go to question</p>
+            <p className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+              <span className="flex items-center gap-1.5">
+                <span className="size-3 rounded-[3px] border border-primary/40 bg-secondary" /> Answered
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-3 rounded-[3px] border border-input/70 bg-card" /> Open
+              </span>
+            </p>
+          </div>
           <ol className="flex flex-wrap gap-2">
             {questions.map((q, i) => {
               const answered = Boolean(answers[q.attemptQuestionId]);
+              const current = i === index;
               return (
                 <li key={q.attemptQuestionId}>
                   <Button
-                    variant={i === index ? "default" : "outline"}
+                    variant={current ? "default" : "outline"}
                     size="icon-lg"
-                    aria-current={i === index ? "step" : undefined}
+                    aria-current={current ? "step" : undefined}
                     aria-label={`Question ${i + 1}${answered ? ", answered" : ", not answered"}`}
                     onClick={() => setIndex(i)}
-                    className={cn(answered && i !== index && "border-primary/50 bg-muted")}
+                    className={cn(
+                      "relative font-heading tabular-nums",
+                      answered && !current && "border-primary/40 bg-secondary text-secondary-foreground hover:bg-secondary",
+                    )}
                   >
                     {i + 1}
+                    {answered ? (
+                      <CheckIcon
+                        aria-hidden="true"
+                        className="absolute top-0.5 right-0.5 size-3! stroke-3"
+                      />
+                    ) : null}
                   </Button>
                 </li>
               );
