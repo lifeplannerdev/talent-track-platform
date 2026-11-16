@@ -4,3 +4,15 @@ node_modules/
 !.env.example
 .superpowers/
 .vercel/
+/out/
+/build
+/coverage
+/test-results/
+/playwright-report/
+.DS_Store
+*.pem
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+supabase/.temp/
+supabase/.branches/
