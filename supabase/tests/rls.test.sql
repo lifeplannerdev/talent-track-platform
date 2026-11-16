@@ -47,7 +47,8 @@ insert into public.attempts (id, student_id, exam_set_id, status, deadline_at, s
   ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-000000000001', 'submitted', now() - interval '1 hour', now() - interval '1 hour', 6, 10, true,  null),
   ('40000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-000000000001', 'in_progress', now() + interval '1 hour', null, null, null, null, null),
   ('40000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-0000000000b2', '20000000-0000-0000-0000-000000000001', 'in_progress', now() + interval '1 hour', null, null, null, null, null),
-  ('40000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-000000000001', 'in_progress', now() - interval '1 hour', null, null, null, null, null);
+  -- Expired in-progress attempt on the second set (one in-progress attempt per student and set, see 0004).
+  ('40000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-000000000002', 'in_progress', now() - interval '1 hour', null, null, null, null, null);
 
 insert into public.attempt_questions (id, attempt_id, question_id, position, option_order) values
   ('50000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', 1, '{b,a}'),
@@ -110,8 +111,8 @@ select is((select count(*)::int from public.student_questions), 4, 'student sees
 select is((select count(*)::int from public.profiles), 1, 'student sees only their own profile');
 select is_empty($$update public.profiles set role = 'staff' where id = '00000000-0000-0000-0000-0000000000b1' returning id$$,
   'student cannot update their profile (no privilege escalation)');
-select lives_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000002', 'a')$$,
-  'student can save an answer in their own in-progress attempt');
+select throws_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000002', 'a')$$, '42501',
+  null, 'student cannot write answers directly, even in their own open attempt (server code only, 0004)');
 select throws_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000003', 'a')$$, '42501',
   null, 'student cannot save an answer into another student''s attempt');
 
