@@ -12,3 +12,7 @@ export const EXAM_CURRICULUM_OPEN = "E2E Exam Curriculum Open";
 // Blocking (Task 7): a held exam set with 2 attempts and 6 questions (2 per paper), no grant at first.
 export const STUDENT_BLOCK = { username: "e2e.block", password: "e2e-block-pass-1", fullName: "E2E Blocked Student" };
 export const BLOCK_CURRICULUM = "E2E Blocking Curriculum";
+// Staff management (Task 8): a student created through the UI, and the curriculum/exam set staff create.
+export const STUDENT_CREATED = { username: "e2e.t8nurse", password: "e2e-t8nurse-pass-1", fullName: "E2E Neue Pflegeschülerin" };
+export const STAFF_CURRICULUM = "E2E Staff Curriculum";
+export const STAFF_EXAM_SET = "E2E Staff Set";
