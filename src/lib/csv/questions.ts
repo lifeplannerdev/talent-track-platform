@@ -21,7 +21,16 @@ export function parseQuestionsCsv(text: string): {
   valid: NewQuestion[]
   errors: QuestionCsvError[]
 } {
-  const valid: NewQuestion[] = []
+  const { valid, errors } = parseQuestionsCsvWithRows(text)
+  return { valid: valid.map(({ row: _row, ...question }) => question), errors }
+}
+
+/** parseQuestionsCsv, with the data row number of each valid question (for import reports). */
+export function parseQuestionsCsvWithRows(text: string): {
+  valid: (NewQuestion & { row: number })[]
+  errors: QuestionCsvError[]
+} {
+  const valid: (NewQuestion & { row: number })[] = []
   const { rows, errors } = readCsvRows(text, REQUIRED_COLUMNS)
   const seenStems = new Set<string>()
 
@@ -50,7 +59,7 @@ export function parseQuestionsCsv(text: string): {
       continue
     }
     seenStems.add(stemDe)
-    valid.push(result.question)
+    valid.push({ ...result.question, row })
   }
 
   return { valid, errors }
