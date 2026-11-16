@@ -34,8 +34,13 @@ export async function login(
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: GENERIC_ERROR };
 
-  // One active session per account: end every other session of this user.
-  await supabase.auth.signOut({ scope: "others" });
+  // One active session per account: end every other session of this user. If that fails the
+  // older sessions would stay valid, so the login is not completed (the new session is dropped).
+  const { error: othersError } = await supabase.auth.signOut({ scope: "others" });
+  if (othersError) {
+    await supabase.auth.signOut({ scope: "local" });
+    return { error: "We could not sign you in right now. Please try again." };
+  }
 
   const { data: userData } = await supabase.auth.getUser();
   const { data: profile } = userData.user
@@ -61,6 +66,9 @@ export async function login(
 
 export async function logout() {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+  // If the Auth server cannot be reached the global sign-out fails and keeps the cookies;
+  // always clear this browser's session so a shared computer is left signed out.
+  if (error) await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }

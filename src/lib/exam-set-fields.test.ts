@@ -41,6 +41,13 @@ describe('validateExamSetFields', () => {
     expect(Object.keys(r.errors).sort()).toEqual(['maxAttempts', 'name', 'passMarkPercent', 'questionCount', 'timeLimitMin'])
   })
 
+  it('rejects a negative numeric pass mark', () => {
+    const r = validateExamSetFields({ ...base, passMarkPercent: -1 })
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(Object.keys(r.errors)).toEqual(['passMarkPercent'])
+  })
+
   it('accepts pass mark 0 and 100', () => {
     expect(validateExamSetFields({ ...base, passMarkPercent: '0' }).ok).toBe(true)
     expect(validateExamSetFields({ ...base, passMarkPercent: 100 }).ok).toBe(true)
@@ -79,6 +86,14 @@ describe('parseTopicMixText', () => {
     expect(parseTopicMixText('Pflege: x')).toEqual({ ok: false, message: 'Line 1: write "topic: count"' })
     expect(parseTopicMixText('Pflege: 1\npflege: 2')).toEqual({ ok: true, mix: { Pflege: 1, pflege: 2 } })
     expect(parseTopicMixText('Pflege: 1\nPflege: 2')).toEqual({ ok: false, message: 'Line 2: topic "Pflege" is listed twice' })
+  })
+
+  it('keeps a topic named __proto__ as an own key', () => {
+    const r = parseTopicMixText('__proto__: 10')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(Object.hasOwn(r.mix, '__proto__')).toBe(true)
+    expect(Object.entries(r.mix)).toEqual([['__proto__', 10]])
   })
 
   it('round-trips with formatTopicMix', () => {

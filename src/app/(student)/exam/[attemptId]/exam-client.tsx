@@ -67,11 +67,19 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
   const [submitting, startSubmit] = useTransition();
   const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
 
-  // Unsynced answers (network failures) and a queue so saves reach the server in order.
-  const pending = useRef(new Map<string, string>());
+  // Unsynced answers (network failures) and a queue so saves reach the server in order. Each
+  // selection gets a revision, so only the response to the latest selection of a question can
+  // mark it saved (A, B, A quickly: an early "A saved" must not hide a failed final A).
+  const pending = useRef(new Map<string, { optionId: string; rev: number }>());
+  const revision = useRef(0);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const submitted = useRef(false);
   const lastAutoSubmit = useRef(0);
+  const flushing = useRef(false);
+  // Clock offset to the database, fixed per server render: Next can hide and show this route
+  // (Activity) and re-run effects later with the same props, and a recomputed offset would then
+  // add the hidden time back to the countdown.
+  const clock = useRef<{ serverNow: string; skew: number } | null>(null);
 
   /**
    * Submits once. Waits for in-flight saves first so a save sent just before the deadline is not
@@ -111,14 +119,18 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
   );
 
   const persist = useCallback(
-    (attemptQuestionId: string, optionId: string) => {
-      pending.current.set(attemptQuestionId, optionId);
+    (attemptQuestionId: string, optionId: string, retryRev?: number) => {
+      const rev = retryRev ?? ++revision.current;
+      const current = pending.current.get(attemptQuestionId);
+      if (current && current.rev > rev) return queue.current; // a newer selection supersedes this retry
+      pending.current.set(attemptQuestionId, { optionId, rev });
       setSaveState((s) => ({ ...s, [attemptQuestionId]: "saving" }));
+      const isLatest = () => pending.current.get(attemptQuestionId)?.rev === rev;
       const run = async () => {
         try {
           const result = await saveAnswerAction(attemptId, attemptQuestionId, optionId);
           if (result.ok) {
-            if (pending.current.get(attemptQuestionId) === optionId) {
+            if (isLatest()) {
               pending.current.delete(attemptQuestionId);
               setSaveState((s) => ({ ...s, [attemptQuestionId]: "saved" }));
             }
@@ -127,13 +139,13 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
             setClosedMessage("Time is up. Your saved answers have been submitted.");
             submitted.current = true;
             router.replace(`/results/${attemptId}`);
-          } else {
+          } else if (isLatest()) {
             pending.current.delete(attemptQuestionId);
             setSaveState((s) => ({ ...s, [attemptQuestionId]: "error" }));
           }
         } catch {
-          // Network or server unreachable: keep it and retry when the browser is back online.
-          setSaveState((s) => ({ ...s, [attemptQuestionId]: "pending" }));
+          // Network or server unreachable: keep it; it is retried while online and on reconnect.
+          if (isLatest()) setSaveState((s) => ({ ...s, [attemptQuestionId]: "pending" }));
         }
       };
       queue.current = queue.current.then(run);
@@ -144,12 +156,15 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
 
   const flushPending = useCallback(async () => {
     const entries = [...pending.current.entries()];
-    await Promise.all(entries.map(([aq, option]) => persist(aq, option)));
+    await Promise.all(entries.map(([aq, entry]) => persist(aq, entry.optionId, entry.rev)));
   }, [persist]);
 
   // Countdown from the server deadline, corrected by the client's clock skew to the database clock.
   useEffect(() => {
-    const skew = Date.parse(serverNow) - Date.now();
+    if (clock.current?.serverNow !== serverNow) {
+      clock.current = { serverNow, skew: Date.parse(serverNow) - Date.now() };
+    }
+    const skew = clock.current.skew;
     const deadline = Date.parse(deadlineAt);
     const tick = () => setRemaining(deadline - (Date.now() + skew));
     const first = setTimeout(tick, 0);
@@ -173,6 +188,19 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
     window.addEventListener("online", retry);
     return () => window.removeEventListener("online", retry);
   }, [flushPending]);
+
+  // A save can also fail while the browser stays online (a server error): retry every 5 s.
+  useEffect(() => {
+    if (!online) return;
+    const timer = setInterval(() => {
+      if (submitted.current || flushing.current || pending.current.size === 0) return;
+      flushing.current = true;
+      void flushPending().finally(() => {
+        flushing.current = false;
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [online, flushPending]);
 
   const question = questions[index];
   const answeredCount = questions.filter((q) => answers[q.attemptQuestionId]).length;

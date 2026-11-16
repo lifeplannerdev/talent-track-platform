@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,8 +31,13 @@ export function QuestionImport({ sets, defaultExamSetId }: { sets: ExamSetChoice
   const [result, setResult] = useState<ImportQuestionsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // The latest input, and the exact input the shown preview describes: a check that returns
+  // after the CSV or exam set changed is ignored, and Import sends the checked input.
+  const latest = useRef({ examSetId: defaultExamSetId, csv: "" });
+  const checked = useRef<{ examSetId: string; csv: string } | null>(null);
 
   const reset = () => {
+    checked.current = null;
     setPreview(null);
     setResult(null);
     setError(null);
@@ -42,22 +47,31 @@ export function QuestionImport({ sets, defaultExamSetId }: { sets: ExamSetChoice
   const check = () =>
     startTransition(async () => {
       reset();
+      const snapshot = { examSetId, csv };
+      const current = () => latest.current.examSetId === snapshot.examSetId && latest.current.csv === snapshot.csv;
       try {
-        const r = await previewQuestionsImport(examSetId, csv);
-        if (r.ok) setPreview(r);
-        else setError(r.message);
+        const r = await previewQuestionsImport(snapshot.examSetId, snapshot.csv);
+        if (!current()) return;
+        if (r.ok) {
+          checked.current = snapshot;
+          setPreview(r);
+        } else setError(r.message);
       } catch {
-        setError("The file could not be checked. Please try again.");
+        if (current()) setError("The file could not be checked. Please try again.");
       }
     });
 
   const confirm = () =>
     startTransition(async () => {
       setError(null);
+      const snapshot = checked.current;
+      if (!snapshot) return;
       try {
-        const r = await importQuestions({ examSetId, csvText: csv, status, onlyValid });
+        const r = await importQuestions({ examSetId: snapshot.examSetId, csvText: snapshot.csv, status, onlyValid });
         setResult(r);
-        if (r.ok) {
+        if (r.ok && latest.current.csv === snapshot.csv && latest.current.examSetId === snapshot.examSetId) {
+          checked.current = null;
+          latest.current = { ...latest.current, csv: "" };
           setPreview(null);
           setCsv("");
         }
@@ -86,6 +100,7 @@ export function QuestionImport({ sets, defaultExamSetId }: { sets: ExamSetChoice
             sets={sets}
             value={examSetId}
             onChange={(v) => {
+              latest.current = { ...latest.current, examSetId: v };
               setExamSetId(v);
               reset();
             }}
@@ -107,7 +122,9 @@ export function QuestionImport({ sets, defaultExamSetId }: { sets: ExamSetChoice
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              setCsv(await file.text());
+              const text = await file.text();
+              latest.current = { ...latest.current, csv: text };
+              setCsv(text);
               reset();
             }}
           />
@@ -119,6 +136,7 @@ export function QuestionImport({ sets, defaultExamSetId }: { sets: ExamSetChoice
             rows={5}
             value={csv}
             onChange={(e) => {
+              latest.current = { ...latest.current, csv: e.target.value };
               setCsv(e.target.value);
               reset();
             }}

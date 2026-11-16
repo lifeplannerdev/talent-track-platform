@@ -26,8 +26,8 @@ async function ConsentContent() {
           answers are timed and saved automatically while you work.
         </p>
         <p>
-          Only your instructors can see your results, and only after they release them. Your consent is recorded with
-          the date and time.
+          Only you and your instructors can see your results. Your instructors may check a result before it is
+          released to you. Your consent is recorded with the date and time.
         </p>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row">

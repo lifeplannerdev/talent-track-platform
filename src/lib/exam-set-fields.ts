@@ -69,7 +69,7 @@ export function validateExamSetFields(
   const timeLimitMin = toInt(fields.timeLimitMin)
   if (timeLimitMin === null || timeLimitMin < 1 || timeLimitMin > 600) errors.timeLimitMin = 'Enter a whole number of minutes from 1 to 600'
   const passMarkPercent = toInt(fields.passMarkPercent)
-  if (passMarkPercent === null || passMarkPercent > 100) errors.passMarkPercent = 'Enter a whole number from 0 to 100'
+  if (passMarkPercent === null || passMarkPercent < 0 || passMarkPercent > 100) errors.passMarkPercent = 'Enter a whole number from 0 to 100'
   const maxAttempts = toInt(fields.maxAttempts)
   if (maxAttempts === null || maxAttempts < 1 || maxAttempts > 50) errors.maxAttempts = 'Enter a whole number from 1 to 50'
   if (typeof fields.holdResult !== 'boolean') errors.holdResult = 'Choose whether results are held'
@@ -94,7 +94,8 @@ export function validateExamSetFields(
 
 /** Reads the form's topic mix text: one "topic: count" (or "topic = count") per line. */
 export function parseTopicMixText(text: string): { ok: true; mix: TopicMix } | { ok: false; message: string } {
-  const mix: TopicMix = {}
+  // Null prototype, so a topic such as "__proto__" becomes an own key (copied out below).
+  const mix: TopicMix = Object.create(null)
   const lines = text.split(/\r?\n/)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
@@ -105,7 +106,7 @@ export function parseTopicMixText(text: string): { ok: true; mix: TopicMix } | {
     if (Object.hasOwn(mix, topic)) return { ok: false, message: `Line ${i + 1}: topic "${topic}" is listed twice` }
     mix[topic] = Number(m[2])
   }
-  return { ok: true, mix }
+  return { ok: true, mix: { ...mix } }
 }
 
 export function formatTopicMix(mix: TopicMix | null | undefined): string {

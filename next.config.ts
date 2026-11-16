@@ -11,6 +11,22 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "5mb" },
   },
   partialPrefetching: true,
+  // No page may be framed by another site (clickjacking on the exam or staff pages), plus the
+  // usual baseline headers. A full script CSP is left for later (Next inline scripts need nonces).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
+        ],
+      },
+    ];
+  },
   turbopack: {
     rules: {
       "*.css": {

@@ -52,15 +52,15 @@ export function readCsvRows(
   parsed.data.forEach((raw, index) => {
     const row = index + 1
     if (quoteErrorRows.has(index)) return
-    if (Object.values(raw).every((v) => typeof v !== 'string' || !v.trim())) return
-
     // Papa puts cells beyond the header width in __parsed_extra; trailing empty cells are
-    // harmless, anything else means data would be silently dropped.
+    // harmless, anything else means data would be silently dropped. Checked before the
+    // blank-row skip, so a row with only overflow text is reported, not ignored.
     const extra = Object.hasOwn(raw, '__parsed_extra') ? raw.__parsed_extra : undefined
     if (Array.isArray(extra) && extra.some((v) => typeof v === 'string' && v.trim())) {
       errors.push({ row, message: 'Too many columns; put text containing the separator in quotes' })
       return
     }
+    if (Object.values(raw).every((v) => typeof v !== 'string' || !v.trim())) return
 
     const rawCell = (column: string) => {
       const v = Object.hasOwn(raw, column) ? raw[column] : undefined

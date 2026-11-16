@@ -79,12 +79,13 @@ export type StudentDetail = {
 export async function getStudentDetail(id: string): Promise<StudentDetail | null> {
   if (!isUuid(id)) return null;
   const db = await createClient();
-  const { data: profile } = await db
+  const { data: profile, error: pError } = await db
     .from("profiles")
     .select("id, username, full_name, batch, track")
     .eq("id", id)
     .eq("role", "student")
     .maybeSingle();
+  if (pError) throw new Error(`Could not read the student: ${pError.message}`);
   if (!profile) return null;
 
   const [{ data: assignments, error: aError }, { data: curriculums, error: cError }, { data: attempts, error: tError }] = await Promise.all([
@@ -221,7 +222,8 @@ export async function listQuestions(filters: QuestionFilters): Promise<{ questio
   else if (filters.curriculum) {
     if (!isUuid(filters.curriculum)) setIds = [];
     else {
-      const { data } = await db.from("exam_sets").select("id").eq("curriculum_id", filters.curriculum);
+      const { data, error } = await db.from("exam_sets").select("id").eq("curriculum_id", filters.curriculum);
+      if (error) throw new Error(`Could not read exam sets: ${error.message}`);
       setIds = (data ?? []).map((s) => s.id as string);
     }
   }
@@ -260,11 +262,12 @@ export async function listQuestions(filters: QuestionFilters): Promise<{ questio
 export async function getQuestion(id: string): Promise<StaffQuestion | null> {
   if (!isUuid(id)) return null;
   const db = await createClient();
-  const { data: r } = await db
+  const { data: r, error } = await db
     .from("questions")
     .select("id, exam_set_id, topic, difficulty, stem_de, stem_en, options, correct_option_id, points, status, attempt_questions(count)")
     .eq("id", id)
     .maybeSingle();
+  if (error) throw new Error(`Could not read the question: ${error.message}`);
   if (!r) return null;
   return {
     id: r.id,

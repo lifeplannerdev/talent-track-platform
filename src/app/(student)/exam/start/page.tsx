@@ -58,7 +58,12 @@ async function StartContent({ searchParams }: { searchParams: Promise<{ error?: 
   if (!profile.consent_at) redirect("/consent");
   const state = await getExamStartState(profile.id);
   const { error } = await searchParams;
-  const errorText = error ? (START_ERRORS[error] ?? "The exam could not be started. Please try again.") : null;
+  // Own keys only: "?error=__proto__" must not pick up an inherited object.
+  const errorText = error
+    ? Object.hasOwn(START_ERRORS, error)
+      ? START_ERRORS[error]
+      : "The exam could not be started. Please try again."
+    : null;
 
   if (state.kind === "none") {
     return (

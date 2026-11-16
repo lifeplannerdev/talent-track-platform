@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,8 +22,14 @@ export function ImportStudents() {
   const [result, setResult] = useState<ImportStudentsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // The latest text, and the exact text the shown preview describes: a check that returns after
+  // the text changed is ignored, and Create sends the checked text, never a newer draft.
+  const latestCsv = useRef("");
+  const checkedCsv = useRef<string | null>(null);
 
   const changeCsv = (text: string) => {
+    latestCsv.current = text;
+    checkedCsv.current = null;
     setCsv(text);
     setPreview(null);
     setResult(null);
@@ -39,22 +45,30 @@ export function ImportStudents() {
     startTransition(async () => {
       setError(null);
       setResult(null);
+      const snapshot = csv;
       try {
-        const r = await previewStudentsImport(csv);
-        if (r.ok) setPreview(r);
-        else setError(r.message);
+        const r = await previewStudentsImport(snapshot);
+        if (latestCsv.current !== snapshot) return;
+        if (r.ok) {
+          checkedCsv.current = snapshot;
+          setPreview(r);
+        } else setError(r.message);
       } catch {
-        setError("The file could not be checked. Please try again.");
+        if (latestCsv.current === snapshot) setError("The file could not be checked. Please try again.");
       }
     });
 
   const create = () =>
     startTransition(async () => {
       setError(null);
+      const snapshot = checkedCsv.current;
+      if (snapshot === null) return;
       try {
-        const r = await importStudents(csv);
+        const r = await importStudents(snapshot);
         setResult(r);
-        if (r.ok && r.failed.length === 0) {
+        if (r.ok && r.failed.length === 0 && latestCsv.current === snapshot) {
+          latestCsv.current = "";
+          checkedCsv.current = null;
           setCsv("");
           setPreview(null);
         }

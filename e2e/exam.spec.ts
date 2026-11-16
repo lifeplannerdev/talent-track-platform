@@ -229,6 +229,27 @@ test("a submit that cannot reach the server keeps the exam and its unsaved answe
   expect(done!.status).toBe("submitted");
 });
 
+test("a save that fails while the browser stays online is retried on its own", async ({ page }) => {
+  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
+  await page.getByRole("button", { name: "Start exam" }).click();
+  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  const attemptId = page.url().split("/").pop()!;
+  await expect(page.getByTestId("timer")).not.toHaveText("--:--");
+
+  // No offline event: only the server actions fail for a moment (a server error, say).
+  const blockActions = (route: import("@playwright/test").Route) =>
+    route.request().method() === "POST" ? route.abort("failed") : route.continue();
+  await page.route(`**/exam/${attemptId}`, blockActions);
+  await page.getByRole("radio", { name: "Vielleicht", exact: true }).click();
+  await expect(page.getByTestId("save-status")).toHaveText("Not saved yet, will retry");
+
+  await page.unroute(`**/exam/${attemptId}`, blockActions);
+  await expect(page.getByTestId("save-status")).toHaveText(/Saved/, { timeout: 12_000 });
+  const { data: aq } = await adminDb().from("attempt_questions").select("id").eq("attempt_id", attemptId).eq("position", 1).single();
+  const { data: answer } = await adminDb().from("answers").select("option_id").eq("attempt_question_id", aq!.id).single();
+  expect(answer!.option_id).toBe("c");
+});
+
 test("Submit is disabled while the browser is offline", async ({ page, context }) => {
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
   await page.getByRole("button", { name: "Start exam" }).click();

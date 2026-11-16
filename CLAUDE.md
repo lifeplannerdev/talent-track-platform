@@ -25,6 +25,7 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 - Profiles are created by the `on_auth_user_created` trigger from `raw_app_meta_data` (role, username, full_name, batch, track), which only the admin API can set. The trigger is a deferred constraint trigger (0003) because the Auth admin API sets app metadata after the insert. Usernames map to internal emails via `usernameToEmail` (`username@students.talenttrack.internal`). Public sign-up is off.
 - Questions: German with English translations (`stem_de`, `stem_en`, options `{id, de, en}`).
 - Any change to RLS needs a failing test in `supabase/tests/rls.test.sql` first.
+- Staff have no DELETE on `profiles`, `curriculums` or `exam_sets` (0012): the foreign keys cascade into attempts without RLS. Removing those rows is a service-role operation.
 
 ## Attempts (exam lifecycle)
 - `src/lib/attempts.ts` (server only, service role): `startAttempt`, `getAttemptForStudent` (resume), `saveAnswer`, `submitAttempt`, `sweepExpired`. Callers authenticate with `requireRole('student')` and pass the session user id, never a client id.
@@ -62,3 +63,10 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 
 ## Workflow
 Superpowers (TDD). Project log lives on the Monday board named "TalentTrackPlatform - Project Log". Commits carry no attribution lines.
+
+## Design system (Task 9)
+- Read `DESIGN.md` before any UI work: Königsblau (`--primary #2346a0`) on white paper, Source Sans 3 (body, exam text) and Lexend (headings, big numbers) via `next/font`, light only. Tokens live in `src/app/globals.css`; never raw hex in components.
+- Students: white paper, narrow centred column (`studentMain`), `StudentHeader`, `size="lg"` buttons; exam text uses `text-stem` / `text-option`. Staff: grey canvas, `src/app/staff/layout.tsx` header with `StaffNav` (client, marks the current section from the path), `staffMain`, `PageHeader`, framed tables.
+- Shared pieces: `src/components/app/` (wordmark, page header, student header, error state, class strings in `styles.ts`). Status badges use `success` / `warning` / `destructive` / `outline`.
+- `e2e/design.spec.ts` runs axe (WCAG 2.2 AA, serious and critical fail), asserts no horizontal page overflow and refreshes the screenshots in `docs/design-review/` at 375 px and desktop. `e2e/full-flow.spec.ts` is the end-to-end flow. If screenshots look unstyled after switching branches, delete `.next` (stale Turbopack CSS cache).
+- `next.config.ts` sends `frame-ancestors 'none'`, `X-Frame-Options: DENY` and baseline security headers on every route.

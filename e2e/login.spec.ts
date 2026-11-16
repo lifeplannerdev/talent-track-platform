@@ -111,3 +111,13 @@ test("proxy matcher: look-alike paths are gated, real static assets bypass it", 
   const asset = await request.get("/next.svg", { maxRedirects: 0 });
   expect(asset.status()).toBe(200);
 });
+
+test("pages cannot be framed by other sites and send baseline security headers", async ({ request }) => {
+  const res = await request.get("/login", { maxRedirects: 0 });
+  expect(res.status()).toBe(200);
+  const headers = res.headers();
+  expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(headers["x-frame-options"]).toBe("DENY");
+  expect(headers["x-content-type-options"]).toBe("nosniff");
+  expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+});

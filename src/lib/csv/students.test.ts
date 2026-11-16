@@ -104,6 +104,12 @@ describe('parseStudentsCsv', () => {
     expect(r.errors).toEqual([{ row: 1, message: 'Too many columns; put text containing the separator in quotes' }])
   })
 
+  it('rejects a row whose named cells are blank but which has non-empty extra cells', () => {
+    const r = parseStudentsCsv([HEADER, ',,,,,surprise', ben].join('\n'))
+    expect(r.valid.map((v) => v.username)).toEqual(['ben_t'])
+    expect(r.errors).toEqual([{ row: 1, message: 'Too many columns; put text containing the separator in quotes' }])
+  })
+
   it('is safe against prototype keys in the header and values', () => {
     const r = parseStudentsCsv(['__proto__,username,full_name,batch,track,password', 'x,constructor,Proto,B1,other,test-pass-proto'].join('\n'))
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
