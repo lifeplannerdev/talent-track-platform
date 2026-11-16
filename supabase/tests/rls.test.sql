@@ -1,7 +1,7 @@
 -- RLS and privacy tests for the Phase 1 schema (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(41);
+select plan(42);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Auth users are created like the staff action will
@@ -16,6 +16,9 @@ values
    'anna@students.test', '{"role":"student","username":"anna","full_name":"Anna","batch":"2026-A","track":"nursing"}', '{"role":"staff"}', now(), now()),
   ('00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
    'ben@students.test', '{"username":"ben","full_name":"Ben"}', '{}', now(), now());
+-- The profile trigger is deferred (see 0003) so it sees the final row; fire it now.
+set constraints all immediate;
+set constraints all deferred;
 
 insert into public.curriculums (id, name) values ('10000000-0000-0000-0000-000000000001', 'Life in Germany');
 insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result)
@@ -63,10 +66,23 @@ select is((select role from public.profiles where id = '00000000-0000-0000-0000-
   'user metadata cannot make a student staff');
 select is((select role || '/' || username from public.profiles where id = '00000000-0000-0000-0000-0000000000b2'), 'student/ben',
   'role defaults to student when app metadata has none');
-select throws_ok($$insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, created_at, updated_at)
+select throws_ok($t$do $d$ begin
+  insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, created_at, updated_at)
   values ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-          'nouser@students.test', '{"role":"student"}', now(), now())$$, 'P0001', 'username is required in raw_app_meta_data',
+          'nouser@students.test', '{"role":"student"}', now(), now());
+  set constraints all immediate;
+end $d$$t$, 'P0001', 'username is required in raw_app_meta_data',
   'profile trigger rejects a user without a username in app metadata');
+-- Auth admin API flow: insert with provider-only app metadata, then set the real metadata in the same transaction.
+insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, created_at, updated_at)
+values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+        'admin-api@students.test', '{"provider":"email","providers":["email"]}', now(), now());
+update auth.users set raw_app_meta_data = raw_app_meta_data || '{"role":"student","username":"Carla","full_name":"Carla"}'
+  where id = '00000000-0000-0000-0000-0000000000c2';
+set constraints all immediate;
+set constraints all deferred;
+select is((select role || '/' || username from public.profiles where id = '00000000-0000-0000-0000-0000000000c2'), 'student/carla',
+  'profile is built from app metadata set after the insert (Auth admin API flow)');
 select hasnt_column('public', 'student_questions', 'correct_option_id', 'student question view has no correct_option_id');
 
 -- ---------------------------------------------------------------------------
@@ -134,7 +150,7 @@ set local role authenticated;
 
 select is((select count(*)::int from public.attempts), 5, 'staff can read every attempt');
 select is((select count(*)::int from public.questions where correct_option_id is not null), 3, 'staff can read correct_option_id');
-select is((select count(*)::int from public.profiles), 3, 'staff can read every profile');
+select is((select count(*)::int from public.profiles where id::text like '00000000-0000-0000-0000-0000000000%'), 4, 'staff can read every profile');
 select throws_ok($$update public.attempts set points = 99 where id = '40000000-0000-0000-0000-000000000002'$$, '42501',
   null, 'staff cannot edit auto-scored points');
 

@@ -22,9 +22,15 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 - Every public table has RLS. Anon has no privileges.
 - Students never read `questions`, `attempts` or `assignments` directly. They use the views `student_assignments` (status masked to open while a held attempt is submitted), `student_questions` (no `correct_option_id`) and `student_attempts` (points, max_points, passed are NULL until status = 'released').
 - Staff can read everything but cannot write `attempts`, `attempt_questions`: scoring, release and attempt creation run in server code with the service role.
-- Profiles are created by the `on_auth_user_created` trigger from `raw_app_meta_data` (role, username, full_name, batch, track), which only the admin API can set. Usernames map to internal emails (for example `username@students.talenttrack.invalid`). Public sign-up is off.
+- Profiles are created by the `on_auth_user_created` trigger from `raw_app_meta_data` (role, username, full_name, batch, track), which only the admin API can set. The trigger is a deferred constraint trigger (0003) because the Auth admin API sets app metadata after the insert. Usernames map to internal emails via `usernameToEmail` (`username@students.talenttrack.internal`). Public sign-up is off.
 - Questions: German with English translations (`stem_de`, `stem_en`, options `{id, de, en}`).
 - Any change to RLS needs a failing test in `supabase/tests/rls.test.sql` first.
+
+## Auth and sessions
+- Next 16 uses `src/proxy.ts` (the renamed middleware) for auth redirects: unauthenticated to `/login`, students to `/consent` until `consent_at`, staff and students kept to their own areas. It calls `getUser()` so a session ended by a newer login is rejected at once.
+- Login ends other sessions (`signOut({ scope: 'others' })`). Consent is written by a server action with the service role.
+- Pages that read the session call `requireRole()` (which awaits `connection()`) inside `<Suspense>`, as required by `cacheComponents`.
+- e2e (`npm run test:e2e`) needs the local stack and `.env.local`; it seeds test users with the service role (`e2e/seed.ts`).
 
 ## Workflow
 Superpowers (TDD). Project log lives on the Monday board named "TalentTrackPlatform - Project Log". Commits carry no attribution lines.
