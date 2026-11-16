@@ -40,6 +40,11 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 - `notFound()` inside a Suspense boundary renders the not-found UI with HTTP 200 (streaming); tests check for absence of data, not the status.
 - Expiry is lazy (on every read/save of an attempt); `/api/cron/sweep` (Bearer `CRON_SECRET`, exempt from the proxy) is a daily backup because Vercel Hobby only allows daily crons.
 
+## Blocking and grants (Task 7)
+- Blocking lives in `release_attempt` (0008): on a failed release, when attempts used (the student's attempts for that exam set with status 'submitted' or 'released', counted at release) >= `max_attempts`, the assignment goes 'open' -> 'blocked'. Written only at release, so a held result never shows a block early. A pass sets 'passed'; 'passed' is never downgraded.
+- Attempts are only ever made available by staff: `grantAttempt(studentId, examSetId, staffId)` (`src/lib/grants.ts`, service role) wraps the SQL function `grant_attempt` (0008, service role only). It checks staff, assignment, not passed, nothing in progress, no unused grant (no stacking, typed `GrantError`), and enough unseen approved questions (per topic when `topic_mix` is set); otherwise it returns `{ ok: false, unseenAvailable, needed }` and writes nothing. A grant after a block also sets the assignment back to 'open' in the same transaction.
+- Staff pages: `/staff` dashboard, `/staff/blocked`, `/staff/grants` (readers in `src/lib/staff-overview.ts`, session client and RLS); `grantAttemptAction` in `src/app/staff/grants/actions.ts`. The "Reassign curriculums" link points at `/staff/students/[id]` (Task 8).
+
 ## Auth and sessions
 - Next 16 uses `src/proxy.ts` (the renamed middleware) for auth redirects: unauthenticated to `/login`, students to `/consent` until `consent_at`, staff and students kept to their own areas. It calls `getUser()` so a session ended by a newer login is rejected at once.
 - Login ends other sessions (`signOut({ scope: 'others' })`). Consent is written by a server action with the service role.

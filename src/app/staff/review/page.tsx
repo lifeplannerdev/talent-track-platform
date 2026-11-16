@@ -5,10 +5,10 @@ import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
 import { listSubmittedAttempts } from "@/lib/review";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StaffNav } from "../staff-nav";
 
 export const metadata: Metadata = { title: "Review | TalentTrack" };
 
@@ -85,12 +85,8 @@ function ListSkeleton() {
 export default function ReviewPage() {
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Results awaiting release</h1>
-        <Link href="/staff" className={buttonVariants({ variant: "outline" })}>
-          Staff area
-        </Link>
-      </div>
+      <h1 className="text-2xl font-semibold">Results awaiting release</h1>
+      <StaffNav current="/staff/review" />
       <p className="text-sm text-muted-foreground">
         Scores are calculated automatically and cannot be changed. Open an exam to check it, then release the result
         to the student.

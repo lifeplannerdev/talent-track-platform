@@ -1,10 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { usernameToEmail } from "../src/lib/auth/username";
 import {
+  BLOCK_CURRICULUM,
   EXAM_CURRICULUM_HELD,
   EXAM_CURRICULUM_OPEN,
   NEXT_CURRICULUM,
   STAFF,
+  STUDENT_BLOCK,
   STUDENT_CONSENTED,
   STUDENT_EXAM,
   STUDENT_EXAM_OPEN,
@@ -29,6 +31,7 @@ export async function seed() {
     usernameToEmail(STUDENT_CONSENTED.username),
     usernameToEmail(STUDENT_EXAM.username),
     usernameToEmail(STUDENT_EXAM_OPEN.username),
+    usernameToEmail(STUDENT_BLOCK.username),
   ];
   for (const u of list.users.filter((u) => u.email && emails.includes(u.email))) {
     const { error } = await db.auth.admin.deleteUser(u.id);
@@ -86,6 +89,13 @@ export async function seed() {
 
   await seedExam(STUDENT_EXAM, EXAM_CURRICULUM_HELD, true, create);
   await seedExam(STUDENT_EXAM_OPEN, EXAM_CURRICULUM_OPEN, false, create);
+  await seedExam(STUDENT_BLOCK, BLOCK_CURRICULUM, true, create, {
+    questionCount: 2,
+    maxAttempts: 2,
+    passMarkPercent: 100,
+    extraStems: 3,
+    grant: false,
+  });
 }
 
 /**
@@ -98,6 +108,7 @@ async function seedExam(
   curriculumName: string,
   holdResult: boolean,
   create: (email: string, password: string, meta: Record<string, string>) => Promise<string>,
+  opts: { questionCount?: number; maxAttempts?: number; passMarkPercent?: number; extraStems?: number; grant?: boolean } = {},
 ) {
   const db = adminDb();
   const studentId = await create(usernameToEmail(student.username), student.password, {
@@ -124,9 +135,10 @@ async function seedExam(
     .insert({
       curriculum_id: curriculum.id,
       name: holdResult ? "Grundlagen (held)" : "Grundlagen",
-      question_count: 3,
+      question_count: opts.questionCount ?? 3,
       time_limit_min: 30,
-      pass_mark_percent: 60,
+      pass_mark_percent: opts.passMarkPercent ?? 60,
+      max_attempts: opts.maxAttempts ?? 1,
       hold_result: holdResult,
     })
     .select("id")
@@ -142,7 +154,10 @@ async function seedExam(
     ["Ist Berlin die Hauptstadt von Frankreich?", "Is Berlin the capital of France?"],
     ["Hat eine Woche acht Tage?", "Does a week have eight days?"],
     ["Ist Wasser bei Raumtemperatur fest?", "Is water solid at room temperature?"],
-  ];
+    ["Ist der Mond aus Käse?", "Is the moon made of cheese?"],
+    ["Hat ein Jahr dreizehn Monate?", "Does a year have thirteen months?"],
+    ["Ist Schnee schwarz?", "Is snow black?"],
+  ].slice(0, 3 + (opts.extraStems ?? 0));
   const { error: qError } = await db.from("questions").insert(
     stems.map(([de, en]) => ({
       exam_set_id: set.id,
@@ -162,6 +177,7 @@ async function seedExam(
     .from("assignments")
     .insert({ student_id: studentId, curriculum_id: curriculum.id, position: 1, status: "open" });
   if (aError) throw aError;
+  if (opts.grant === false) return;
   const { error: gError } = await db.from("attempt_grants").insert({ student_id: studentId, exam_set_id: set.id });
   if (gError) throw gError;
 }

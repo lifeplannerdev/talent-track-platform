@@ -77,7 +77,7 @@ test("a student visiting /staff is redirected to their own area", async ({ page 
 test("staff sign in with email and cannot open student areas", async ({ page }) => {
   await signIn(page, STAFF.email, STAFF.password);
   await expect(page).toHaveURL(/\/staff$/);
-  await expect(page.getByRole("heading", { name: "Staff area" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await page.goto("/exam/start");
   await expect(page).toHaveURL(/\/staff$/);
 });
