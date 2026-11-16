@@ -19,12 +19,19 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
     <Card data-testid="review-question" size="sm">
       <CardHeader>
         <CardDescription>
-          Question {q.position} · {q.topic}
+          Question {q.position}
+          {q.topic ? ` · ${q.topic}` : null}
         </CardDescription>
         <CardAction>
-          <Badge variant={q.awardedPoints > 0 ? "secondary" : "destructive"} data-testid="awarded-points">
-            {q.awardedPoints} / {q.maxPoints} points
-          </Badge>
+          {q.awardedPoints === null || q.maxPoints === null ? (
+            <Badge variant="outline" data-testid="awarded-points">
+              Not scored
+            </Badge>
+          ) : (
+            <Badge variant={q.awardedPoints > 0 ? "secondary" : "destructive"} data-testid="awarded-points">
+              {q.awardedPoints} / {q.maxPoints} points
+            </Badge>
+          )}
         </CardAction>
         <CardTitle className="grid gap-3 font-normal md:grid-cols-2">
           <p lang="de">

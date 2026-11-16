@@ -102,6 +102,24 @@ async function submittedAttempt(studentId: string, choose: (topic: string, point
   return attemptId;
 }
 
+/** Topic rows (student) and per-question points (staff) must add up to the stored total. */
+function expectTopicsAddUp(result: { points: number; maxPoints: number; topics: { points: number; max: number }[] }) {
+  expect(result.topics.reduce((s, t) => s + t.points, 0)).toBe(result.points);
+  expect(result.topics.reduce((s, t) => s + t.max, 0)).toBe(result.maxPoints);
+}
+
+/** Staff edit every question of the set after scoring: new key, new points, new topic. */
+async function editQuestions() {
+  await ok(db.from("questions").update({ correct_option_id: "a", points: 10, topic: "geändert" }).eq("exam_set_id", setId));
+}
+async function restoreQuestions() {
+  const rows = await must(db.from("questions").select("id, stem_de").eq("exam_set_id", setId));
+  for (const r of rows) {
+    const i = Number(/Frage (\d+)/.exec(r.stem_de)![1]) - 1;
+    await ok(db.from("questions").update({ correct_option_id: "b", ...QUESTIONS[i] }).eq("id", r.id));
+  }
+}
+
 async function attemptRow(attemptId: string) {
   return must(db.from("attempts").select("*").eq("id", attemptId).single());
 }
@@ -309,10 +327,44 @@ describe("getStudentResult after release", () => {
       { topic: "alltag", points: 1, max: 4 },
       { topic: "recht", points: 3, max: 3 },
     ]);
+    expectTopicsAddUp(result);
     const json = JSON.stringify(result);
     expect(json).not.toContain("correct");
     expect(json).not.toContain("option");
     expect(json).not.toContain(student.id);
+  });
+
+  it("questions edited after scoring change neither the breakdown nor the staff evaluation", async () => {
+    const student = await makeUser("student");
+    const attemptId = await submittedAttempt(student.id, (topic, points) => (topic === "alltag" && points === 3 ? "a" : "b"));
+    await editQuestions();
+    try {
+      session.client = staffClient;
+      const review = await getAttemptReview(attemptId);
+      expect(review).toMatchObject({ points: 4, maxPoints: 7 });
+      expect(review!.questions.reduce((s, q) => s + (q.awardedPoints ?? 0), 0)).toBe(4);
+      expect(review!.questions.reduce((s, q) => s + (q.maxPoints ?? 0), 0)).toBe(7);
+      for (const q of review!.questions) {
+        expect(q.correctOptionId).toBe("b");
+        expect(q.topic).not.toBe("geändert");
+      }
+      // The answer "a" now matches the live key, but it was wrong when scored.
+      const wrong = review!.questions.find((q) => q.chosenOptionId === "a")!;
+      expect(wrong).toMatchObject({ awardedPoints: 0, maxPoints: 3, topic: "alltag" });
+
+      await releaseAttempt(attemptId, staffId);
+      session.client = student.client;
+      const result = await getStudentResult(student.id, attemptId);
+      if (result?.status !== "released") throw new Error("expected a released result");
+      expect(result).toMatchObject({ points: 4, maxPoints: 7 });
+      expect(result.topics).toEqual([
+        { topic: "alltag", points: 1, max: 4 },
+        { topic: "recht", points: 3, max: 3 },
+      ]);
+      expectTopicsAddUp(result);
+    } finally {
+      await restoreQuestions();
+    }
   });
 
   it("a student cannot read another student's released attempt", async () => {
@@ -371,6 +423,8 @@ describe("staff review readers", () => {
 
     const review = await getAttemptReview(attemptId);
     expect(review).toMatchObject({ id: attemptId, status: "submitted", points: 4, maxPoints: 7, passed: false });
+    expect(review!.questions.reduce((s, q) => s + (q.awardedPoints ?? 0), 0)).toBe(review!.points);
+    expect(review!.questions.reduce((s, q) => s + (q.maxPoints ?? 0), 0)).toBe(review!.maxPoints);
     expect(review!.questions).toHaveLength(4);
     expect(review!.questions.map((q) => q.position)).toEqual([1, 2, 3, 4]);
     for (const q of review!.questions) {

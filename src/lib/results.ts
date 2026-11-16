@@ -88,7 +88,9 @@ export async function getStudentResult(studentId: string, attemptId: string): Pr
 }
 
 /**
- * Per-topic points of a released attempt. Needs the answer key, so it runs with the service
+ * Per-topic points of a released attempt from the scoring snapshot stored on
+ * attempt_questions (migration 0007), so it always adds up to the stored total even if
+ * questions were edited later. attempt_questions is staff-only, so this runs with the service
  * role, but only after checking again that the attempt belongs to this student and is
  * released. Only topic totals leave this function.
  */
@@ -96,42 +98,27 @@ async function topicBreakdown(studentId: string, attemptId: string): Promise<Top
   const db = createAdminClient();
   const { data: owned, error } = await db
     .from("attempts")
-    .select("deadline_at")
+    .select("id")
     .eq("id", attemptId)
     .eq("student_id", studentId)
     .eq("status", "released")
-    .maybeSingle<{ deadline_at: string }>();
+    .maybeSingle<{ id: string }>();
   if (error) throw new Error(`Could not read attempt: ${error.message}`);
   if (!owned) return [];
 
   const { data: rows, error: qError } = await db
     .from("attempt_questions")
-    .select("id, questions(topic, points, correct_option_id)")
-    .eq("attempt_id", attemptId);
+    .select("topic, max_points, awarded_points")
+    .eq("attempt_id", owned.id)
+    .not("awarded_points", "is", null);
   if (qError) throw new Error(`Could not read questions: ${qError.message}`);
-  const paper = (rows ?? []) as unknown as {
-    id: string;
-    questions: { topic: string; points: number; correct_option_id: string };
-  }[];
-  if (paper.length === 0) return [];
-
-  // Same rule as scoring: only answers saved before the deadline count.
-  const { data: saved, error: aError } = await db
-    .from("answers")
-    .select("attempt_question_id, option_id")
-    .in(
-      "attempt_question_id",
-      paper.map((r) => r.id),
-    )
-    .lte("saved_at", owned.deadline_at);
-  if (aError) throw new Error(`Could not read answers: ${aError.message}`);
-  const chosen = new Map((saved ?? []).map((a) => [a.attempt_question_id as string, a.option_id as string]));
+  const paper = (rows ?? []) as { topic: string; max_points: number; awarded_points: number }[];
 
   const topics = new Map<string, TopicScore>();
   for (const r of paper) {
-    const t = topics.get(r.questions.topic) ?? { topic: r.questions.topic, points: 0, max: 0 };
-    t.max += r.questions.points;
-    if (chosen.get(r.id) === r.questions.correct_option_id) t.points += r.questions.points;
+    const t = topics.get(r.topic) ?? { topic: r.topic, points: 0, max: 0 };
+    t.max += r.max_points;
+    t.points += r.awarded_points;
     topics.set(t.topic, t);
   }
   return [...topics.values()].sort((a, b) => a.topic.localeCompare(b.topic));

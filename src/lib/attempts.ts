@@ -398,6 +398,15 @@ async function finalizeAttempt(attemptId: string): Promise<void> {
     p_points: result.points,
     p_max_points: result.max,
     p_passed: result.passed,
+    // Per-question snapshot of what was scored (key, points, topic as read now). Readers use
+    // it so later question edits never contradict the stored total (migration 0007).
+    p_questions: paper.map((r) => ({
+      attempt_question_id: r.id,
+      correct_option_id: r.questions.correct_option_id,
+      max_points: r.questions.points,
+      awarded_points: result.byQuestion[r.questions.id] ?? 0,
+      topic: r.questions.topic,
+    })),
   });
   if (scoreError) throw toError(scoreError, "Could not record score");
   // For sets without held results record_score has already released the attempt and set the

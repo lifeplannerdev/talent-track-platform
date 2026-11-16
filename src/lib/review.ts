@@ -70,18 +70,19 @@ export async function listSubmittedAttempts(): Promise<ReviewListItem[]> {
   return rows.map(toItem);
 }
 
+/** Key, topic and points come from the scoring snapshot (null until the attempt is scored). */
 export type ReviewQuestion = {
   attemptQuestionId: string;
   position: number;
-  topic: string;
+  topic: string | null;
   stemDe: string;
   stemEn: string;
   /** In the order the student saw them. */
   options: QuestionOption[];
-  correctOptionId: string;
+  correctOptionId: string | null;
   chosenOptionId: string | null;
-  awardedPoints: number;
-  maxPoints: number;
+  awardedPoints: number | null;
+  maxPoints: number | null;
 };
 
 export type AttemptReview = ReviewListItem & {
@@ -105,7 +106,7 @@ export async function getAttemptReview(attemptId: string): Promise<AttemptReview
 
   const { data: rows, error: qError } = await supabase
     .from("attempt_questions")
-    .select("id, position, option_order, questions(topic, stem_de, stem_en, options, correct_option_id, points)")
+    .select("id, position, option_order, topic, correct_option_id, max_points, awarded_points, questions(stem_de, stem_en, options)")
     .eq("attempt_id", attempt.id)
     .order("position");
   if (qError) throw new Error(`Could not read questions: ${qError.message}`);
@@ -113,19 +114,16 @@ export async function getAttemptReview(attemptId: string): Promise<AttemptReview
     id: string;
     position: number;
     option_order: string[];
-    questions: {
-      topic: string;
-      stem_de: string;
-      stem_en: string;
-      options: QuestionOption[];
-      correct_option_id: string;
-      points: number;
-    };
+    topic: string | null;
+    correct_option_id: string | null;
+    max_points: number | null;
+    awarded_points: number | null;
+    questions: { stem_de: string; stem_en: string; options: QuestionOption[] };
   }[];
 
   const chosen = new Map<string, string>();
   if (paper.length) {
-    // Same rule as scoring: only answers saved before the deadline count.
+    // The student's choice, as scored: only answers saved before the deadline count.
     const { data: saved, error: aError } = await supabase
       .from("answers")
       .select("attempt_question_id, option_id")
@@ -145,18 +143,17 @@ export async function getAttemptReview(attemptId: string): Promise<AttemptReview
     releasedBy: attempt.releaser ? nameOf(attempt.releaser) : null,
     questions: paper.map((r) => {
       const q = r.questions;
-      const choice = chosen.get(r.id) ?? null;
       return {
         attemptQuestionId: r.id,
         position: r.position,
-        topic: q.topic,
+        topic: r.topic,
         stemDe: q.stem_de,
         stemEn: q.stem_en,
         options: r.option_order.map((id) => q.options.find((o) => o.id === id) ?? { id, de: "", en: "" }),
-        correctOptionId: q.correct_option_id,
-        chosenOptionId: choice,
-        awardedPoints: choice === q.correct_option_id ? q.points : 0,
-        maxPoints: q.points,
+        correctOptionId: r.correct_option_id,
+        chosenOptionId: chosen.get(r.id) ?? null,
+        awardedPoints: r.awarded_points,
+        maxPoints: r.max_points,
       };
     }),
   };

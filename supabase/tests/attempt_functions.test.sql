@@ -1,6 +1,6 @@
 -- Attempt lifecycle functions from 0004 (pgTAP). Run: npm run db:test
 begin;
-select plan(47);
+select plan(57);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -34,13 +34,26 @@ insert into public.assignments (student_id, curriculum_id, position, status) val
 create temp table ids (name text primary key, id uuid);
 grant all on ids to public;
 
+-- Scoring snapshot as server code builds it: the live key, points and topic of every question
+-- of the attempt in paper order, with the given awarded points per position.
+create function pg_temp.snap(p_attempt uuid, p_awarded int[]) returns jsonb language sql as $f$
+  select jsonb_agg(jsonb_build_object(
+           'attempt_question_id', aq.id, 'correct_option_id', q.correct_option_id,
+           'max_points', q.points, 'awarded_points', p_awarded[aq.position], 'topic', q.topic)
+         order by aq.position)
+  from public.attempt_questions aq join public.questions q on q.id = aq.question_id
+  where aq.attempt_id = p_attempt
+$f$;
+grant execute on function pg_temp.snap(uuid, int[]) to public;
+
 -- Privileges -----------------------------------------------------------------
 set local role authenticated;
 select throws_ok($$select public.start_attempt('00000000-0000-0000-0000-0000000005b1', '20000000-0000-0000-0000-0000000005e1', '[]')$$,
   '42501', null, 'authenticated users cannot call start_attempt');
 select throws_ok($$select public.save_answer('00000000-0000-0000-0000-0000000005b1', gen_random_uuid(), gen_random_uuid(), 'a')$$,
   '42501', null, 'authenticated users cannot call save_answer');
-select throws_ok($$select public.record_score(gen_random_uuid(), 1, 1, true)$$,
+select hasnt_function('public', 'record_score', array['uuid', 'integer', 'integer', 'boolean'], 'record_score without a snapshot is gone');
+select throws_ok($$select public.record_score(gen_random_uuid(), 1, 1, true, '[]')$$,
   '42501', null, 'authenticated users cannot call record_score');
 select throws_ok($$select public.release_attempt(gen_random_uuid(), null)$$,
   '42501', null, 'authenticated users cannot call release_attempt');
@@ -111,10 +124,30 @@ select throws_ok($$select public.save_answer('00000000-0000-0000-0000-0000000005
   'P0001', 'closed', 'saving into a submitted attempt is rejected');
 
 -- record_score ----------------------------------------------------------------
-select is((select public.record_score((select id from ids where name = 'a1'), 1, 2, true)), 'submitted',
+select throws_ok($$select public.record_score((select id from ids where name = 'a1'), 2, 2, true, pg_temp.snap((select id from ids where name = 'a1'), array[1, 0]))$$,
+  'P0001', 'invalid_snapshot', 'a snapshot whose awarded points do not add up to the total is rejected');
+select throws_ok($$select public.record_score((select id from ids where name = 'a1'), 1, 2, true,
+    (select jsonb_agg(e) from jsonb_array_elements(pg_temp.snap((select id from ids where name = 'a1'), array[1, 0])) e where (e ->> 'awarded_points')::int = 1))$$,
+  'P0001', 'invalid_snapshot', 'a snapshot that misses a question of the attempt is rejected');
+select throws_ok($$select public.record_score((select id from ids where name = 'a1'), 3, 3, true,
+    pg_temp.snap((select id from ids where name = 'a1'), array[1, 0]) || jsonb_build_array(jsonb_build_object('attempt_question_id', (select id from public.attempt_questions where attempt_id <> (select id from ids where name = 'a1') limit 1), 'correct_option_id', 'b', 'max_points', 1, 'awarded_points', 1, 'topic', 't')))$$,
+  'P0001', 'invalid_snapshot', 'a snapshot with a question of another attempt is rejected');
+select throws_ok($$select public.record_score((select id from ids where name = 'a1'), 3, 2, true, pg_temp.snap((select id from ids where name = 'a1'), array[2, 1]))$$,
+  'P0001', 'invalid_snapshot', 'awarded points above a question''s points are rejected');
+select is((select points from public.attempts where id = (select id from ids where name = 'a1')), null, 'rejected snapshots store no score');
+select is((select public.record_score((select id from ids where name = 'a1'), 1, 2, true, pg_temp.snap((select id from ids where name = 'a1'), array[1, 0]))), 'submitted',
   'held set: the score is stored and the attempt stays submitted');
-select is((select public.record_score((select id from ids where name = 'a1'), 2, 2, true)), null,
+select is((select public.record_score((select id from ids where name = 'a1'), 2, 2, true, pg_temp.snap((select id from ids where name = 'a1'), array[1, 1]))), null,
   'the score is written only once');
+select is((select sum(awarded_points)::int || '/' || sum(max_points)::int from public.attempt_questions where attempt_id = (select id from ids where name = 'a1')),
+  (select points || '/' || max_points from public.attempts where id = (select id from ids where name = 'a1')),
+  'the per-question snapshot adds up to the stored total');
+select is((select array_agg(correct_option_id || ':' || awarded_points || ':' || topic order by position) from public.attempt_questions where attempt_id = (select id from ids where name = 'a1')),
+  array['b:1:t', 'b:0:t'], 'the key, awarded points and topic are stored per question and not overwritten by a second call');
+update public.questions set correct_option_id = 'a', points = 9, topic = 'edited' where id = '30000000-0000-0000-0000-000000000501';
+select is((select correct_option_id || ':' || max_points || ':' || topic from public.attempt_questions where attempt_id = (select id from ids where name = 'a1') and position = 1),
+  'b:1:t', 'a later edit of the question does not change the snapshot');
+update public.questions set correct_option_id = 'b', points = 1, topic = 't' where id = '30000000-0000-0000-0000-000000000501';
 
 insert into public.attempt_grants (student_id, exam_set_id) values ('00000000-0000-0000-0000-0000000005b2', '20000000-0000-0000-0000-0000000005e2');
 insert into ids select 'b1', public.start_attempt('00000000-0000-0000-0000-0000000005b2', '20000000-0000-0000-0000-0000000005e2',
@@ -152,14 +185,16 @@ create function pg_temp.block_assignments() returns trigger language plpgsql as 
 begin raise exception 'assignment update blocked'; end $f$;
 create trigger block_assignments before update on public.assignments for each row execute function pg_temp.block_assignments();
 set local role service_role;
-select throws_ok($$select public.record_score((select id from ids where name = 'b1'), 2, 2, true)$$,
+select throws_ok($$select public.record_score((select id from ids where name = 'b1'), 2, 2, true, pg_temp.snap((select id from ids where name = 'b1'), array[1, 1]))$$,
   'P0001', 'assignment update blocked', 'non-held: a failing assignment update aborts the release');
 select is((select status || '/' || coalesce(points::text, 'null') || '/' || coalesce(released_at::text, 'null') from public.attempts where id = (select id from ids where name = 'b1')),
   'submitted/null/null', 'nothing of the score or release was committed');
+select is((select count(*)::int from public.attempt_questions where attempt_id = (select id from ids where name = 'b1') and awarded_points is not null), 0,
+  'nor any of the per-question snapshot');
 reset role;
 drop trigger block_assignments on public.assignments;
 set local role service_role;
-select is((select public.record_score((select id from ids where name = 'b1'), 2, 2, true)), 'released',
+select is((select public.record_score((select id from ids where name = 'b1'), 2, 2, true, pg_temp.snap((select id from ids where name = 'b1'), array[1, 1]))), 'released',
   'non-held: record_score releases in the same call');
 select is((select released_by from public.attempts where id = (select id from ids where name = 'b1')), null,
   'an automatic release records no staff member');
@@ -172,7 +207,7 @@ insert into public.attempt_grants (student_id, exam_set_id) values ('00000000-00
 insert into ids select 'b2', public.start_attempt('00000000-0000-0000-0000-0000000005b2', '20000000-0000-0000-0000-0000000005e1',
   '[{"question_id":"30000000-0000-0000-0000-000000000501","option_order":["a","b"]},{"question_id":"30000000-0000-0000-0000-000000000502","option_order":["a","b"]}]');
 do $d$ begin perform public.close_attempt((select id from ids where name = 'b2'), false); end $d$;
-do $d$ begin perform public.record_score((select id from ids where name = 'b2'), 0, 2, false); end $d$;
+do $d$ begin perform public.record_score((select id from ids where name = 'b2'), 0, 2, false, pg_temp.snap((select id from ids where name = 'b2'), array[0, 0])); end $d$;
 select is((select public.release_attempt((select id from ids where name = 'b2'), '00000000-0000-0000-0000-0000000005a2')), true, 'a failed held attempt is released');
 select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b2'), 'open',
   'a failed release leaves the assignment open');

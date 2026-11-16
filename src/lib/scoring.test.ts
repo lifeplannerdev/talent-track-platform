@@ -80,9 +80,16 @@ describe('scoreAttempt', () => {
     expect(sum).toEqual({ points: r.points, max: r.max })
   })
 
+  it('byQuestion gives the points awarded per question and sums to the total', () => {
+    const qs = [q('1', 'A', 2), q('2', 'A', 3, 'b'), q('3', 'B', 5)]
+    const r = scoreAttempt(qs, { '1': 'a', '2': 'a', '3': 'a' }, 50)
+    expect(r.byQuestion).toEqual({ '1': 2, '2': 0, '3': 5 })
+    expect(Object.values(r.byQuestion).reduce((s, n) => s + n, 0)).toBe(r.points)
+  })
+
   it('zero max gives 0 percent and not passed', () => {
     const r = scoreAttempt([], {}, 0)
-    expect(r).toEqual({ points: 0, max: 0, percent: 0, passed: false, byTopic: {} })
+    expect(r).toEqual({ points: 0, max: 0, percent: 0, passed: false, byTopic: {}, byQuestion: {} })
   })
 
   it('7 of 10 passes a 70 percent mark', () => {

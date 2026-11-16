@@ -1,7 +1,7 @@
 -- RLS and privacy tests for the Phase 1 schema (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(42);
+select plan(46);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Auth users are created like the staff action will
@@ -90,6 +90,11 @@ select set_config('test.profile_total', (select count(*)::text from public.profi
 select set_config('test.attempt_total', (select count(*)::text from public.attempts), true);
 select set_config('test.question_total', (select count(*)::text from public.questions), true);
 select hasnt_column('public', 'student_questions', 'correct_option_id', 'student question view has no correct_option_id');
+select hasnt_column('public', 'student_questions', 'awarded_points', 'student question view has no awarded_points');
+select hasnt_column('public', 'student_attempts', 'awarded_points', 'student attempt view has no awarded_points');
+-- Scoring snapshot on Anna's released attempt (as postgres; record_score writes it in the app).
+update public.attempt_questions set correct_option_id = 'b', max_points = 1, awarded_points = 1, topic = 'law'
+  where id = '50000000-0000-0000-0000-000000000001';
 
 -- ---------------------------------------------------------------------------
 -- Student Anna
@@ -111,6 +116,9 @@ select is((select passed from public.student_attempts where id = '40000000-0000-
   'passed is hidden while the attempt is submitted but not released');
 select is((select count(*)::int from public.questions), 0, 'student cannot read the questions table (so no correct_option_id)');
 select is((select count(*)::int from public.student_questions), 4, 'student sees only the questions drawn into their own attempts');
+select is((select count(*)::int from public.attempt_questions), 0, 'student cannot select attempt_questions, so not the scoring snapshot');
+select is((select count(*)::int from public.attempt_questions where awarded_points is not null or correct_option_id is not null), 0,
+  'student cannot read the stored key or awarded points, not even of a released attempt');
 select is((select count(*)::int from public.profiles), 1, 'student sees only their own profile');
 select is_empty($$update public.profiles set role = 'staff' where id = '00000000-0000-0000-0000-0000000000b1' returning id$$,
   'student cannot update their profile (no privilege escalation)');

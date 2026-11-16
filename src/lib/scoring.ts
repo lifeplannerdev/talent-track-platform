@@ -6,6 +6,8 @@ export type ScoreResult = {
   percent: number
   passed: boolean
   byTopic: Record<string, { points: number; max: number }>
+  /** Points awarded per question id; sums to points. */
+  byQuestion: Record<string, number>
 }
 
 // answers is keyed by question id; the value is the chosen option id or null.
@@ -19,10 +21,12 @@ export function scoreAttempt(
   let max = 0
   // Map avoids prototype hazards for topics like "__proto__".
   const topics = new Map<string, { points: number; max: number }>()
+  const byQuestion: Record<string, number> = Object.create(null)
 
   for (const question of questions) {
     const earned = answers[question.id] === question.correctOptionId ? question.points : 0
     points += earned
+    byQuestion[question.id] = earned
     max += question.points
     const topic = topics.get(question.topic) ?? { points: 0, max: 0 }
     topic.points += earned
@@ -40,7 +44,7 @@ export function scoreAttempt(
     })
   }
 
-  if (max === 0) return { points: 0, max: 0, percent: 0, passed: false, byTopic }
+  if (max === 0) return { points: 0, max: 0, percent: 0, passed: false, byTopic, byQuestion: { ...byQuestion } }
 
   const ratio = points / max
   return {
@@ -50,5 +54,6 @@ export function scoreAttempt(
     // Compare the unrounded ratio so rounding can never flip a result.
     passed: ratio >= passMarkPercent / 100,
     byTopic,
+    byQuestion: { ...byQuestion },
   }
 }
