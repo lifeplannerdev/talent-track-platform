@@ -1,7 +1,7 @@
 -- RLS and privacy tests for the Phase 1 schema (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(46);
+select plan(53);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Auth users are created like the staff action will
@@ -172,6 +172,16 @@ select throws_ok($$insert into public.attempts (student_id, exam_set_id, deadlin
   null, 'staff cannot insert attempts');
 select throws_ok($$insert into public.answers (attempt_question_id, option_id) values ('50000000-0000-0000-0000-000000000002', 'a')$$, '42501',
   null, 'staff cannot insert answers');
+
+-- Staff cannot delete students, curriculums or exam sets: the foreign keys cascade (without RLS)
+-- into attempts, answers and the scoring snapshot, so a delete would erase results (0012).
+select lives_ok($$delete from public.curriculums where id = '10000000-0000-0000-0000-000000000001'$$, 'a staff curriculum delete runs');
+select lives_ok($$delete from public.exam_sets where id = '20000000-0000-0000-0000-000000000001'$$, 'a staff exam set delete runs');
+select lives_ok($$delete from public.profiles where id = '00000000-0000-0000-0000-0000000000b1'$$, 'a staff profile delete runs');
+select is((select count(*)::int from public.curriculums where id = '10000000-0000-0000-0000-000000000001'), 1, 'staff cannot delete a curriculum');
+select is((select count(*)::int from public.exam_sets where id = '20000000-0000-0000-0000-000000000001'), 1, 'staff cannot delete an exam set');
+select is((select count(*)::int from public.profiles where id = '00000000-0000-0000-0000-0000000000b1'), 1, 'staff cannot delete a student profile');
+select is((select count(*)::int from public.attempts where id::text like '40000000-%'), 5, 'no attempt is removed by a staff delete');
 
 reset role;
 
