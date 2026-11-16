@@ -16,9 +16,9 @@ set constraints all immediate;
 set constraints all deferred;
 
 insert into public.curriculums (id, name) values ('10000000-0000-0000-0000-0000000005c1', 'Fn curriculum');
-insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent, hold_result) values
-  ('20000000-0000-0000-0000-0000000005e1', '10000000-0000-0000-0000-0000000005c1', 'Held', 2, 15, 50, true),
-  ('20000000-0000-0000-0000-0000000005e2', '10000000-0000-0000-0000-0000000005c1', 'Open', 2, 15, 50, false);
+insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result) values
+  ('20000000-0000-0000-0000-0000000005e1', '10000000-0000-0000-0000-0000000005c1', 'Held', 2, 15, 50, 2, true),
+  ('20000000-0000-0000-0000-0000000005e2', '10000000-0000-0000-0000-0000000005c1', 'Open', 2, 15, 50, 1, false);
 insert into public.questions (id, exam_set_id, topic, difficulty, stem_de, stem_en, options, correct_option_id, status)
 select ('30000000-0000-0000-0000-0000000005' || lpad(n::text, 2, '0'))::uuid,
        case when n <= 6 then '20000000-0000-0000-0000-0000000005e1' else '20000000-0000-0000-0000-0000000005e2' end::uuid,
@@ -201,7 +201,7 @@ select is((select released_by from public.attempts where id = (select id from id
 select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b2'), 'passed',
   'non-held pass: the assignment is passed together with the release');
 
--- A failed attempt is released but leaves the assignment open.
+-- A failed attempt with an attempt left (1 of 2 used) is released but leaves the assignment open.
 update public.assignments set status = 'open' where student_id = '00000000-0000-0000-0000-0000000005b2';
 insert into public.attempt_grants (student_id, exam_set_id) values ('00000000-0000-0000-0000-0000000005b2', '20000000-0000-0000-0000-0000000005e1');
 insert into ids select 'b2', public.start_attempt('00000000-0000-0000-0000-0000000005b2', '20000000-0000-0000-0000-0000000005e1',
