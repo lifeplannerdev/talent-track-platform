@@ -16,3 +16,7 @@ export const BLOCK_CURRICULUM = "E2E Blocking Curriculum";
 export const STUDENT_CREATED = { username: "e2e.t8nurse", password: "e2e-t8nurse-pass-1", fullName: "E2E Neue Pflegeschülerin" };
 export const STAFF_CURRICULUM = "E2E Staff Curriculum";
 export const STAFF_EXAM_SET = "E2E Staff Set";
+// Full flow (Task 9): a nursing student and an exam set created through the staff UI.
+export const STUDENT_FLOW = { username: "e2e.flownurse", password: "e2e-flownurse-pass-1", fullName: "E2E Jürgen Fluss" };
+export const FLOW_CURRICULUM = "E2E Flow Curriculum";
+export const FLOW_EXAM_SET = "E2E Flow Prüfung";
