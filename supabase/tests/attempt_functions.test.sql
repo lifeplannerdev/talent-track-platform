@@ -1,13 +1,17 @@
 -- Attempt lifecycle functions from 0004 (pgTAP). Run: npm run db:test
 begin;
-select plan(39);
+select plan(47);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
   ('00000000-0000-0000-0000-0000000005b1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
    'fn-anna@students.test', '{"role":"student","username":"fn.anna"}', '{}', now(), now()),
   ('00000000-0000-0000-0000-0000000005b2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-   'fn-ben@students.test', '{"role":"student","username":"fn.ben"}', '{}', now(), now());
+   'fn-ben@students.test', '{"role":"student","username":"fn.ben"}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-0000000005a1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+   'fn-staff@staff.test', '{"role":"staff","username":"fn.staff"}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-0000000005a2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+   'fn-staff2@staff.test', '{"role":"staff","username":"fn.staff2"}', '{}', now(), now());
 set constraints all immediate;
 set constraints all deferred;
 
@@ -38,8 +42,10 @@ select throws_ok($$select public.save_answer('00000000-0000-0000-0000-0000000005
   '42501', null, 'authenticated users cannot call save_answer');
 select throws_ok($$select public.record_score(gen_random_uuid(), 1, 1, true)$$,
   '42501', null, 'authenticated users cannot call record_score');
-select throws_ok($$select public.release_attempt(gen_random_uuid())$$,
+select throws_ok($$select public.release_attempt(gen_random_uuid(), null)$$,
   '42501', null, 'authenticated users cannot call release_attempt');
+select throws_ok($$select public.release_attempt(gen_random_uuid(), '00000000-0000-0000-0000-0000000005a1')$$,
+  '42501', null, 'authenticated users cannot call release_attempt, not even naming a staff id');
 reset role;
 set local role anon;
 select throws_ok($$select public.close_expired_attempts()$$, '42501', null, 'anon cannot call close_expired_attempts');
@@ -117,17 +123,27 @@ select is((select count(*)::int from public.close_expired_attempts() c where c =
   'the sweep leaves attempts before their deadline alone');
 
 -- release_attempt -------------------------------------------------------------
-select is((select public.release_attempt((select id from ids where name = 'b1'))), false,
+select has_column('public', 'attempts', 'released_by', 'attempts record who released them');
+select hasnt_function('public', 'release_attempt', array['uuid'], 'the one-argument release_attempt is gone');
+select is((select public.release_attempt((select id from ids where name = 'b1'), '00000000-0000-0000-0000-0000000005a1')), false,
   'an in-progress attempt cannot be released');
 select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b1'), 'open',
   'a scored held attempt leaves the assignment untouched before release');
 select is((select status || '/' || coalesce(released_at::text, 'null') from public.attempts where id = (select id from ids where name = 'a1')),
   'submitted/null', 'a scored held attempt stays submitted until release');
-select is((select public.release_attempt((select id from ids where name = 'a1'))), true, 'a scored submitted attempt is released');
+select throws_ok($$select public.release_attempt((select id from ids where name = 'a1'), '00000000-0000-0000-0000-0000000005b2')$$,
+  'P0001', 'not_staff', 'only a staff id can be recorded as the releaser');
+select is((select status from public.attempts where id = (select id from ids where name = 'a1')), 'submitted',
+  'a rejected releaser releases nothing');
+select is((select public.release_attempt((select id from ids where name = 'a1'), '00000000-0000-0000-0000-0000000005a1')), true, 'a scored submitted attempt is released');
+select is((select released_by from public.attempts where id = (select id from ids where name = 'a1')), '00000000-0000-0000-0000-0000000005a1'::uuid,
+  'the releasing staff member is recorded');
 select is((select status from public.attempts where id = (select id from ids where name = 'a1')), 'released', 'status is released');
 select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b1'), 'passed',
   'releasing a passed attempt marks the assignment passed');
-select is((select public.release_attempt((select id from ids where name = 'a1'))), false, 'releasing twice is a no-op');
+select is((select public.release_attempt((select id from ids where name = 'a1'), '00000000-0000-0000-0000-0000000005a2')), false, 'releasing twice is a no-op');
+select is((select released_by from public.attempts where id = (select id from ids where name = 'a1')), '00000000-0000-0000-0000-0000000005a1'::uuid,
+  'a second release does not overwrite who released it');
 
 -- Atomicity: if the assignment update fails, the score and the release roll back together.
 do $d$ begin perform public.close_attempt((select id from ids where name = 'b1'), false); end $d$;
@@ -145,6 +161,8 @@ drop trigger block_assignments on public.assignments;
 set local role service_role;
 select is((select public.record_score((select id from ids where name = 'b1'), 2, 2, true)), 'released',
   'non-held: record_score releases in the same call');
+select is((select released_by from public.attempts where id = (select id from ids where name = 'b1')), null,
+  'an automatic release records no staff member');
 select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b2'), 'passed',
   'non-held pass: the assignment is passed together with the release');
 
@@ -155,7 +173,7 @@ insert into ids select 'b2', public.start_attempt('00000000-0000-0000-0000-00000
   '[{"question_id":"30000000-0000-0000-0000-000000000501","option_order":["a","b"]},{"question_id":"30000000-0000-0000-0000-000000000502","option_order":["a","b"]}]');
 do $d$ begin perform public.close_attempt((select id from ids where name = 'b2'), false); end $d$;
 do $d$ begin perform public.record_score((select id from ids where name = 'b2'), 0, 2, false); end $d$;
-select is((select public.release_attempt((select id from ids where name = 'b2'))), true, 'a failed held attempt is released');
+select is((select public.release_attempt((select id from ids where name = 'b2'), '00000000-0000-0000-0000-0000000005a2')), true, 'a failed held attempt is released');
 select is((select status from public.assignments where student_id = '00000000-0000-0000-0000-0000000005b2'), 'open',
   'a failed release leaves the assignment open');
 

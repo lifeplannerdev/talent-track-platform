@@ -412,9 +412,10 @@ describe("submitAttempt", () => {
   });
 });
 
-describe("release_attempt (staff release, reused by Task 6)", () => {
+// Staff release with a recorded releaser is covered in release.test.ts; these use no releaser.
+describe("release_attempt (lifecycle)", () => {
   const release = async (attemptId: string) => {
-    const { data, error } = await db.rpc("release_attempt", { p_attempt_id: attemptId });
+    const { data, error } = await db.rpc("release_attempt", { p_attempt_id: attemptId, p_released_by: null });
     if (error) throw error;
     return data as boolean;
   };
