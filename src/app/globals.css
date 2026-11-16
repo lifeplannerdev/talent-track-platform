@@ -128,3 +128,14 @@
     @apply font-sans;
   }
 }
+/* Printed result report: plain black on white, no app chrome (print:hidden in the markup). */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  html,
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

@@ -31,6 +31,12 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 - Atomic writes are SQL functions from `0004_attempt_lifecycle.sql` and `0005_release_attempt.sql` (`start_attempt`, `save_answer`, `close_attempt`, `close_expired_attempts`, `record_score`, `release_attempt`, `db_now`), executable only by `service_role`. Deadlines use database `now()`.
 - Students cannot write `answers` directly any more; saves go through the `saveAnswerAction` server action.
 - Submit = close (in_progress -> submitted) then score once with `scoreAttempt` (`record_score` guards `points is null`). Release is the SQL function `release_attempt` (0005): submitted with a score -> released and, if passed, the assignment set to 'passed' in the same transaction; idempotent. `record_score` calls it for non-held sets; staff release (Task 6) and blocking (Task 7) belong in it too. Held sets change nothing student-visible until release.
+- `release_attempt(p_attempt_id, p_released_by)` (0006) records the releasing staff id in `attempts.released_by` (null for the automatic release); it refuses a non-staff releaser and never overwrites an earlier release. The failed branch is where Task 7's blocking rule goes.
+
+## Results and release (Task 6)
+- Staff: `/staff/review` lists submitted (held) attempts; `/staff/review/[attemptId]` is the bilingual evaluation view with the Release button. Readers in `src/lib/review.ts` use the staff session (RLS). `releaseAttemptAction` (`src/app/staff/review/actions.ts`) calls `requireRole('staff')` and `releaseAttempt(attemptId, profile.id)` (`src/lib/release.ts`, service role). It takes only the attempt id; points are never writable.
+- Student: `/results/[attemptId]` uses `getStudentResult` (`src/lib/results.ts`): the `student_attempts` view through the session client; before release no numbers at all. After release the per-topic breakdown is computed with the service role only after re-checking owner and status, and only topic totals are returned (no key, no per-question results). The released report is bilingual and has a print stylesheet (`print:` variants plus `@media print` in globals.css).
+- `notFound()` inside a Suspense boundary renders the not-found UI with HTTP 200 (streaming); tests check for absence of data, not the status.
 - Expiry is lazy (on every read/save of an attempt); `/api/cron/sweep` (Bearer `CRON_SECRET`, exempt from the proxy) is a daily backup because Vercel Hobby only allows daily crons.
 
 ## Auth and sessions

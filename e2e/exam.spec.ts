@@ -42,7 +42,7 @@ async function choose(page: Page, option: string) {
   await expect(page.getByTestId("save-status")).toHaveText(/Saved/);
 }
 
-// Marks must never reach the student before release (and Task 6 owns showing them after).
+// Marks must never reach the student before release (results.spec.ts covers showing them after).
 async function expectNoMarks(page: Page) {
   // innerText skips routes Next keeps rendered but hidden after navigation.
   await expect(page.getByTestId("result-status")).toBeVisible();
@@ -131,7 +131,7 @@ test("held exam: start, refresh mid-way to the same paper, submit and see awaiti
   }
 });
 
-test("non-held exam: released at once, the student sees Submitted without marks", async ({ page }) => {
+test("non-held exam: released at once, the student sees the released report", async ({ page }) => {
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password);
   await page.getByRole("button", { name: "Start exam" }).click();
   await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
@@ -145,8 +145,7 @@ test("non-held exam: released at once, the student sees Submitted without marks"
   await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
 
   await expect(page).toHaveURL(/\/results\/[0-9a-f-]{36}$/);
-  await expect(page.getByTestId("result-status")).toHaveText("Your exam has been submitted.");
-  await expectNoMarks(page);
+  await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
   expect(await assignmentStatus(STUDENT_EXAM_OPEN.username, EXAM_CURRICULUM_OPEN)).toBe("passed");
 });
 

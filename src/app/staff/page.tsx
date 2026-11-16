@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/require-role";
 import { logout } from "@/app/login/actions";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 export const metadata: Metadata = { title: "Staff | TalentTrack" };
 
@@ -11,7 +12,10 @@ async function StaffContent() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Staff area</h1>
-      <p>Signed in as {profile.full_name ?? profile.username}. Staff tools arrive in later tasks.</p>
+      <p>Signed in as {profile.full_name ?? profile.username}.</p>
+      <Link href="/staff/review" className={buttonVariants({ className: "self-start" })}>
+        Review and release results
+      </Link>
       <form action={logout}>
         <Button type="submit" variant="outline">
           Sign out
