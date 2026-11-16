@@ -12,22 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { grantAttemptAction, type GrantActionResult } from "./actions";
-
-const REFUSALS: Record<string, string> = {
-  grant_exists: "This student already has an unused attempt for this exam.",
-  in_progress: "This student is taking this exam right now.",
-  assignment_passed: "This student has already passed this curriculum.",
-  not_assigned: "This exam is not assigned to this student any more.",
-  exam_set_not_found: "This exam no longer exists.",
-};
-
-function messageFor(result: Exclude<GrantActionResult, { ok: true }>): string {
-  if (result.error === "shortfall") {
-    return `Only ${result.unseenAvailable} unseen questions left, ${result.needed} needed`;
-  }
-  return REFUSALS[result.error] ?? "The attempt could not be granted. Please try again.";
-}
+import { grantAttemptAction } from "./actions";
+import { grantMessage } from "./messages";
+import { useGrantStatus } from "./grant-status";
 
 type Props = {
   studentId: string;
@@ -42,19 +29,21 @@ type Props = {
 
 export function GrantButton({ studentId, examSetId, studentName, examSetName, label, note }: Props) {
   const [open, setOpen] = useState(false);
-  const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const announce = useGrantStatus();
 
   const grant = () =>
     startTransition(async () => {
-      setMessage(null);
+      setError(null);
       try {
         const result = await grantAttemptAction(studentId, examSetId);
         setOpen(false);
-        setMessage(result.ok ? { kind: "success", text: "Attempt granted." } : { kind: "error", text: messageFor(result) });
+        if (result.ok) announce(`Attempt granted to ${studentName} for ${examSetName}.`);
+        else setError(grantMessage(result));
       } catch {
         setOpen(false);
-        setMessage({ kind: "error", text: "The attempt could not be granted. Please try again." });
+        setError("The attempt could not be granted. Please try again.");
       }
     });
 
@@ -63,10 +52,10 @@ export function GrantButton({ studentId, examSetId, studentName, examSetName, la
       <Button type="button" size="sm" onClick={() => setOpen(true)} disabled={pending}>
         {pending ? "Granting…" : label}
       </Button>
-      {message ? (
-        <Alert variant={message.kind === "error" ? "destructive" : "default"} className="max-w-xs">
-          <AlertDescription data-testid={message.kind === "error" ? "grant-error" : "grant-success"} role="status">
-            {message.text}
+      {error ? (
+        <Alert variant="destructive" className="max-w-xs">
+          <AlertDescription data-testid="grant-error" role="status">
+            {error}
           </AlertDescription>
         </Alert>
       ) : null}

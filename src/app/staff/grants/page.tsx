@@ -5,6 +5,7 @@ import { listGrantable } from "@/lib/staff-overview";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { GrantStatusProvider } from "./grant-status";
 import { StaffNav } from "../staff-nav";
 import { GrantButton } from "./grant-button";
 
@@ -86,9 +87,11 @@ export default function GrantsPage() {
         Attempts are never given automatically. Give a first attempt or a retake here; blocked students are on the
         Blocked page.
       </p>
-      <Suspense fallback={<ListSkeleton />}>
-        <GrantableList />
-      </Suspense>
+      <GrantStatusProvider>
+        <Suspense fallback={<ListSkeleton />}>
+          <GrantableList />
+        </Suspense>
+      </GrantStatusProvider>
     </main>
   );
 }

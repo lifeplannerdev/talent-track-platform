@@ -7,6 +7,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { GrantButton } from "../grants/grant-button";
+import { GrantStatusProvider } from "../grants/grant-status";
 import { StaffNav } from "../staff-nav";
 
 export const metadata: Metadata = { title: "Blocked students | TalentTrack" };
@@ -103,9 +104,11 @@ export default function BlockedPage() {
         These students failed their last allowed attempt. Give another attempt (only with questions they have not
         seen) or reassign their curriculums.
       </p>
-      <Suspense fallback={<ListSkeleton />}>
-        <BlockedList />
-      </Suspense>
+      <GrantStatusProvider>
+        <Suspense fallback={<ListSkeleton />}>
+          <BlockedList />
+        </Suspense>
+      </GrantStatusProvider>
     </main>
   );
 }

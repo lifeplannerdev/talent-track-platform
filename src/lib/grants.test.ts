@@ -43,6 +43,9 @@ type ExamSet = { curriculumId: string; setId: string; name: string };
 // big: 6 approved questions: after two papers 2 unseen are left, enough for an override.
 let small: ExamSet;
 let big: ExamSet;
+// multiA and multiB: two exam sets (4 approved questions each, 1 attempt each) of one curriculum.
+let multiA: ExamSet;
+let multiB: ExamSet;
 
 const OPTIONS = [
   { id: "a", de: "Ja", en: "Yes" },
@@ -61,20 +64,28 @@ async function must<T>(p: PromiseLike<{ data: T; error: unknown }>): Promise<Non
   return data;
 }
 
-async function makeExamSet(label: string, approved: number): Promise<ExamSet> {
+async function makeExamSet(
+  label: string,
+  approved: number,
+  opts: { curriculumId?: string; setName?: string; maxAttempts?: number } = {},
+): Promise<ExamSet> {
   const name = `T7 ${label} ${run}`;
-  const curriculum = await must(db.from("curriculums").insert({ name }).select("id").single());
-  curriculumIds.push(curriculum.id);
+  let curriculumId = opts.curriculumId;
+  if (!curriculumId) {
+    const curriculum = await must(db.from("curriculums").insert({ name }).select("id").single());
+    curriculumIds.push(curriculum.id);
+    curriculumId = curriculum.id;
+  }
   const set = await must(
     db
       .from("exam_sets")
       .insert({
-        curriculum_id: curriculum.id,
-        name: `${name} set`,
+        curriculum_id: curriculumId,
+        name: opts.setName ?? `${name} set`,
         question_count: 2,
         time_limit_min: 20,
         pass_mark_percent: 60,
-        max_attempts: 2,
+        max_attempts: opts.maxAttempts ?? 2,
         hold_result: true,
       })
       .select("id")
@@ -95,7 +106,7 @@ async function makeExamSet(label: string, approved: number): Promise<ExamSet> {
       })),
     ),
   );
-  return { curriculumId: curriculum.id, setId: set.id, name };
+  return { curriculumId: curriculumId!, setId: set.id, name };
 }
 
 let counter = 0;
@@ -174,6 +185,8 @@ async function seenQuestionIds(studentId: string): Promise<string[]> {
 beforeAll(async () => {
   small = await makeExamSet("small", 5);
   big = await makeExamSet("big", 6);
+  multiA = await makeExamSet("multi", 4, { setName: `T7 multi ${run} set A`, maxAttempts: 1 });
+  multiB = await makeExamSet("multi", 4, { curriculumId: multiA.curriculumId, setName: `T7 multi ${run} set B`, maxAttempts: 1 });
   ({ id: staffId, client: staffClient } = await makeUser("staff"));
   ({ id: staff2Id } = await makeUser("staff"));
 });
@@ -301,6 +314,50 @@ describe("grantAttempt", () => {
     expect(await grantCount(student.id)).toBe(0);
   });
 
+  it("refuses while a result in the curriculum is held (single exam set), writing nothing", async () => {
+    const student = await makeStudent(small);
+    expect(await grantAttempt(student.id, small.setId, staffId)).toEqual({ ok: true });
+    await takeAttempt(student.id, small); // held, not released
+    await expect(grantAttempt(student.id, small.setId, staffId)).rejects.toMatchObject({ code: "result_pending" });
+    expect(await grantCount(student.id)).toBe(1);
+  });
+
+  it("refuses a grant on another exam set of the curriculum while one result is held (multi-set)", async () => {
+    const student = await makeStudent(multiA);
+    expect(await grantAttempt(student.id, multiA.setId, staffId)).toEqual({ ok: true });
+    const held = await takeAttempt(student.id, multiA);
+    await expect(grantAttempt(student.id, multiB.setId, staffId)).rejects.toMatchObject({ code: "result_pending" });
+    expect(await grantCount(student.id)).toBe(1);
+
+    // After the failed release the curriculum is blocked with no stray grant; staff can then grant B.
+    await releaseAttempt(held, staffId);
+    expect(await assignmentStatus(student.id, multiA)).toBe("blocked");
+    expect(await grantAttempt(student.id, multiB.setId, staffId)).toEqual({ ok: true });
+    expect(await assignmentStatus(student.id, multiA)).toBe("open");
+  });
+
+  it("refuses a grant on another exam set of the curriculum while one is in progress", async () => {
+    const student = await makeStudent(multiA);
+    expect(await grantAttempt(student.id, multiA.setId, staffId)).toEqual({ ok: true });
+    await startAttempt(student.id, multiA.setId);
+    await expect(grantAttempt(student.id, multiB.setId, staffId)).rejects.toMatchObject({ code: "in_progress" });
+  });
+
+  it("recovers a blocked student who already holds an unused grant: unblocks without stacking", async () => {
+    const student = await makeStudent(small);
+    await failAndRelease(student.id, small);
+    await failAndRelease(student.id, small);
+    expect(await assignmentStatus(student.id, small)).toBe("blocked");
+    // Legacy or racing state: an unused grant next to the block.
+    await ok(db.from("attempt_grants").insert({ student_id: student.id, exam_set_id: small.setId, granted_by: staffId }));
+    const before = await grantCount(student.id);
+
+    expect(await grantAttempt(student.id, small.setId, staff2Id)).toEqual({ ok: true });
+    expect(await assignmentStatus(student.id, small)).toBe("open");
+    expect(await grantCount(student.id)).toBe(before);
+    expect(await studentSees(student.client, small)).toBe("open");
+  });
+
   it("rejects ids that are not uuids", async () => {
     await expect(grantAttempt("nope", small.setId, staffId)).rejects.toThrow();
     await expect(grantAttempt(randomUUID(), "nope", staffId)).rejects.toThrow();
@@ -375,6 +432,10 @@ describe("grant_attempt and grantAttemptAction with real sessions", () => {
     const other = await makeStudent(small);
     await expect(grantAttemptAction(other.id, small.setId)).resolves.toEqual({ ok: true });
     await expect(grantAttemptAction(other.id, small.setId)).resolves.toEqual({ ok: false, error: "grant_exists" });
+    const held = await makeStudent(small);
+    await expect(grantAttemptAction(held.id, small.setId)).resolves.toEqual({ ok: true });
+    await takeAttempt(held.id, small);
+    await expect(grantAttemptAction(held.id, small.setId)).resolves.toEqual({ ok: false, error: "result_pending" });
     await expect(grantAttemptAction("../x", small.setId)).resolves.toEqual({ ok: false, error: "invalid_request" });
   });
 });
@@ -429,6 +490,24 @@ describe("staff overview readers", () => {
       maxAttempts: 2,
     });
     expect(rows.find((r) => r.studentId === fresh.id)).toMatchObject({ attemptsUsed: 0 });
+  });
+
+  it("hide the whole curriculum while any attempt in it is held or in progress", async () => {
+    const held = await makeStudent(multiA);
+    expect(await grantAttempt(held.id, multiA.setId, staffId)).toEqual({ ok: true });
+    await takeAttempt(held.id, multiA);
+    const running = await makeStudent(multiA);
+    expect(await grantAttempt(running.id, multiA.setId, staffId)).toEqual({ ok: true });
+    await startAttempt(running.id, multiA.setId);
+    const fresh = await makeStudent(multiA);
+    session.client = staffClient;
+
+    const rows = (await listGrantable()).filter((r) => [held.id, running.id, fresh.id].includes(r.studentId));
+    expect(rows.filter((r) => r.studentId === held.id)).toEqual([]);
+    expect(rows.filter((r) => r.studentId === running.id)).toEqual([]);
+    expect(rows.filter((r) => r.studentId === fresh.id).map((r) => r.examSetId).sort()).toEqual(
+      [multiA.setId, multiB.setId].sort(),
+    );
   });
 
   it("a student session gets nothing from the readers", async () => {

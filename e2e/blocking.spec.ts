@@ -50,6 +50,8 @@ async function giveAttemptFromGrantsPage(page: Page) {
   // The modal hides the page from the accessibility tree; wait for it to close first.
   await expect(page.getByRole("dialog")).toBeHidden();
   await expect(page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName })).toHaveCount(0);
+  // The confirmation stays visible although the row is gone.
+  await expect(page.getByTestId("grant-success")).toContainText(`Attempt granted to ${STUDENT_BLOCK.fullName}`);
 }
 
 async function assignmentStatus() {
@@ -122,6 +124,7 @@ test("a student who fails the last allowed attempt is blocked, appears on the Bl
   await dialog.getByRole("button", { name: "Grant attempt" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName })).toHaveCount(0);
+  await expect(page.getByTestId("grant-success")).toContainText(`Attempt granted to ${STUDENT_BLOCK.fullName}`);
   expect(await assignmentStatus()).toBe("open");
 
   // The student can start again.
@@ -171,7 +174,7 @@ test("when too few unseen questions are left, staff see the shortfall and nothin
   await row.getByRole("button", { name: "Grant another attempt" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Grant attempt" }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
-  await expect(row.getByTestId("grant-error")).toHaveText("Only 1 unseen questions left, 2 needed");
+  await expect(row.getByTestId("grant-error")).toHaveText("Only 1 unseen question left, 2 needed");
   expect(await assignmentStatus()).toBe("blocked");
   const { data: grants } = await db.from("attempt_grants").select("id").eq("student_id", student!.id).is("used_attempt_id", null);
   expect(grants).toEqual([]);
