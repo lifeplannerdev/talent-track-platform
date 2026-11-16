@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { usernameToEmail } from "../src/lib/auth/username";
 import { NEXT_CURRICULUM, STAFF, STUDENT_CONSENTED, STUDENT_NEW } from "./fixtures";
 
-function admin() {
+export function adminDb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -10,7 +10,7 @@ function admin() {
 
 /** Recreates the e2e users and assignments from scratch (idempotent). Uses the local service role. */
 export async function seed() {
-  const db = admin();
+  const db = adminDb();
 
   const { data: list, error: listError } = await db.auth.admin.listUsers({ perPage: 1000 });
   if (listError) throw listError;

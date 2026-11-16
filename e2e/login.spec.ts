@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { NEXT_CURRICULUM, STAFF, STUDENT_CONSENTED, STUDENT_NEW } from "./fixtures";
-import { seed } from "./seed";
+import { adminDb, seed } from "./seed";
 
 test.beforeEach(async () => {
   await seed();
@@ -36,12 +36,29 @@ test("student accepts consent and lands on the next open exam", async ({ page })
 
   await page.getByRole("button", { name: "I agree and continue" }).click();
   await expect(page).toHaveURL(/\/exam\/start$/);
+  // Consent timestamp is persisted in the database.
+  const { data: profile } = await adminDb()
+    .from("profiles")
+    .select("consent_at")
+    .eq("username", STUDENT_NEW.username)
+    .single();
+  expect(profile?.consent_at).not.toBeNull();
+  expect(Math.abs(Date.now() - new Date(profile!.consent_at!).getTime())).toBeLessThan(60_000);
   // Lowest position with status open: B (position 2), not the passed A or the later C.
   await expect(page.getByTestId("next-exam")).toContainText(NEXT_CURRICULUM);
 
   // Consent is only asked once.
   await page.goto("/consent");
   await expect(page).toHaveURL(/\/exam\/start$/);
+});
+
+test("a student who has not consented can sign out from the consent page", async ({ page }) => {
+  await signIn(page, STUDENT_NEW.username, STUDENT_NEW.password);
+  await expect(page).toHaveURL(/\/consent$/);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto("/consent");
+  await expect(page).toHaveURL(/\/login$/);
 });
 
 test("consented student skips consent and sees the empty state without assignments", async ({ page }) => {
@@ -83,4 +100,14 @@ test("a second login ends the first session", async ({ browser }) => {
   await expect(page2).toHaveURL(/\/exam\/start$/);
   await first.close();
   await second.close();
+});
+
+test("proxy matcher: look-alike paths are gated, real static assets bypass it", async ({ request, page }) => {
+  // Not a file extension (no dot): must hit the proxy and go to login.
+  await page.goto("/staff/exportpng");
+  await expect(page).toHaveURL(/\/login$/);
+
+  // A real static asset is served without being redirected to login.
+  const asset = await request.get("/next.svg", { maxRedirects: 0 });
+  expect(asset.status()).toBe(200);
 });

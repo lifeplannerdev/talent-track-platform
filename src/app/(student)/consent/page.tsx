@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/require-role";
+import { logout } from "@/app/login/actions";
 import { acceptConsent } from "./actions";
 
 export const metadata: Metadata = { title: "Consent | TalentTrack" };
@@ -27,10 +28,15 @@ async function ConsentCard() {
           consent is recorded with the date and time.
         </p>
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex flex-col gap-2">
         <form action={acceptConsent} className="w-full">
           <Button type="submit" className="h-9 w-full">
             I agree and continue
+          </Button>
+        </form>
+        <form action={logout} className="w-full">
+          <Button type="submit" variant="outline" className="h-9 w-full">
+            Sign out
           </Button>
         </form>
       </CardFooter>

@@ -1,7 +1,7 @@
 -- RLS and privacy tests for the Phase 1 schema (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(42);
+select plan(43);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Auth users are created like the staff action will
@@ -83,6 +83,8 @@ set constraints all immediate;
 set constraints all deferred;
 select is((select role || '/' || username from public.profiles where id = '00000000-0000-0000-0000-0000000000c2'), 'student/carla',
   'profile is built from app metadata set after the insert (Auth admin API flow)');
+-- Total profiles as seen by postgres (the dev DB may hold e2e users); staff must see exactly this many.
+select set_config('test.profile_total', (select count(*)::text from public.profiles), true);
 select hasnt_column('public', 'student_questions', 'correct_option_id', 'student question view has no correct_option_id');
 
 -- ---------------------------------------------------------------------------
@@ -150,7 +152,8 @@ set local role authenticated;
 
 select is((select count(*)::int from public.attempts), 5, 'staff can read every attempt');
 select is((select count(*)::int from public.questions where correct_option_id is not null), 3, 'staff can read correct_option_id');
-select is((select count(*)::int from public.profiles where id::text like '00000000-0000-0000-0000-0000000000%'), 4, 'staff can read every profile');
+select is((select count(*)::int from public.profiles where id::text like '00000000-0000-0000-0000-0000000000%'), 4, 'staff can read every fixture profile');
+select is((select count(*)::int from public.profiles), current_setting('test.profile_total')::int, 'staff can read every profile, no more and no fewer than exist');
 select throws_ok($$update public.attempts set points = 99 where id = '40000000-0000-0000-0000-000000000002'$$, '42501',
   null, 'staff cannot edit auto-scored points');
 
