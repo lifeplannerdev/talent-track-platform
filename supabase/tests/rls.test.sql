@@ -20,7 +20,7 @@ values
 set constraints all immediate;
 set constraints all deferred;
 
-insert into public.curriculums (id, name) values ('10000000-0000-0000-0000-000000000001', 'Life in Germany');
+insert into public.curriculums (id, name) values ('10000000-0000-0000-0000-000000000001', 'RLS Life in Germany');
 insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result)
 values ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'LiG set 1', 2, 30, 60, 2, true);
 
@@ -30,7 +30,7 @@ select ('30000000-0000-0000-0000-00000000000' || n)::uuid, '20000000-0000-0000-0
        '[{"id":"a","de":"Ja","en":"Yes"},{"id":"b","de":"Nein","en":"No"}]'::jsonb, 'b', 1, 'approved'
 from generate_series(1, 3) n;
 
-insert into public.curriculums (id, name) values ('10000000-0000-0000-0000-000000000002', 'Pflege Ausbildung');
+insert into public.curriculums (id, name) values ('10000000-0000-0000-0000-000000000002', 'RLS Pflege Ausbildung');
 insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent)
 values ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'Pflege set 1', 2, 30, 60);
 
