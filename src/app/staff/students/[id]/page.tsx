@@ -16,6 +16,7 @@ import { GrantButton } from "../../grants/grant-button";
 import { GrantStatusProvider } from "../../grants/grant-status";
 import { linkClass, statusVariant, trackLabel } from "../ui";
 import { AddCurriculumForm, MoveButtons, RemoveCurriculumButton } from "./assignment-controls";
+import { DeleteStudentForm } from "./delete-student-form";
 import { ResetPasswordForm } from "./reset-password-form";
 
 export const metadata: Metadata = { title: "Student | TalentTrack" };
@@ -139,6 +140,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
       </section>
 
       <ResetPasswordForm studentId={s.id} studentName={s.fullName} />
+      <DeleteStudentForm studentId={s.id} studentName={s.fullName} username={s.username} />
     </div>
   );
 }

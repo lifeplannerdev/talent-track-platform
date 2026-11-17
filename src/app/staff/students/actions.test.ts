@@ -51,6 +51,7 @@ import { startAttempt } from "@/lib/attempts";
 import {
   assignCurriculum,
   createStudent,
+  deleteStudent,
   importStudents,
   previewStudentsImport,
   removeCurriculum,
@@ -476,6 +477,57 @@ describe("curriculum assignments", () => {
     expect(await assignmentsOf(t.id)).toEqual([]);
     const grants = await must(db.from("attempt_grants").select("id").eq("student_id", t.id));
     expect(grants).toEqual([]);
+  });
+});
+
+describe("deleteStudent (DPDP delete path)", () => {
+  it("needs the username typed exactly, then removes the account, profile, assignments, grants and attempts", async () => {
+    asStaff();
+    const s = await makeUser("student");
+    await assignCurriculum(s.id, tempCurriculum);
+    await db.from("attempt_grants").insert({ student_id: s.id, exam_set_id: tempSetId });
+    const { attemptId } = await startAttempt(s.id, tempSetId);
+    await db.rpc("close_attempt", { p_attempt_id: attemptId, p_only_if_expired: false });
+
+    expect(await deleteStudent(s.id, { confirmUsername: "" })).toMatchObject({ ok: false, code: "confirm" });
+    expect(await deleteStudent(s.id, { confirmUsername: `${s.username}x` })).toMatchObject({ ok: false, code: "confirm" });
+    expect(await profileId(s.username)).toBe(s.id);
+
+    expect(await deleteStudent(s.id, { confirmUsername: s.username.toUpperCase() })).toEqual({ ok: true });
+    expect(await profileId(s.username)).toBeNull();
+    const { data: authUser } = await db.auth.admin.getUserById(s.id);
+    expect(authUser.user).toBeNull();
+    expect(await must(db.from("attempts").select("id").eq("student_id", s.id))).toEqual([]);
+    expect(await must(db.from("assignments").select("id").eq("student_id", s.id))).toEqual([]);
+    expect(await signIn(s.email, s.password)).toBeNull();
+  });
+
+  it("refuses while the student is taking an exam", async () => {
+    asStaff();
+    const s = await makeUser("student");
+    await assignCurriculum(s.id, tempCurriculum);
+    await db.from("attempt_grants").insert({ student_id: s.id, exam_set_id: tempSetId });
+    await startAttempt(s.id, tempSetId);
+    expect(await deleteStudent(s.id, { confirmUsername: s.username })).toMatchObject({ ok: false, code: "in_progress" });
+    expect(await profileId(s.username)).toBe(s.id);
+  });
+
+  it("refuses staff accounts and unknown ids, and reports a failed delete", async () => {
+    asStaff();
+    const staff = await makeUser("staff");
+    expect(await deleteStudent(staff.id, { confirmUsername: staff.username })).toEqual({ ok: false, message: "Student not found" });
+    expect(await deleteStudent("nope", { confirmUsername: "nope" })).toEqual({ ok: false, message: "Student not found" });
+    const s = await makeUser("student");
+    adminSpy.failDelete = true;
+    expect(await deleteStudent(s.id, { confirmUsername: s.username })).toMatchObject({ ok: false });
+    expect(await profileId(s.username)).toBe(s.id);
+  });
+
+  it("a student session is redirected and nothing is deleted", async () => {
+    asStudent();
+    const s = await makeUser("student");
+    await expect(deleteStudent(s.id, { confirmUsername: s.username })).rejects.toThrow(/REDIRECT/);
+    expect(await profileId(s.username)).toBe(s.id);
   });
 });
 

@@ -253,3 +253,48 @@ export async function reorderCurriculums(studentId: string, curriculumIds: strin
   revalidateStudents(id);
   return { ok: true };
 }
+
+/**
+ * Deletes a student and everything stored about them: the auth user (Auth admin API, service
+ * role), and through the foreign-key cascades the profile, assignments, grants, attempts,
+ * answers and scoring snapshot. This is the DPDP erasure path. Staff must type the student's
+ * username to confirm. Refused while the student has an attempt in progress (expired ones are
+ * closed first). Staff accounts are not deleted here.
+ */
+export async function deleteStudent(studentId: string, opts: { confirmUsername?: string } = {}): Promise<ActionResult> {
+  await requireRole("staff");
+  const client = await createClient();
+  if (!isUuid(studentId)) return { ok: false, message: "Student not found" };
+  const { data: student } = await client
+    .from("profiles")
+    .select("id, username")
+    .eq("id", studentId)
+    .eq("role", "student")
+    .maybeSingle<{ id: string; username: string }>();
+  if (!student) return { ok: false, message: "Student not found" };
+  if (asText(opts?.confirmUsername).trim().toLowerCase() !== student.username) {
+    return { ok: false, code: "confirm", message: `Type the username "${student.username}" to confirm.` };
+  }
+
+  const { data: open, error: openError } = await client
+    .from("attempts")
+    .select("exam_set_id")
+    .eq("student_id", student.id)
+    .eq("status", "in_progress");
+  if (openError) throw new Error(`Could not read attempts: ${openError.message}`);
+  for (const a of open ?? []) {
+    if (await findOpenAttemptId(student.id, a.exam_set_id as string)) {
+      return { ok: false, code: "in_progress", message: "This student is taking an exam right now. Try again after it ends." };
+    }
+  }
+
+  const { error } = await createAdminClient().auth.admin.deleteUser(student.id);
+  if (error) {
+    console.error("deleteStudent failed", error.code ?? error.status ?? "unknown");
+    return { ok: false, message: "The student could not be deleted. Please try again." };
+  }
+  revalidateStudents();
+  revalidatePath("/staff/review");
+  revalidatePath("/staff/results");
+  return { ok: true };
+}
