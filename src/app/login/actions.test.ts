@@ -8,12 +8,13 @@ type SignOutArgs = { scope?: "global" | "local" | "others" } | undefined;
 const fake = vi.hoisted(() => ({
   signOutCalls: [] as SignOutArgs[],
   signOutErrors: {} as Partial<Record<"global" | "local" | "others", { message: string }>>,
+  signInError: null as { message: string; status?: number } | null,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: {
-      signInWithPassword: async () => ({ error: null }),
+      signInWithPassword: async () => ({ error: fake.signInError }),
       signOut: async (args?: SignOutArgs) => {
         fake.signOutCalls.push(args);
         const scope = args?.scope ?? "global";
@@ -44,6 +45,7 @@ function form(identifier: string, password: string) {
 beforeEach(() => {
   fake.signOutCalls = [];
   fake.signOutErrors = {};
+  fake.signInError = null;
 });
 
 describe("login", () => {
@@ -58,6 +60,21 @@ describe("login", () => {
     expect(result.error).toMatch(/could not sign you in/i);
     // The new session is dropped locally too, so nothing stays signed in half-way.
     expect(fake.signOutCalls).toEqual([{ scope: "others" }, { scope: "local" }]);
+  });
+});
+
+describe("login errors", () => {
+  it("wrong credentials get the generic message", async () => {
+    fake.signInError = { message: "Invalid login credentials", status: 400 };
+    const result = await login({ error: null }, form("anna.k", "test-pass-anna"));
+    expect(result.error).toBe("Incorrect username or password. Please try again.");
+  });
+
+  it("the Auth rate limit (429) gets its own message, not 'incorrect password'", async () => {
+    fake.signInError = { message: "Request rate limit reached", status: 429 };
+    const result = await login({ error: null }, form("anna.k", "test-pass-anna"));
+    expect(result.error).toBe("Too many sign-ins, please wait a minute and try again.");
+    expect(fake.signOutCalls).toEqual([]);
   });
 });
 

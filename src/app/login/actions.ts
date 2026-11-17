@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 export type LoginState = { error: string | null };
 
 const GENERIC_ERROR = "Incorrect username or password. Please try again.";
+const RATE_LIMITED = "Too many sign-ins, please wait a minute and try again.";
 
 export async function login(
   _prev: LoginState,
@@ -32,7 +33,9 @@ export async function login(
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { error: GENERIC_ERROR };
+  // A whole class signs in from one school network at once, so the Auth rate limit (HTTP 429)
+  // must not look like a wrong password.
+  if (error) return { error: error.status === 429 ? RATE_LIMITED : GENERIC_ERROR };
 
   // One active session per account: end every other session of this user. If that fails the
   // older sessions would stay valid, so the login is not completed (the new session is dropped).
