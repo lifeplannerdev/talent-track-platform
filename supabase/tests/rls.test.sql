@@ -1,7 +1,7 @@
 -- RLS and privacy tests for the Phase 1 schema (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(53);
+select plan(50);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Auth users are created like the staff action will
@@ -89,8 +89,8 @@ select set_config('test.profile_total', (select count(*)::text from public.profi
 -- Same for attempts and questions: the dev DB may hold e2e exam data (Task 5 seed).
 select set_config('test.attempt_total', (select count(*)::text from public.attempts), true);
 select set_config('test.question_total', (select count(*)::text from public.questions), true);
-select hasnt_column('public', 'student_questions', 'correct_option_id', 'student question view has no correct_option_id');
-select hasnt_column('public', 'student_questions', 'awarded_points', 'student question view has no awarded_points');
+-- student_questions exposed stem_en and the English option text during an exam (0014 drops it).
+select hasnt_view('public', 'student_questions', 'the student_questions view is gone, so students cannot read English text of an in-progress paper');
 select hasnt_column('public', 'student_attempts', 'awarded_points', 'student attempt view has no awarded_points');
 -- Scoring snapshot on Anna's released attempt (as postgres; record_score writes it in the app).
 update public.attempt_questions set correct_option_id = 'b', max_points = 1, awarded_points = 1, topic = 'law'
@@ -115,7 +115,6 @@ select is((select points from public.student_attempts where id = '40000000-0000-
 select is((select passed from public.student_attempts where id = '40000000-0000-0000-0000-000000000002'), null,
   'passed is hidden while the attempt is submitted but not released');
 select is((select count(*)::int from public.questions), 0, 'student cannot read the questions table (so no correct_option_id)');
-select is((select count(*)::int from public.student_questions), 4, 'student sees only the questions drawn into their own attempts');
 select is((select count(*)::int from public.attempt_questions), 0, 'student cannot select attempt_questions, so not the scoring snapshot');
 select is((select count(*)::int from public.attempt_questions where awarded_points is not null or correct_option_id is not null), 0,
   'student cannot read the stored key or awarded points, not even of a released attempt');
@@ -193,7 +192,6 @@ set local role anon;
 select throws_ok($$select * from public.questions$$, '42501', null, 'anonymous users cannot read questions');
 
 select throws_ok($$select * from public.student_attempts$$, '42501', null, 'anonymous users cannot read student_attempts');
-select throws_ok($$select * from public.student_questions$$, '42501', null, 'anonymous users cannot read student_questions');
 select throws_ok($$select * from public.student_assignments$$, '42501', null, 'anonymous users cannot read student_assignments');
 
 select * from finish();

@@ -20,7 +20,7 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 
 ## Data and security conventions
 - Every public table has RLS. Anon has no privileges.
-- Students never read `questions`, `attempts` or `assignments` directly. They use the views `student_assignments` (status masked to open while a held attempt is submitted), `student_questions` (no `correct_option_id`) and `student_attempts` (points, max_points, passed are NULL until status = 'released').
+- Students never read `questions`, `attempts` or `assignments` directly. They use the views `student_assignments` (status masked to open while a held attempt is submitted) and `student_attempts` (points, max_points, passed are NULL until status = 'released'). The paper itself comes only from server code (`getAttemptForStudent`, German text, no key). `student_questions` was dropped in 0014 (it exposed the English text during an exam); do not add a student view over questions.
 - Staff can read everything but cannot write `attempts`, `attempt_questions`: scoring, release and attempt creation run in server code with the service role.
 - Profiles are created by the `on_auth_user_created` trigger from `raw_app_meta_data` (role, username, full_name, batch, track), which only the admin API can set. The trigger is a deferred constraint trigger (0003) because the Auth admin API sets app metadata after the insert. Usernames map to internal emails via `usernameToEmail` (`username@students.talenttrack.internal`). Public sign-up is off.
 - Questions: German with English translations (`stem_de`, `stem_en`, options `{id, de, en}`).
@@ -78,9 +78,9 @@ Superpowers (TDD). Project log lives on the Monday board named "TalentTrackPlatf
 
 ## Production checklist (later, nothing remote is touched by this repo yet)
 - Supabase project in Mumbai (ap-south-1); Vercel region bom1 (`vercel.json` sets `"regions": ["bom1"]`).
-- Apply `supabase/migrations/0001` to `0013` in order (e.g. `supabase db push` after linking the new project). Then verify on the hosted database that 0003 replaced the plain `on_auth_user_created` trigger with the deferred constraint trigger (exactly one trigger of that name on `auth.users`, `tgdeferrable = true`), and run the pgTAP suite against a staging copy if possible.
+- Apply every file in `supabase/migrations/` (0001 onwards) in order (e.g. `supabase db push` after linking the new project). Then verify on the hosted database that 0003 replaced the plain `on_auth_user_created` trigger with the deferred constraint trigger (exactly one trigger of that name on `auth.users`, `tgdeferrable = true`), and run the pgTAP suite against a staging copy if possible.
 - Hosted Auth settings (dashboard): disable public sign-up; minimum password length 8 (the app checks 8 for students, the staff script 12); `site_url` and redirect URLs set to the production domain; raise the sign-in rate limit (a whole class signs in from one school network at once; the app shows "Too many sign-ins" on 429).
-- Advisors: the security-definer view warnings on `student_attempts`, `student_questions` and `student_assignments` are intentional (they run with owner rights and filter by `auth.uid()`; students have no direct table access). Anything else must be fixed.
+- Advisors: the security-definer view warnings on `student_attempts` and `student_assignments` are intentional (they run with owner rights and filter by `auth.uid()`; students have no direct table access). Anything else must be fixed.
 - Env vars on Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (server only), `CRON_SECRET` (the daily `/api/cron/sweep` cron sends it as Bearer).
 - First staff account: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... STAFF_EMAIL=... STAFF_USERNAME=... STAFF_FULL_NAME=... STAFF_PASSWORD=... node scripts/create-staff.ts` (values from the environment, not arguments; prints only the new id, never the password or key; staff sign in with the email). Later staff can be added the same way.
 - Data erasure (DPDP): use Delete student on the student page (`deleteStudent`); it removes the account and all of the student's data.
