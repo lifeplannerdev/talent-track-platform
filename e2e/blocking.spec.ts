@@ -65,6 +65,9 @@ async function assignmentStatus() {
 test("a student who fails the last allowed attempt is blocked, appears on the Blocked page and dashboard, and staff can grant another attempt", async ({
   page,
 }) => {
+  // Two full exams, two releases, the Blocked page and a grant: this flow runs close to the 30 s
+  // default on a busy machine (27.6 s measured), so it gets its own budget like full-flow.
+  test.setTimeout(90_000);
   // No attempt until staff give one.
   await signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
   await expect(page.getByRole("button", { name: "Start exam" })).toHaveCount(0);
