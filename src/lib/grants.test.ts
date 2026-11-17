@@ -343,6 +343,18 @@ describe("grantAttempt", () => {
     await expect(grantAttempt(student.id, multiB.setId, staffId)).rejects.toMatchObject({ code: "in_progress" });
   });
 
+  it("an expired attempt on another exam set of the curriculum is closed first and does not count as in progress", async () => {
+    const student = await makeStudent(multiA);
+    expect(await grantAttempt(student.id, multiA.setId, staffId)).toEqual({ ok: true });
+    const { attemptId } = await startAttempt(student.id, multiA.setId);
+    // Time is up on multiA, but nothing has read the attempt since.
+    await ok(db.from("attempts").update({ deadline_at: new Date(Date.now() - 60_000).toISOString() }).eq("id", attemptId));
+    const outcome = await grantAttempt(student.id, multiB.setId, staffId).catch((e: unknown) => e);
+    expect((outcome as GrantError).code).not.toBe("in_progress");
+    const row = await must(db.from("attempts").select("status").eq("id", attemptId).single());
+    expect(row.status).not.toBe("in_progress");
+  });
+
   it("recovers a blocked student who already holds an unused grant: unblocks without stacking", async () => {
     const student = await makeStudent(small);
     await failAndRelease(student.id, small);

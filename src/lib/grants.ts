@@ -49,11 +49,23 @@ export type GrantResult = { ok: true } | { ok: false; unseenAvailable: number; n
  */
 export async function grantAttempt(studentId: string, examSetId: string, staffId: string): Promise<GrantResult> {
   if (!isUuid(studentId) || !isUuid(examSetId) || !isUuid(staffId)) throw new Error("grantAttempt: invalid id");
-  // Lazy expiry: an attempt whose deadline has passed is submitted (and scored) first, so it
-  // no longer counts as in progress.
-  await findOpenAttemptId(studentId, examSetId);
-
   const db = createAdminClient();
+  // Lazy expiry: every in-progress attempt of the student in this exam set's curriculum whose
+  // deadline has passed is submitted (and scored) first, so it no longer counts as in progress
+  // (grant_attempt checks the whole curriculum).
+  const { data: set, error: setError } = await db.from("exam_sets").select("curriculum_id").eq("id", examSetId).maybeSingle();
+  if (setError) throw new Error(`Could not read exam set: ${setError.message}`);
+  if (set) {
+    const { data: open, error: openError } = await db
+      .from("attempts")
+      .select("exam_set_id, exam_sets!inner(curriculum_id)")
+      .eq("student_id", studentId)
+      .eq("status", "in_progress")
+      .eq("exam_sets.curriculum_id", set.curriculum_id);
+    if (openError) throw new Error(`Could not read attempts: ${openError.message}`);
+    for (const a of open ?? []) await findOpenAttemptId(studentId, a.exam_set_id as string);
+  }
+
   const { data, error } = await db.rpc("grant_attempt", {
     p_student_id: studentId,
     p_exam_set_id: examSetId,
