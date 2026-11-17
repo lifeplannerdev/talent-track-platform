@@ -226,7 +226,7 @@ test("full flow: a second student fails twice, is blocked at the second release,
   await expect(row).toContainText("2 of 2");
 
   await signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
-  await expect(page.getByTestId("no-exams")).toBeVisible();
+  await expect(page.getByTestId("blocked-contact-trainer")).toBeVisible();
 
   await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
   await staffNav(page, "Blocked");

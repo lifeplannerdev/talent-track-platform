@@ -129,9 +129,13 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
 
   // Student: the bilingual report.
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
-  // The passed assignment is no longer the student's next exam.
-  await expect(page.getByTestId("no-exams")).toBeVisible();
-  await page.goto(resultUrl);
+  // The passed assignment is no longer the student's next exam; the result stays reachable.
+  await expect(page.getByTestId("all-completed")).toBeVisible();
+  const resultRow = page.getByTestId("results-list").getByRole("listitem").filter({ hasText: EXAM_CURRICULUM_HELD });
+  await expect(resultRow).toContainText("2 / 3");
+  await expect(resultRow).toContainText("Passed");
+  await resultRow.getByRole("link", { name: /View result/ }).click();
+  await expect(page).toHaveURL(resultUrl);
   await expect(page.getByRole("heading", { name: "Ergebnis / Result" })).toBeVisible();
   await expect(page.getByTestId("result-score")).toHaveText(/^2 of 3\s*\(66\.7%\)$/);
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");

@@ -36,6 +36,62 @@ type ViewRow = {
   passed: boolean | null;
 };
 
+/** One row of the student's own results list. Numbers are null until the result is released. */
+export type StudentResultListItem = {
+  id: string;
+  status: "submitted" | "released";
+  curriculumName: string;
+  examSetName: string;
+  submittedAt: string | null;
+  points: number | null;
+  maxPoints: number | null;
+  passed: boolean | null;
+};
+
+/**
+ * The session student's submitted and released attempts, newest first, through the
+ * student_attempts view with the session client (the view masks the numbers until release).
+ * In-progress attempts are left out. studentId must be the session user (requireRole).
+ */
+export async function listStudentResults(studentId: string): Promise<StudentResultListItem[]> {
+  if (!isUuid(studentId)) return [];
+  const supabase = await createClient();
+  const { data: rows, error } = await supabase
+    .from("student_attempts")
+    .select("id, exam_set_id, status, submitted_at, points, max_points, passed")
+    .eq("student_id", studentId)
+    .in("status", ["submitted", "released"])
+    .order("submitted_at", { ascending: false })
+    .order("id")
+    .returns<Omit<ViewRow, "deadline_at" | "released_at">[]>();
+  if (error) throw new Error(`Could not read results: ${error.message}`);
+  const attempts = rows ?? [];
+  if (attempts.length === 0) return [];
+
+  // Exam sets of curriculums no longer assigned are not readable; their rows keep blank names.
+  const { data: sets, error: setsError } = await supabase
+    .from("exam_sets")
+    .select("id, name, curriculums(name)")
+    .in("id", [...new Set(attempts.map((a) => a.exam_set_id))])
+    .returns<{ id: string; name: string; curriculums: { name: string } | null }[]>();
+  if (setsError) throw new Error(`Could not read exam sets: ${setsError.message}`);
+
+  return attempts.map((a) => {
+    const set = sets?.find((s) => s.id === a.exam_set_id);
+    const released = a.status === "released";
+    return {
+      id: a.id,
+      status: released ? "released" : "submitted",
+      curriculumName: set?.curriculums?.name ?? "",
+      examSetName: set?.name ?? "",
+      submittedAt: a.submitted_at,
+      points: released ? a.points : null,
+      maxPoints: released ? a.max_points : null,
+      passed: released ? a.passed : null,
+    };
+  });
+}
+
 /** One decimal place, e.g. 57.1. */
 export function percentOf(points: number, max: number): number {
   return max > 0 ? Math.round((points / max) * 1000) / 10 : 0;

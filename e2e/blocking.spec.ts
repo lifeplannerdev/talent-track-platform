@@ -112,7 +112,7 @@ test("a student who fails the last allowed attempt is blocked, appears on the Bl
 
   // The blocked student cannot start anything.
   await signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
-  await expect(page.getByTestId("no-exams")).toBeVisible();
+  await expect(page.getByTestId("blocked-contact-trainer")).toBeVisible();
 
   // Staff grant another attempt from the Blocked page (2 unseen questions left, 2 needed).
   await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
