@@ -174,10 +174,11 @@ select throws_ok($$insert into public.answers (attempt_question_id, option_id) v
   null, 'staff cannot insert answers');
 
 -- Staff cannot delete students, curriculums or exam sets: the foreign keys cascade (without RLS)
--- into attempts, answers and the scoring snapshot, so a delete would erase results (0012).
-select lives_ok($$delete from public.curriculums where id = '10000000-0000-0000-0000-000000000001'$$, 'a staff curriculum delete runs');
-select lives_ok($$delete from public.exam_sets where id = '20000000-0000-0000-0000-000000000001'$$, 'a staff exam set delete runs');
-select lives_ok($$delete from public.profiles where id = '00000000-0000-0000-0000-0000000000b1'$$, 'a staff profile delete runs');
+-- into attempts, answers and the scoring snapshot, so a delete would erase results (0012). Since
+-- 0013 the DELETE privilege itself is gone, so the attempt fails loudly instead of matching no rows.
+select throws_ok($$delete from public.curriculums where id = '10000000-0000-0000-0000-000000000001'$$, '42501', null, 'staff have no DELETE privilege on curriculums');
+select throws_ok($$delete from public.exam_sets where id = '20000000-0000-0000-0000-000000000001'$$, '42501', null, 'staff have no DELETE privilege on exam_sets');
+select throws_ok($$delete from public.profiles where id = '00000000-0000-0000-0000-0000000000b1'$$, '42501', null, 'staff have no DELETE privilege on profiles');
 select is((select count(*)::int from public.curriculums where id = '10000000-0000-0000-0000-000000000001'), 1, 'staff cannot delete a curriculum');
 select is((select count(*)::int from public.exam_sets where id = '20000000-0000-0000-0000-000000000001'), 1, 'staff cannot delete an exam set');
 select is((select count(*)::int from public.profiles where id = '00000000-0000-0000-0000-0000000000b1'), 1, 'staff cannot delete a student profile');

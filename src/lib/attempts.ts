@@ -19,6 +19,8 @@ export type AttemptErrorCode =
   | "question_already_seen"
   | "exam_set_not_found"
   | "invalid_draw"
+  | "not_open"
+  | "result_pending"
   | "insufficient_pool";
 
 const SQL_CODES = new Set<string>([
@@ -31,6 +33,8 @@ const SQL_CODES = new Set<string>([
   "question_already_seen",
   "exam_set_not_found",
   "invalid_draw",
+  "not_open",
+  "result_pending",
 ]);
 
 export class AttemptError extends Error {
