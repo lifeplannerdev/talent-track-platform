@@ -208,7 +208,7 @@ describe("releaseAttempt", () => {
     const attemptId = await submittedAttempt(student.id);
     const before = await attemptRow(attemptId);
 
-    await releaseAttempt(attemptId, staffId);
+    await expect(releaseAttempt(attemptId, staffId)).resolves.toBe(true);
 
     const after = await attemptRow(attemptId);
     expect(after).toMatchObject({ status: "released", released_by: staffId, points: before.points, max_points: 7, passed: true });
@@ -228,14 +228,14 @@ describe("releaseAttempt", () => {
     const attemptId = await submittedAttempt(student.id);
     await releaseAttempt(attemptId, staffId);
     const released = await attemptRow(attemptId);
-    await releaseAttempt(attemptId, staff2Id);
+    await expect(releaseAttempt(attemptId, staff2Id)).resolves.toBe(false);
     expect(await attemptRow(attemptId)).toEqual(released);
   });
 
   it("an in-progress attempt is not released", async () => {
     const student = await makeUser("student");
     const { attemptId } = await startAttempt(student.id, setId);
-    await releaseAttempt(attemptId, staffId);
+    await expect(releaseAttempt(attemptId, staffId)).resolves.toBe(false);
     expect((await attemptRow(attemptId)).status).toBe("in_progress");
   });
 
@@ -296,6 +296,21 @@ describe("releaseAttemptAction", () => {
     session.client = staff2Client;
     await expect(releaseAttemptAction(attemptId)).resolves.toEqual({ ok: true });
     expect(await attemptRow(attemptId)).toMatchObject({ status: "released", released_by: staff2Id });
+  });
+
+  it("an attempt that changes nothing (already released) is reported, not shown as a success", async () => {
+    const student = await makeUser("student");
+    const attemptId = await submittedAttempt(student.id);
+    session.client = staffClient;
+    await expect(releaseAttemptAction(attemptId)).resolves.toEqual({ ok: true });
+    await expect(releaseAttemptAction(attemptId)).resolves.toEqual({ ok: false, error: "not_releasable" });
+  });
+
+  it("an in-progress (not scored) attempt is reported as not releasable", async () => {
+    const student = await makeUser("student");
+    const { attemptId } = await startAttempt(student.id, setId);
+    session.client = staffClient;
+    await expect(releaseAttemptAction(attemptId)).resolves.toEqual({ ok: false, error: "not_releasable" });
   });
 
   it("an invalid id is refused without touching the database", async () => {

@@ -41,6 +41,9 @@ export function ReleaseButton({ attemptId, canRelease, disabledLabel, summary }:
       const result = await releaseAttemptAction(attemptId);
       if (result.ok) {
         setOpen(false);
+      } else if (result.error === "not_releasable") {
+        setOpen(false);
+        setError("Nothing was released: this result is not scored yet or has already been released. Reload the page to see its current state.");
       } else {
         setError("The result could not be released. Please try again.");
       }

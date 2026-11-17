@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { isUuid } from "@/lib/attempts";
 import { releaseAttempt } from "@/lib/release";
 
-export type ReleaseResult = { ok: true } | { ok: false; error: "invalid_request" | "failed" };
+export type ReleaseResult = { ok: true } | { ok: false; error: "invalid_request" | "not_releasable" | "failed" };
 
 /**
  * Releases a held attempt. Authenticates itself (a student or anonymous caller is redirected
@@ -15,13 +15,17 @@ export type ReleaseResult = { ok: true } | { ok: false; error: "invalid_request"
 export async function releaseAttemptAction(attemptId: string): Promise<ReleaseResult> {
   const profile = await requireRole("staff");
   if (!isUuid(attemptId)) return { ok: false, error: "invalid_request" };
+  let released: boolean;
   try {
-    await releaseAttempt(attemptId, profile.id);
+    released = await releaseAttempt(attemptId, profile.id);
   } catch (e) {
     console.error("releaseAttemptAction failed", e);
     return { ok: false, error: "failed" };
   }
   revalidatePath("/staff/review");
+  revalidatePath("/staff/results");
   revalidatePath(`/staff/review/${attemptId}`);
+  // Nothing changed: already released (for example by a colleague) or not scored yet.
+  if (!released) return { ok: false, error: "not_releasable" };
   return { ok: true };
 }
