@@ -127,6 +127,23 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   await page.getByRole("link", { name: "Back to review list" }).click();
   await expect(page.getByRole("row").filter({ hasText: STUDENT_EXAM.fullName })).toHaveCount(0);
 
+  // Staff still find the released result: the Results list (filtered) and the student page.
+  await page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Results" }).click();
+  await expect(page).toHaveURL(/\/staff\/results$/);
+  await page.getByRole("combobox", { name: "Curriculum" }).selectOption({ label: EXAM_CURRICULUM_HELD });
+  await page.getByRole("combobox", { name: "Status" }).selectOption("released");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await expect(page).toHaveURL(/status=released/);
+  const staffRow = page.getByTestId("results-table").getByRole("row").filter({ hasText: STUDENT_EXAM.fullName });
+  await expect(staffRow).toContainText("Released");
+  await expect(staffRow).toContainText("2 / 3");
+  await staffRow.getByRole("link", { name: STUDENT_EXAM.fullName }).click();
+  await expect(page).toHaveURL(new RegExp(`/staff/review/${attemptId}$`));
+  await page.goto("/staff/students?q=" + STUDENT_EXAM.username);
+  await page.getByRole("link", { name: `Open ${STUDENT_EXAM.fullName}` }).click();
+  const studentResults = page.getByTestId("student-results-table");
+  await expect(studentResults.getByRole("row").filter({ hasText: EXAM_CURRICULUM_HELD })).toContainText("2 / 3");
+
   // Student: the bilingual report.
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
   // The passed assignment is no longer the student's next exam; the result stays reachable.

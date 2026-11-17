@@ -4,7 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { getStudentDetail } from "@/lib/staff-manage";
-import { ChevronLeftIcon, LibraryIcon } from "lucide-react";
+import { ChevronLeftIcon, ClipboardListIcon, LibraryIcon } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
+import { ReleaseStatus, ResultScore } from "@/components/app/result-score";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
 import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
@@ -137,6 +139,57 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
           )}
         </GrantStatusProvider>
         <AddCurriculumForm studentId={s.id} options={s.unassigned} />
+      </section>
+
+      <section aria-labelledby="results-heading" className="flex flex-col gap-3">
+        <SectionHeading id="results-heading">Results</SectionHeading>
+        {s.results.length === 0 ? (
+          <Empty className="border" data-testid="student-results-empty">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ClipboardListIcon aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>No results yet</EmptyTitle>
+              <EmptyDescription>Submitted exams of this student appear here.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Table data-testid="student-results-table" className="min-w-[40rem]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Curriculum and exam</TableHead>
+                <TableHead>Submitted</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Score</TableHead>
+                <TableHead>
+                  <span className="sr-only">Evaluation</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {s.results.map((r) => (
+                <TableRow key={r.id} className="align-top">
+                  <TableCell>
+                    <span className="block">{r.curriculumName}</span>
+                    <span className="block text-muted-foreground">{r.examSetName}</span>
+                  </TableCell>
+                  <TableCell>{formatDateTime(r.submittedAt)}</TableCell>
+                  <TableCell>
+                    <ReleaseStatus status={r.status} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ResultScore points={r.points} maxPoints={r.maxPoints} passed={r.passed} />
+                  </TableCell>
+                  <TableCell>
+                    <Link href={`/staff/review/${r.id}`} className={linkClass}>
+                      Open<span className="sr-only"> evaluation of {r.examSetName}</span>
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </section>
 
       <ResetPasswordForm studentId={s.id} studentName={s.fullName} />

@@ -74,6 +74,17 @@ export type StudentDetail = {
     examSets: { id: string; name: string; maxAttempts: number }[];
   }[];
   unassigned: { id: string; name: string }[];
+  /** Every scored attempt (held or released), newest first, with the stored score. */
+  results: {
+    id: string;
+    status: "submitted" | "released";
+    curriculumName: string;
+    examSetName: string;
+    submittedAt: string | null;
+    points: number | null;
+    maxPoints: number | null;
+    passed: boolean | null;
+  }[];
 };
 
 export async function getStudentDetail(id: string): Promise<StudentDetail | null> {
@@ -91,14 +102,24 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
   const [{ data: assignments, error: aError }, { data: curriculums, error: cError }, { data: attempts, error: tError }] = await Promise.all([
     db.from("assignments").select("curriculum_id, position, status").eq("student_id", id).order("position"),
     db.from("curriculums").select("id, name, exam_sets(id, name, max_attempts, created_at)").order("name"),
-    db.from("attempts").select("exam_set_id, status").eq("student_id", id),
+    db
+      .from("attempts")
+      .select("id, exam_set_id, status, submitted_at, points, max_points, passed")
+      .eq("student_id", id)
+      .order("submitted_at", { ascending: false, nullsFirst: false })
+      .order("id"),
   ]);
   if (aError || cError || tError) throw new Error("Could not read the student");
 
   type C = { id: string; name: string; exam_sets: { id: string; name: string; max_attempts: number; created_at: string }[] };
   const all = (curriculums ?? []) as C[];
   const curriculumOfSet = new Map<string, string>();
-  for (const c of all) for (const s of c.exam_sets) curriculumOfSet.set(s.id, c.id);
+  const setInfo = new Map<string, { name: string; curriculumName: string }>();
+  for (const c of all)
+    for (const s of c.exam_sets) {
+      curriculumOfSet.set(s.id, c.id);
+      setInfo.set(s.id, { name: s.name, curriculumName: c.name });
+    }
   const assigned = new Set((assignments ?? []).map((a) => a.curriculum_id as string));
 
   return {
@@ -123,6 +144,18 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
       };
     }),
     unassigned: all.filter((c) => !assigned.has(c.id)).map((c) => ({ id: c.id, name: c.name })),
+    results: (attempts ?? [])
+      .filter((t) => t.status === "submitted" || t.status === "released")
+      .map((t) => ({
+        id: t.id as string,
+        status: t.status as "submitted" | "released",
+        curriculumName: setInfo.get(t.exam_set_id)?.curriculumName ?? "",
+        examSetName: setInfo.get(t.exam_set_id)?.name ?? "",
+        submittedAt: t.submitted_at as string | null,
+        points: t.points as number | null,
+        maxPoints: t.max_points as number | null,
+        passed: t.passed as boolean | null,
+      })),
   };
 }
 

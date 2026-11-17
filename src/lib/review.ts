@@ -70,6 +70,75 @@ export async function listSubmittedAttempts(): Promise<ReviewListItem[]> {
   return rows.map(toItem);
 }
 
+export type ResultStatus = "submitted" | "released";
+export type ResultFilters = { batch?: string; curriculumId?: string; status?: string };
+export type ResultListItem = ReviewListItem & { status: ResultStatus; batch: string | null; releasedAt: string | null };
+
+type ResultRow = Omit<AttemptRow, "student" | "exam_sets"> & {
+  student: { full_name: string | null; username: string; batch: string | null } | null;
+  exam_sets: { name: string; curriculum_id: string; curriculums: { name: string } | null } | null;
+};
+
+/**
+ * Every scored attempt (held = 'submitted', or 'released'), newest first, for the staff results
+ * list, with the filter options. Filters: batch (exact), curriculum id, status. An unknown status
+ * is ignored; a curriculum id that is not a uuid matches nothing.
+ */
+export async function listResults(
+  filters: ResultFilters,
+): Promise<{ rows: ResultListItem[]; batches: string[]; curriculums: { id: string; name: string }[] }> {
+  const supabase = await createClient();
+  const status: ResultStatus[] =
+    filters.status === "submitted" || filters.status === "released" ? [filters.status] : ["submitted", "released"];
+  const curriculumId = filters.curriculumId || undefined;
+  const batch = filters.batch || undefined;
+
+  const [rows, students, curriculums] = await Promise.all([
+    curriculumId && !isUuid(curriculumId)
+      ? Promise.resolve([] as ResultRow[])
+      : fetchAll((from, to) => {
+          let q = supabase
+            .from("attempts")
+            .select(
+              "id, status, deadline_at, submitted_at, released_at, points, max_points, passed, " +
+                "student:profiles!attempts_student_id_fkey!inner(full_name, username, batch), " +
+                "exam_sets!inner(name, curriculum_id, curriculums(name))",
+            )
+            .in("status", status);
+          if (batch) q = q.eq("student.batch", batch);
+          if (curriculumId) q = q.eq("exam_sets.curriculum_id", curriculumId);
+          return q
+            .order("submitted_at", { ascending: false })
+            .order("id")
+            .range(from, to)
+            .overrideTypes<ResultRow[], { merge: false }>();
+        }, "Could not read results"),
+    fetchAll(
+      (from, to) => supabase.from("profiles").select("batch").eq("role", "student").not("batch", "is", null).order("id").range(from, to),
+      "Could not read batches",
+    ),
+    fetchAll((from, to) => supabase.from("curriculums").select("id, name").order("name").range(from, to), "Could not read curriculums"),
+  ]);
+
+  return {
+    rows: rows.map((a) => ({
+      id: a.id,
+      studentName: nameOf(a.student),
+      curriculumName: a.exam_sets?.curriculums?.name ?? "",
+      examSetName: a.exam_sets?.name ?? "",
+      submittedAt: a.submitted_at,
+      points: a.points,
+      maxPoints: a.max_points,
+      passed: a.passed,
+      status: a.status as ResultStatus,
+      batch: a.student?.batch ?? null,
+      releasedAt: a.released_at,
+    })),
+    batches: [...new Set(students.map((p) => p.batch as string))].sort(),
+    curriculums: curriculums.map((c) => ({ id: c.id as string, name: c.name as string })),
+  };
+}
+
 /** Key, topic and points come from the scoring snapshot (null until the attempt is scored). */
 export type ReviewQuestion = {
   attemptQuestionId: string;

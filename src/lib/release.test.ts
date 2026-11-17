@@ -23,7 +23,8 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 import { saveAnswer, startAttempt, submitAttempt } from "./attempts";
 import { releaseAttempt } from "./release";
 import { getStudentResult } from "./results";
-import { getAttemptReview, listSubmittedAttempts } from "./review";
+import { getAttemptReview, listResults, listSubmittedAttempts } from "./review";
+import { getStudentDetail } from "./staff-manage";
 import { releaseAttemptAction } from "@/app/staff/review/actions";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -460,5 +461,62 @@ describe("staff review readers", () => {
     session.client = student.client;
     expect(await listSubmittedAttempts()).toEqual([]);
     expect(await getAttemptReview(attemptId)).toBeNull();
+  });
+});
+
+describe("staff results list", () => {
+  it("lists held and released attempts (not in progress) with batch, filterable by batch, curriculum and status", async () => {
+    const batch = `B-${run}`;
+    const heldStudent = await makeUser("student");
+    const releasedStudent = await makeUser("student");
+    await db.from("profiles").update({ batch }).in("id", [heldStudent.id, releasedStudent.id]);
+    const held = await submittedAttempt(heldStudent.id);
+    const released = await submittedAttempt(releasedStudent.id, () => "a");
+    await releaseAttempt(released, staffId);
+    const runner = await makeUser("student");
+    await db.from("profiles").update({ batch }).eq("id", runner.id);
+    await ok(db.from("attempt_grants").insert({ student_id: runner.id, exam_set_id: setId }));
+    const { attemptId: running } = await startAttempt(runner.id, setId);
+    session.client = staffClient;
+
+    const all = await listResults({ batch });
+    expect(all.rows.map((r) => r.id).sort()).toEqual([held, released].sort());
+    expect(all.rows.find((r) => r.id === running)).toBeUndefined();
+    expect(all.rows.find((r) => r.id === released)).toMatchObject({
+      status: "released",
+      batch,
+      curriculumName: `T6 curriculum ${run}`,
+      examSetName: `T6 set ${run}`,
+      points: 0,
+      maxPoints: 7,
+      passed: false,
+    });
+    expect(all.rows.find((r) => r.id === held)).toMatchObject({ status: "submitted", points: 7, passed: true });
+    expect(all.batches).toContain(batch);
+    expect(all.curriculums).toContainEqual({ id: curriculumId, name: `T6 curriculum ${run}` });
+
+    expect((await listResults({ batch, status: "released" })).rows.map((r) => r.id)).toEqual([released]);
+    expect((await listResults({ batch, status: "submitted" })).rows.map((r) => r.id)).toEqual([held]);
+    expect((await listResults({ batch, curriculumId })).rows).toHaveLength(2);
+    expect((await listResults({ batch, curriculumId: randomUUID() })).rows).toEqual([]);
+  });
+
+  it("a student session gets no rows", async () => {
+    const student = await makeUser("student");
+    await submittedAttempt(student.id);
+    session.client = student.client;
+    expect((await listResults({})).rows).toEqual([]);
+  });
+
+  it("the student detail lists each attempt with status and score", async () => {
+    const student = await makeUser("student");
+    const attemptId = await submittedAttempt(student.id);
+    session.client = staffClient;
+    const before = await getStudentDetail(student.id);
+    expect(before!.results).toEqual([
+      expect.objectContaining({ id: attemptId, status: "submitted", points: 7, maxPoints: 7, passed: true, examSetName: `T6 set ${run}` }),
+    ]);
+    await releaseAttempt(attemptId, staffId);
+    expect((await getStudentDetail(student.id))!.results[0]).toMatchObject({ id: attemptId, status: "released" });
   });
 });
