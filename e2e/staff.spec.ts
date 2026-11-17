@@ -168,3 +168,36 @@ test("the Reassign curriculums link on the Blocked page opens the student's page
   await expect(row.getByRole("button", { name: "Give attempt" })).toBeVisible();
   await expect(row.getByRole("button", { name: /^Remove/ })).toBeVisible();
 });
+
+test("staff delete a student after typing the username, and the account and data are gone", async ({ page }) => {
+  const db = adminDb();
+  const username = "e2e.delete";
+  // TEST password, generated per run.
+  const password = `e2e-delete-${Date.now()}`;
+  const { data: existing } = await db.from("profiles").select("id").eq("username", username).maybeSingle();
+  if (existing) await db.auth.admin.deleteUser(existing.id);
+  const { data: created, error } = await db.auth.admin.createUser({
+    email: usernameToEmail(username),
+    password,
+    email_confirm: true,
+    app_metadata: { role: "student", username, full_name: "E2E Delete Student", track: "other" },
+  });
+  if (error) throw error;
+
+  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
+  await page.goto(`/staff/students/${created.user.id}`);
+  await expect(page.getByTestId("student-name")).toHaveText("E2E Delete Student");
+  await page.getByRole("button", { name: "Delete student" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete E2E Delete Student?" });
+  const confirm = dialog.getByRole("button", { name: "Delete permanently" });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("textbox").fill("e2e.wrong");
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("textbox").fill(username);
+  await confirm.click();
+  await expect(page).toHaveURL(/\/staff\/students$/);
+  const { data: gone } = await db.from("profiles").select("id").eq("id", created.user.id).maybeSingle();
+  expect(gone).toBeNull();
+  const { data: authUser } = await db.auth.admin.getUserById(created.user.id);
+  expect(authUser.user).toBeNull();
+});
