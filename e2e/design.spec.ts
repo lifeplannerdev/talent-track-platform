@@ -107,6 +107,10 @@ test("student screens: login, consent, empty start, exam start, exam, submit dia
   await page.emulateMedia({ media: "print" });
   await page.screenshot({ path: path.join(SHOT_DIR, `08-result-print-${info.project.name}.png`), fullPage: true });
   await page.emulateMedia({ media: "screen" });
+  // Back on the exam page: the result stays reachable from "Your results".
+  await page.goto("/exam/start");
+  await expect(page.getByTestId("results-list")).toBeVisible();
+  await review(page, info, "09-exam-start-results", findings);
 
   finish(info, findings);
 });
@@ -134,6 +138,9 @@ test("staff screens: dashboard, review, evaluation, blocked, grants, students, s
   await review(page, info, "10-staff-dashboard", findings);
   await page.goto("/staff/review");
   await review(page, info, "11-staff-review", findings);
+  await page.goto("/staff/results");
+  await expect(page.getByTestId("results-table")).toBeVisible();
+  await review(page, info, "11-staff-results", findings);
   await page.goto(`/staff/review/${attemptId}`);
   await review(page, info, "12-staff-evaluation", findings);
   await page.getByRole("button", { name: "Release result" }).click();
@@ -148,6 +155,10 @@ test("staff screens: dashboard, review, evaluation, blocked, grants, students, s
   await review(page, info, "15-staff-students", findings);
   await page.goto(`/staff/students/${blocked!.id}`);
   await review(page, info, "16-staff-student-detail", findings);
+  await page.getByRole("button", { name: "Delete student" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await review(page, info, "16-staff-delete-dialog", findings);
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   await page.goto("/staff/curriculums");
   await review(page, info, "17-staff-curriculums", findings);
   const { data: c } = await db.from("curriculums").select("id").eq("name", "E2E Exam Curriculum Held").single();
