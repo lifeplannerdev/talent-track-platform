@@ -3,7 +3,7 @@
 --   * start_attempt refuses unless the student's assignment for the curriculum is 'open', and
 --     refuses while a held (submitted, unreleased) result exists anywhere in the curriculum.
 begin;
-select plan(11);
+select plan(12);
 
 -- Default privileges -----------------------------------------------------------
 create function public.zz_probe_0013() returns integer language sql as 'select 1';
@@ -11,6 +11,14 @@ create function private.zz_probe_0013() returns integer language sql as 'select 
 select ok(not has_function_privilege('anon', 'public.zz_probe_0013()', 'execute'), 'a new public function is not executable by anon');
 select ok(not has_function_privilege('authenticated', 'public.zz_probe_0013()', 'execute'), 'a new public function is not executable by authenticated');
 select ok(not has_function_privilege('authenticated', 'private.zz_probe_0013()', 'execute'), 'a new function in another schema is not executable by authenticated');
+
+-- start_attempt serialises starts per student and curriculum: the assignment row is locked FOR
+-- UPDATE (0017). FOR SHARE (0013/0015) let two concurrent starts on different exam sets both pass
+-- the in_progress check; the concurrent case is tested in src/lib/attempts.test.ts.
+select ok(
+  pg_get_functiondef('public.start_attempt(uuid, uuid, jsonb)'::regprocedure)
+    ~ 'from public\.assignments\s+where student_id = p_student_id and curriculum_id = v_curriculum_id\s+for update',
+  'start_attempt locks the student''s assignment row FOR UPDATE');
 
 -- Fixtures -------------------------------------------------------------------
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)

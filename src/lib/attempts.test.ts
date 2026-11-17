@@ -248,6 +248,40 @@ describe("one exam at a time per curriculum", () => {
   });
 });
 
+describe("concurrent starts in one curriculum", () => {
+  it("two starts fired at once on different exam sets of a curriculum: exactly one succeeds (assignment locked FOR UPDATE)", async () => {
+    const second = await makeExamSet("held race", true, heldCurriculumId);
+    const draw = async (setId: string) => {
+      const qs = await must(db.from("questions").select("id").eq("exam_set_id", setId).eq("status", "approved").order("id").limit(3));
+      return qs.map((q) => ({ question_id: q.id, option_order: ["a", "b", "c"] }));
+    };
+    const [drawA, drawB] = await Promise.all([draw(heldSetId), draw(second.setId)]);
+    // Several students race at once, so a check-then-insert gap would show up.
+    const students = await Promise.all(Array.from({ length: 6 }, () => makeStudent()));
+    for (const st of students) {
+      await grant(st, heldSetId);
+      await grant(st, second.setId);
+    }
+    const outcomes = await Promise.all(
+      students.map(async (st) => {
+        const results = await Promise.all([
+          db.rpc("start_attempt", { p_student_id: st, p_exam_set_id: heldSetId, p_draw: drawA }),
+          db.rpc("start_attempt", { p_student_id: st, p_exam_set_id: second.setId, p_draw: drawB }),
+        ]);
+        return results;
+      }),
+    );
+    for (const [a, b] of outcomes) {
+      expect([a.error, b.error].filter((e) => e === null)).toHaveLength(1);
+      expect([a.error?.message, b.error?.message].filter(Boolean)).toEqual(["in_progress"]);
+    }
+    for (const st of students) {
+      const open = await must(db.from("attempts").select("id").eq("student_id", st).eq("status", "in_progress"));
+      expect(open).toHaveLength(1);
+    }
+  });
+});
+
 describe("resume", () => {
   it("returns the same questions, option order and deadline when an attempt is read again", async () => {
     const student = await makeStudent();

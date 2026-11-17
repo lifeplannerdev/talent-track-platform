@@ -36,3 +36,15 @@ CLAUDE.md conventions were updated with each commit: views, the 0013 to 0015 `st
 - `remove_curriculum` refuses on any `in_progress` row. An expired attempt that server code has not closed yet would block it, but the action closes expired attempts in the curriculum first, as before.
 - `reorder_curriculums` and `remove_curriculum` repeat the staff check in SQL (defence in depth). The action passes `profile.id` from `requireRole('staff')`, never a client value.
 - The S1 drop is a breaking schema change for any outside PostgREST client that used the view. None is known; the app never used it.
+
+## Addendum: CodeRabbit re-run (start_attempt lock)
+
+- **Finding:** 0015 read the assignment `FOR SHARE`. A share lock does not block another share lock, so two concurrent `start_attempt` calls on different exam sets of one curriculum could both pass the `in_progress` check.
+- **Fix:** `0017_start_attempt_lock_assignment.sql` replaces `start_attempt` (same signature, empty search_path, EXECUTE for service_role only). It now locks the assignment row `FOR UPDATE` before the `result_pending` and `in_progress` checks, so starts for one student and curriculum run one after another.
+- **Lock order** (in the migration header and CLAUDE.md):
+  - `start_attempt`, `grant_attempt`, `remove_curriculum` and `reorder_curriculums` lock the assignment, then grants, then new attempt rows.
+  - `close_attempt` and `record_score` (which calls `release_attempt`) lock the existing attempt, then the assignment.
+  - `start_attempt` never locks an existing attempt row, and `release_attempt` never touches grants, so the two cannot wait on each other.
+- **RED:** a new vitest in `src/lib/attempts.test.ts` takes 6 students, each with grants on two exam sets of the same curriculum, and fires both `start_attempt` RPCs at once. It failed 3 out of 3 runs: "expected [null, null] to have a length of 1" (both starts succeeded). A new pgTAP check that `start_attempt` locks the assignment `FOR UPDATE` (via `pg_get_functiondef`) also failed.
+- **GREEN:** after 0017, the concurrency test passed 3 out of 3 runs: exactly one start per student succeeds, the other gets `in_progress`, and each student has exactly one attempt in progress. `db:test` PASS (the sequential two-set `in_progress` test from 0015 is still there). The attempts, grants, release and exam-start vitest files: 85/85.
+
