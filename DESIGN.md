@@ -23,7 +23,8 @@ round answer mark that fills with Königsblau when chosen, and the question navi
 of numbered squares that fill (and get a check mark) as questions are answered.
 
 Light mode only. Dark mode was left out on purpose: the exam and the printed report are designed
-for paper contrast, and a second theme would double the contrast checks for little gain.
+for paper contrast, and a second theme would double the contrast checks for little gain. There is no
+`dark` variant in `globals.css` and the components carry no `dark:` classes; do not add them.
 
 ## Tokens
 
@@ -69,8 +70,9 @@ Headings: semibold, tracking -0.012em, balanced wrapping. No all-caps labels.
   student pages: `studentMain` (max 42 rem, centred). Sections are separated by 24 to 32 px.
 - Radius `--radius` 0.5 rem: controls 6 px (`rounded-md`), panels and cards 12 px (`rounded-xl`),
   status tags 5 px (`rounded-sm`). No pills except tiny legend swatches.
-- Elevation is a 1 px border (`ring-border`). Only overlays carry a shadow (dialogs and the
-  login panel). No decorative gradients, glass or blur.
+- Elevation is a 1 px border (`ring-border`). Only overlays carry a shadow: `shadow-overlay`
+  (`--overlay-shadow`, dialogs) and `shadow-panel` (`--panel-shadow`, the login panel). The
+  dialog backdrop is `bg-scrim` (`--scrim`, ink at 45%). No decorative gradients, glass or blur.
 
 ### Motion
 

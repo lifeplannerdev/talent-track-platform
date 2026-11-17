@@ -5,8 +5,6 @@
 /* TalentTrack design tokens. See DESIGN.md for the direction and the rules. Light only:
    the exam and the printed report are designed for paper-like contrast. */
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -18,6 +16,10 @@
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-destructive-muted: var(--destructive-muted);
+  /* Overlays: the dialog backdrop and the two shadows (dialogs, the login panel). */
+  --color-scrim: var(--scrim);
+  --shadow-overlay: var(--overlay-shadow);
+  --shadow-panel: var(--panel-shadow);
   --color-success: var(--success);
   --color-success-muted: var(--success-muted);
   --color-warning: var(--warning);
@@ -94,6 +96,10 @@
   --border: #d5dbe4;
   --input: #8a94a6;
   --ring: #2346a0;
+  /* Overlays: ink-coloured scrim and shadows (only overlays carry a shadow). */
+  --scrim: rgb(23 32 51 / 0.45);
+  --overlay-shadow: 0 24px 48px -12px rgb(23 32 51 / 0.35);
+  --panel-shadow: 0 12px 32px -16px rgb(23 32 51 / 0.25);
   --chart-1: #2346a0;
   --chart-2: #5b7bc9;
   --chart-3: #1d6b3f;

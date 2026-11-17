@@ -9,7 +9,7 @@ export default function LoginPage() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-12">
       <Wordmark className="self-center" />
-      <Card className="w-full max-w-sm shadow-[0_12px_32px_-16px_rgb(23_32_51/0.25)]">
+      <Card className="w-full max-w-sm shadow-panel">
         <CardHeader>
           <CardTitle>
             <h1 className="text-xl font-semibold">Sign in</h1>
