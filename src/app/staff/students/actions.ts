@@ -163,92 +163,79 @@ export async function assignCurriculum(studentId: string, curriculumId: string):
 /**
  * Removes a curriculum from a student. Refused while an attempt in it is in progress. When the
  * student has attempts in it, `confirm` must be true: then only the assignment (and unused grants
- * for its exam sets) are deleted; attempts and results stay for the record.
+ * for its exam sets) are deleted; attempts and results stay for the record. The check and the
+ * deletes run in one transaction in public.remove_curriculum (0016), which locks the assignment.
  */
 export async function removeCurriculum(
   studentId: string,
   curriculumId: string,
   opts: { confirm?: boolean } = {},
 ): Promise<ActionResult> {
-  await requireRole("staff");
+  const profile = await requireRole("staff");
   const client = await createClient();
   const id = await findStudent(client, studentId);
   if (!id) return { ok: false, message: "Student not found" };
   if (!isUuid(curriculumId)) return { ok: false, message: "This curriculum is not assigned" };
-  const { data: assignment } = await client
-    .from("assignments")
-    .select("id")
+
+  // Lazy expiry first, so an attempt whose time is up does not block the removal.
+  const { data: open, error: openError } = await client
+    .from("attempts")
+    .select("exam_set_id, exam_sets!inner(curriculum_id)")
     .eq("student_id", id)
-    .eq("curriculum_id", curriculumId)
-    .maybeSingle();
-  if (!assignment) return { ok: false, message: "This curriculum is not assigned" };
+    .eq("status", "in_progress")
+    .eq("exam_sets.curriculum_id", curriculumId);
+  if (openError) throw new Error(`Could not read attempts: ${openError.message}`);
+  for (const a of open ?? []) await findOpenAttemptId(id, a.exam_set_id as string);
 
-  const { data: sets, error: setsError } = await client.from("exam_sets").select("id").eq("curriculum_id", curriculumId);
-  if (setsError) throw new Error(`Could not read exam sets: ${setsError.message}`);
-  const setIds = (sets ?? []).map((s) => s.id as string);
-
-  if (setIds.length > 0) {
-    const { data: attempts, error } = await client
-      .from("attempts")
-      .select("id, exam_set_id, status")
-      .eq("student_id", id)
-      .in("exam_set_id", setIds);
-    if (error) throw new Error(`Could not read attempts: ${error.message}`);
-    // Lazy expiry first, so an attempt whose time is up does not block the removal.
-    for (const setId of new Set((attempts ?? []).filter((a) => a.status === "in_progress").map((a) => a.exam_set_id as string))) {
-      if (await findOpenAttemptId(id, setId)) {
-        return { ok: false, code: "in_progress", message: "This student is taking an exam in this curriculum right now. Try again after it ends." };
-      }
-    }
-    const count = attempts?.length ?? 0;
-    if (count > 0 && opts?.confirm !== true) {
-      return {
-        ok: false,
-        code: "has_attempts",
-        message: `This student has ${count} attempt${count === 1 ? "" : "s"} in this curriculum. Confirm to remove the assignment; the attempts are kept.`,
-      };
-    }
-    const { error: grantsError } = await client
-      .from("attempt_grants")
-      .delete()
-      .eq("student_id", id)
-      .in("exam_set_id", setIds)
-      .is("used_attempt_id", null);
-    if (grantsError) throw new Error(`Could not remove unused grants: ${grantsError.message}`);
-  }
-
-  const { error } = await client.from("assignments").delete().eq("id", assignment.id);
+  const { data, error } = await createAdminClient().rpc("remove_curriculum", {
+    p_staff_id: profile.id,
+    p_student_id: id,
+    p_curriculum_id: curriculumId,
+    p_confirm: opts?.confirm === true,
+  });
   if (error) {
-    console.error("removeCurriculum failed", error.code);
+    if (error.message === "not_assigned") return { ok: false, message: "This curriculum is not assigned" };
+    if (error.message === "in_progress") {
+      return { ok: false, code: "in_progress", message: "This student is taking an exam in this curriculum right now. Try again after it ends." };
+    }
+    console.error("removeCurriculum failed", error.code ?? "unknown");
     return { ok: false, message: "The curriculum could not be removed. Please try again." };
+  }
+  const result = data as { ok: boolean; code?: string; attempts?: number };
+  if (!result.ok) {
+    const count = result.attempts ?? 0;
+    return {
+      ok: false,
+      code: "has_attempts",
+      message: `This student has ${count} attempt${count === 1 ? "" : "s"} in this curriculum. Confirm to remove the assignment; the attempts are kept.`,
+    };
   }
   revalidateStudents(id);
   return { ok: true };
 }
 
-/** Sets positions 1..n in the given order. The list must be exactly the student's curriculums. */
+/**
+ * Sets positions 1..n in the given order. The list must be exactly the student's curriculums.
+ * One atomic write through public.reorder_curriculums (0016).
+ */
 export async function reorderCurriculums(studentId: string, curriculumIds: string[]): Promise<ActionResult> {
-  await requireRole("staff");
+  const profile = await requireRole("staff");
   const client = await createClient();
   const id = await findStudent(client, studentId);
   if (!id) return { ok: false, message: "Student not found" };
   if (!Array.isArray(curriculumIds) || !curriculumIds.every(isUuid)) return { ok: false, message: "Invalid order" };
 
-  const { data: rows, error } = await client.from("assignments").select("id, curriculum_id").eq("student_id", id);
-  if (error) throw new Error(`Could not read assignments: ${error.message}`);
-  const byCurriculum = new Map((rows ?? []).map((r) => [r.curriculum_id as string, r.id as string]));
-  if (new Set(curriculumIds).size !== curriculumIds.length || curriculumIds.length !== byCurriculum.size || !curriculumIds.every((c) => byCurriculum.has(c))) {
-    return { ok: false, message: "The list does not match the student's curriculums. Reload the page and try again." };
-  }
-  for (let i = 0; i < curriculumIds.length; i++) {
-    const { error: updateError } = await client
-      .from("assignments")
-      .update({ position: i + 1 })
-      .eq("id", byCurriculum.get(curriculumIds[i])!);
-    if (updateError) {
-      console.error("reorderCurriculums failed", updateError.code);
-      return { ok: false, message: "The order could not be saved. Please try again." };
+  const { error } = await createAdminClient().rpc("reorder_curriculums", {
+    p_staff_id: profile.id,
+    p_student_id: id,
+    p_curriculum_ids: curriculumIds,
+  });
+  if (error) {
+    if (error.message === "order_mismatch") {
+      return { ok: false, message: "The list does not match the student's curriculums. Reload the page and try again." };
     }
+    console.error("reorderCurriculums failed", error.code ?? "unknown");
+    return { ok: false, message: "The order could not be saved. Please try again." };
   }
   revalidateStudents(id);
   return { ok: true };

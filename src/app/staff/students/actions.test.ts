@@ -431,6 +431,10 @@ describe("curriculum assignments", () => {
     ]);
 
     expect(await reorderCurriculums(s.id, [tempCurriculum2, tempCurriculum])).toEqual({ ok: true });
+    // One atomic write through the service-role function, as the session's staff member (0016).
+    expect(adminSpy.rpcCalls).toEqual([
+      { fn: "reorder_curriculums", args: { p_staff_id: staffId, p_student_id: s.id, p_curriculum_ids: [tempCurriculum2, tempCurriculum] } },
+    ]);
     expect(await assignmentsOf(s.id)).toEqual([
       [`T8 temp2 ${run}`, 1],
       [`T8 temp ${run}`, 2],
@@ -456,7 +460,12 @@ describe("curriculum assignments", () => {
     });
     expect(await assignmentsOf(s.id)).toHaveLength(1);
 
+    adminSpy.rpcCalls.length = 0;
     expect(await removeCurriculum(s.id, tempCurriculum, { confirm: true })).toEqual({ ok: true });
+    // One atomic check-and-delete through the service-role function (0016).
+    expect(adminSpy.rpcCalls.filter((c) => c.fn === "remove_curriculum")).toEqual([
+      { fn: "remove_curriculum", args: { p_staff_id: staffId, p_student_id: s.id, p_curriculum_id: tempCurriculum, p_confirm: true } },
+    ]);
     expect(await assignmentsOf(s.id)).toEqual([]);
     const attempts = await must(db.from("attempts").select("id").eq("student_id", s.id));
     expect(attempts).toHaveLength(1);
