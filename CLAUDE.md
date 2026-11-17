@@ -63,6 +63,7 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 
 ## Auth and sessions
 - Next 16 uses `src/proxy.ts` (the renamed middleware) for auth redirects: unauthenticated to `/login`, students to `/consent` until `consent_at`, staff and students kept to their own areas. It calls `getUser()` so a session ended by a newer login is rejected at once.
+- Exam server actions (`startExam`, `saveAnswerAction`, `submitExam`) call `requireStudentWithConsent()` (`src/lib/auth/require-role.ts`): a student without `consent_at` is redirected to /consent and nothing runs (the proxy only covers page requests). Only the consent action itself uses plain `requireRole('student')`.
 - Login ends other sessions (`signOut({ scope: 'others' })`). An Auth rate-limit error (status 429) gets its own message ("Too many sign-ins, please wait a minute and try again."), never "incorrect password". Consent is written by a server action with the service role.
 - Pages that read the session call `requireRole()` (which awaits `connection()`) inside `<Suspense>`, as required by `cacheComponents`.
 - e2e (`npm run test:e2e`) needs the local stack and `.env.local`; it seeds test users with the service role (`e2e/seed.ts`).

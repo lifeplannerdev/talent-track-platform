@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireStudentWithConsent } from "@/lib/auth/require-role";
 import {
   AttemptError,
   getAttemptStatus,
@@ -13,12 +13,12 @@ import {
 } from "@/lib/attempts";
 import { getExamStartState } from "@/lib/exam-start";
 
-// Every action authenticates itself (requireRole calls getUser) and uses the session's
-// user id. Ids from the client are only used together with that id.
+// Every action authenticates itself (requireStudentWithConsent calls getUser and refuses a
+// student without consent) and uses the session's user id. Ids from the client are only used together with that id.
 
 /** Starts (or resumes) the student's next exam. The exam set is chosen on the server. */
 export async function startExam(): Promise<void> {
-  const profile = await requireRole("student");
+  const profile = await requireStudentWithConsent();
   const state = await getExamStartState(profile.id);
   if (state.kind === "in_progress") redirect(`/exam/${state.attemptId}`);
   if (state.kind !== "ready") redirect("/exam/start");
@@ -40,7 +40,7 @@ export async function saveAnswerAction(
   attemptQuestionId: string,
   optionId: string,
 ): Promise<SaveResult> {
-  const profile = await requireRole("student");
+  const profile = await requireStudentWithConsent();
   if (!isUuid(attemptId) || !isUuid(attemptQuestionId) || typeof optionId !== "string" || optionId.length > 64) {
     return { ok: false, code: "invalid_request" };
   }
@@ -55,7 +55,7 @@ export async function saveAnswerAction(
 
 /** Submits the student's own attempt (also used by the client when the timer runs out). */
 export async function submitExam(attemptId: string): Promise<void> {
-  const profile = await requireRole("student");
+  const profile = await requireStudentWithConsent();
   const status = await getAttemptStatus(profile.id, attemptId);
   if (!status) redirect("/exam/start");
   // Idempotent: also finishes scoring if an earlier submit was interrupted.

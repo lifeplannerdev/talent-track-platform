@@ -34,3 +34,14 @@ export async function requireRole(role: Role): Promise<Profile> {
   }
   return profile;
 }
+
+/**
+ * A signed-in student who has given consent, or a redirect (/login, the staff area, /consent).
+ * Every student server action that touches an exam uses this: the proxy's consent redirect only
+ * covers page requests, and server actions can be called directly.
+ */
+export async function requireStudentWithConsent(): Promise<Profile> {
+  const profile = await requireRole("student");
+  if (!profile.consent_at) redirect("/consent");
+  return profile;
+}
