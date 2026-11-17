@@ -143,11 +143,13 @@ export function QuestionForm({ sets, initial }: { sets: ExamSetChoice[]; initial
   return (
     <form action={submit} className="flex flex-col gap-4" aria-label={isNew ? "Add question" : "Edit question"}>
       {!isNew ? (
-        <Alert>
+        <Alert variant="warning" data-testid="question-edit-warning">
           <AlertDescription>
             {initial.used
-              ? "This question has been used in attempts. Changes apply to new papers only; stored marks and results do not change."
-              : "Changes apply to new papers only; stored marks and results never change."}
+              ? "This question has been used in attempts. Stored marks of submitted attempts do not change. "
+              : "Stored marks of submitted attempts never change. "}
+            If a student has this question in an exam that is in progress right now, they see the change at once and it
+            counts when that attempt is scored. Edit outside exam times when you can.
           </AlertDescription>
         </Alert>
       ) : null}

@@ -135,6 +135,14 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
 
   return (
     <form action={submit} className="flex flex-col gap-4" aria-label={isNew ? "New exam set" : `Settings for ${initial.name}`}>
+      {!isNew ? (
+        <Alert variant="warning" data-testid="exam-set-edit-warning">
+          <AlertDescription>
+            Exams already in progress keep their questions and time limit, but the pass mark and result holding saved here
+            apply to them when they are submitted. Change these outside exam times when you can.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${prefix}-name`}>Exam set name</Label>
         <Input
