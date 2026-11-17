@@ -214,6 +214,9 @@ describe("startAttempt", () => {
     await grant(student, heldSetId);
     const first = await startAttempt(student, heldSetId);
     await submitAttempt(first.attemptId);
+    // A retake only starts once the held result is released (start_attempt refuses result_pending, 0013).
+    const { error: releaseError } = await db.rpc("release_attempt", { p_attempt_id: first.attemptId, p_released_by: null });
+    if (releaseError) throw releaseError;
     await grant(student, heldSetId);
     const second = await startAttempt(student, heldSetId);
     const seen = new Set((await paper(first.attemptId)).map((q) => q.question_id));
