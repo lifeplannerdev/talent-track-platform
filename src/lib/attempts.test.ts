@@ -38,11 +38,11 @@ async function must<T>(p: PromiseLike<{ data: T; error: unknown }>): Promise<Non
   return data;
 }
 
-async function makeExamSet(name: string, holdResult: boolean) {
-  const curriculum = await must(
-    db.from("curriculums").insert({ name: `T5 ${name} ${run}` }).select("id").single(),
-  );
-  curriculumIds.push(curriculum.id);
+async function makeExamSet(name: string, holdResult: boolean, inCurriculum?: string) {
+  const curriculum = inCurriculum
+    ? { id: inCurriculum }
+    : await must(db.from("curriculums").insert({ name: `T5 ${name} ${run}` }).select("id").single());
+  if (!inCurriculum) curriculumIds.push(curriculum.id);
   const set = await must(
     db
       .from("exam_sets")
@@ -223,6 +223,28 @@ describe("startAttempt", () => {
     const again = (await paper(second.attemptId)).map((q) => q.question_id);
     expect(again).toHaveLength(3);
     for (const id of again) expect(seen.has(id)).toBe(false);
+  });
+});
+
+describe("one exam at a time per curriculum", () => {
+  it("refuses a start while another exam set of the curriculum is in progress, and allows it once that one has expired", async () => {
+    const second = await makeExamSet("held second", true, heldCurriculumId);
+    const student = await makeStudent();
+    await grant(student, heldSetId);
+    const first = await startAttempt(student, heldSetId);
+    await grant(student, second.setId);
+    await expect(startAttempt(student, second.setId)).rejects.toMatchObject({ code: "in_progress" });
+
+    // Time is up on the first exam: the start closes it first and then goes ahead.
+    await ok(db.from("attempts").update({ deadline_at: new Date(Date.now() - 60_000).toISOString() }).eq("id", first.attemptId));
+    await ok(db.from("exam_sets").update({ hold_result: false }).eq("id", heldSetId));
+    try {
+      const next = await startAttempt(student, second.setId);
+      expect(next.attemptId).not.toBe(first.attemptId);
+      expect((await attemptRow(first.attemptId)).status).not.toBe("in_progress");
+    } finally {
+      await ok(db.from("exam_sets").update({ hold_result: true }).eq("id", heldSetId));
+    }
   });
 });
 

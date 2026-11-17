@@ -23,6 +23,7 @@ const START_ERRORS: Record<string, string> = {
   no_grant: "There is no attempt available for you right now. Please ask your trainer.",
   insufficient_pool: "This exam cannot be started yet. Please tell your trainer.",
   not_open: "This exam is not open for you. Please ask your trainer.",
+  in_progress: "You already have an exam in progress. Please finish it first.",
   result_pending: "Your last result is still awaiting review. You can continue after your trainer releases it.",
 };
 

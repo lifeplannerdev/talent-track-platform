@@ -129,9 +129,31 @@ async function expireIfDue(attemptId: string): Promise<boolean> {
   return data === true;
 }
 
+/**
+ * Lazy expiry across the curriculum: closes every expired in-progress attempt of the student on
+ * the other exam sets of this exam set's curriculum (start_attempt allows one exam at a time per
+ * curriculum, migration 0015).
+ */
+async function expireOthersInCurriculum(studentId: string, examSetId: string): Promise<void> {
+  const db = createAdminClient();
+  const { data: set, error: setError } = await db.from("exam_sets").select("curriculum_id").eq("id", examSetId).maybeSingle();
+  if (setError) throw toError(setError, "Could not read exam set");
+  if (!set) return;
+  const { data: open, error } = await db
+    .from("attempts")
+    .select("exam_set_id, exam_sets!inner(curriculum_id)")
+    .eq("student_id", studentId)
+    .eq("status", "in_progress")
+    .neq("exam_set_id", examSetId)
+    .eq("exam_sets.curriculum_id", set.curriculum_id);
+  if (error) throw toError(error, "Could not read attempts");
+  for (const a of open ?? []) await findOpenAttemptId(studentId, a.exam_set_id as string);
+}
+
 export async function startAttempt(studentId: string, examSetId: string): Promise<{ attemptId: string }> {
   const existing = await findOpenAttemptId(studentId, examSetId);
   if (existing) return { attemptId: existing };
+  await expireOthersInCurriculum(studentId, examSetId);
 
   const db = createAdminClient();
   const { data: set, error: setError } = await db

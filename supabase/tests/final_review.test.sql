@@ -3,7 +3,7 @@
 --   * start_attempt refuses unless the student's assignment for the curriculum is 'open', and
 --     refuses while a held (submitted, unreleased) result exists anywhere in the curriculum.
 begin;
-select plan(9);
+select plan(11);
 
 -- Default privileges -----------------------------------------------------------
 create function public.zz_probe_0013() returns integer language sql as 'select 1';
@@ -20,7 +20,9 @@ values
   ('00000000-0000-0000-0000-0000000013b2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
    'fr-ben@students.test', '{"role":"student","username":"fr.ben"}', '{}', now(), now()),
   ('00000000-0000-0000-0000-0000000013b3', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-   'fr-cara@students.test', '{"role":"student","username":"fr.cara"}', '{}', now(), now());
+   'fr-cara@students.test', '{"role":"student","username":"fr.cara"}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-0000000013b4', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+   'fr-dora@students.test', '{"role":"student","username":"fr.dora"}', '{}', now(), now());
 set constraints all immediate;
 set constraints all deferred;
 
@@ -39,13 +41,17 @@ insert into public.questions (id, exam_set_id, topic, difficulty, stem_de, stem_
 -- Cara: open, held result on set 1 and a grant on set 2.
 insert into public.assignments (student_id, curriculum_id, position, status) values
   ('00000000-0000-0000-0000-0000000013b1', '10000000-0000-0000-0000-0000000013c1', 1, 'blocked'),
-  ('00000000-0000-0000-0000-0000000013b3', '10000000-0000-0000-0000-0000000013c1', 1, 'open');
+  ('00000000-0000-0000-0000-0000000013b3', '10000000-0000-0000-0000-0000000013c1', 1, 'open'),
+  ('00000000-0000-0000-0000-0000000013b4', '10000000-0000-0000-0000-0000000013c1', 1, 'open');
 insert into public.attempt_grants (student_id, exam_set_id) values
   ('00000000-0000-0000-0000-0000000013b1', '20000000-0000-0000-0000-0000000013e2'),
   ('00000000-0000-0000-0000-0000000013b2', '20000000-0000-0000-0000-0000000013e2'),
-  ('00000000-0000-0000-0000-0000000013b3', '20000000-0000-0000-0000-0000000013e2');
+  ('00000000-0000-0000-0000-0000000013b3', '20000000-0000-0000-0000-0000000013e2'),
+  ('00000000-0000-0000-0000-0000000013b4', '20000000-0000-0000-0000-0000000013e2');
 insert into public.attempts (student_id, exam_set_id, status, deadline_at, submitted_at, points, max_points, passed) values
-  ('00000000-0000-0000-0000-0000000013b3', '20000000-0000-0000-0000-0000000013e1', 'submitted', now() - interval '1 hour', now() - interval '1 hour', 0, 1, false);
+  ('00000000-0000-0000-0000-0000000013b3', '20000000-0000-0000-0000-0000000013e1', 'submitted', now() - interval '1 hour', now() - interval '1 hour', 0, 1, false),
+  -- Dora: an exam in progress on set 1 and a grant on set 2 (CodeRabbit C3).
+  ('00000000-0000-0000-0000-0000000013b4', '20000000-0000-0000-0000-0000000013e1', 'in_progress', now() + interval '1 hour', null, null, null, null);
 
 create function pg_temp.draw() returns jsonb language sql as $f$
   select '[{"question_id":"30000000-0000-0000-0000-0000000013f2","option_order":["a","b"]}]'::jsonb
@@ -63,7 +69,11 @@ select throws_ok($$select public.start_attempt('00000000-0000-0000-0000-00000000
 -- start_attempt: no start while a result in the curriculum is held --------------
 select throws_ok($$select public.start_attempt('00000000-0000-0000-0000-0000000013b3', '20000000-0000-0000-0000-0000000013e2', pg_temp.draw())$$,
   'P0001', 'result_pending', 'a student with a held result cannot start another exam set of the curriculum');
-select is((select count(*)::int from public.attempts where student_id::text like '00000000-0000-0000-0000-0000000013b%' and status = 'in_progress'), 0,
+select throws_ok($$select public.start_attempt('00000000-0000-0000-0000-0000000013b4', '20000000-0000-0000-0000-0000000013e2', pg_temp.draw())$$,
+  'P0001', 'in_progress', 'a student with an exam in progress cannot start another exam set of the curriculum');
+select is((select count(*)::int from public.attempts where student_id = '00000000-0000-0000-0000-0000000013b4'), 1,
+  'the in-progress refusal creates no attempt');
+select is((select count(*)::int from public.attempts where student_id::text like '00000000-0000-0000-0000-0000000013b%' and status = 'in_progress' and student_id <> '00000000-0000-0000-0000-0000000013b4'), 0,
   'the refusals create no attempt');
 
 -- Once the held result is released (failed, attempts left), the grant can be used.
