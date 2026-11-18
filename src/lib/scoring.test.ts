@@ -100,6 +100,18 @@ describe('scoreAttempt', () => {
     expect(r.passed).toBe(true)
   })
 
+  describe('the standard 90 percent pass mark', () => {
+    const paper = (n: number, right: number) => {
+      const qs = Array.from({ length: n }, (_, i) => q(String(i), 'T', 1))
+      return scoreAttempt(qs, Object.fromEntries(qs.map((x, i) => [x.id, i < right ? 'a' : 'b'])), 90)
+    }
+    it('9 of 10 (90%) passes', () => expect(paper(10, 9).passed).toBe(true))
+    it('18 of 20 (90%) passes', () => expect(paper(20, 18).passed).toBe(true))
+    it('17 of 19 (89.47%) fails', () => expect(paper(19, 17)).toMatchObject({ percent: 89.47, passed: false }))
+    it('224 of 250 (89.6%) fails', () => expect(paper(250, 224)).toMatchObject({ percent: 89.6, passed: false }))
+    it('1799 of 2000 (89.95%) fails although it rounds to 90', () => expect(paper(2000, 1799).passed).toBe(false))
+  })
+
   it('handles topics named like prototype keys', () => {
     const qs = [q('1', '__proto__', 2), q('2', 'constructor', 1)]
     const r = scoreAttempt(qs, { '1': 'a', '2': 'a' }, 50)

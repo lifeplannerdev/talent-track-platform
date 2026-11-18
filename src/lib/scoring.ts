@@ -1,3 +1,4 @@
+import { meetsPassMark } from './percent'
 import type { Question } from './types'
 
 export type ScoreResult = {
@@ -51,8 +52,8 @@ export function scoreAttempt(
     points,
     max,
     percent: Math.round(ratio * 10000) / 100,
-    // Compare the unrounded ratio so rounding can never flip a result.
-    passed: ratio >= passMarkPercent / 100,
+    // Exact comparison (points * 100 >= pass mark * max), so rounding can never flip a result.
+    passed: meetsPassMark(points, max, passMarkPercent),
     byTopic,
     byQuestion: { ...byQuestion },
   }
