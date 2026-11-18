@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { CircleCheckIcon, ClockIcon, HourglassIcon, InboxIcon, ListChecksIcon, LockIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
 import { getExamStartState, type ExamSetInfo, type ExamStartState } from "@/lib/exam-start";
+import { formatDuration } from "@/lib/duration";
 import { formatDateTime } from "@/lib/format";
 import { greeting } from "@/lib/greeting";
 import { listStudentResults, type StudentResultListItem } from "@/lib/results";
@@ -46,7 +47,9 @@ function ExamFacts({ examSet }: { examSet: ExamSetInfo }) {
           <ClockIcon aria-hidden="true" className="size-4 text-primary" />
           Time limit
         </dt>
-        <dd className="font-heading text-base font-semibold tabular-nums">{examSet.timeLimitMin} min</dd>
+        <dd className="font-heading text-base font-semibold tabular-nums" data-testid="time-limit">
+          {formatDuration(examSet.timeLimitMin)}
+        </dd>
       </div>
     </dl>
   );

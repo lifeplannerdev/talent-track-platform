@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, CloudOffIcon, LoaderCircleIcon } from "lucide-react";
 import { cn } from "cn";
 import type { ExamQuestion } from "@/lib/attempts";
+import { formatDuration } from "@/lib/duration";
+import { reminderDue } from "@/lib/reminders";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,17 +20,44 @@ import {
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { saveAnswerAction, submitExam } from "../actions";
+import { TimeReminder } from "./time-reminder";
 
 type SaveState = "saving" | "saved" | "pending" | "error";
 
 type Props = {
   attemptId: string;
   examSetName: string;
+  startedAt: string;
   deadlineAt: string;
   serverNow: string;
+  /** Minutes between time reminders; 0 = off. */
+  reminderIntervalMin: number;
   questions: ExamQuestion[];
   initialAnswers: Record<string, string>;
 };
+
+/** How long a reminder stays before it hides itself (it can be closed sooner). */
+const REMINDER_VISIBLE_MS = 20_000;
+
+// Reminder marks already shown for an attempt, kept per tab so a reload does not repeat them.
+// Storage can be unavailable (private mode, blocked): then only the in-memory set is used.
+function readShown(attemptId: string): Set<number> {
+  try {
+    const raw = sessionStorage.getItem(`tt-reminders:${attemptId}`);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(list) ? list.filter((n): n is number => typeof n === "number") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeShown(attemptId: string, shown: Set<number>) {
+  try {
+    sessionStorage.setItem(`tt-reminders:${attemptId}`, JSON.stringify([...shown]));
+  } catch {
+    // Not stored: the in-memory set still prevents repeats until a reload.
+  }
+}
 
 function subscribeOnline(callback: () => void) {
   window.addEventListener("online", callback);
@@ -55,7 +84,16 @@ function formatRemaining(ms: number) {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, questions, initialAnswers }: Props) {
+export function ExamClient({
+  attemptId,
+  examSetName,
+  startedAt,
+  deadlineAt,
+  serverNow,
+  reminderIntervalMin,
+  questions,
+  initialAnswers,
+}: Props) {
   const router = useRouter();
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers);
@@ -64,6 +102,10 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [closedMessage, setClosedMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // The visible time reminder (minutes left), separate from answers: showing or closing it never
+  // touches the exam state.
+  const [reminder, setReminder] = useState<number | null>(null);
+  const shownReminders = useRef<{ attemptId: string; marks: Set<number> } | null>(null);
   const [submitting, startSubmit] = useTransition();
   const online = useSyncExternalStore(
     subscribeOnline,
@@ -170,14 +212,36 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
     }
     const skew = clock.current.skew;
     const deadline = Date.parse(deadlineAt);
-    const tick = () => setRemaining(deadline - (Date.now() + skew));
+    const totalMs = deadline - Date.parse(startedAt);
+    const tick = () => {
+      const left = deadline - (Date.now() + skew);
+      setRemaining(left);
+      // Reminders come from the same server-anchored clock as the countdown.
+      if (submitted.current) return;
+      if (shownReminders.current?.attemptId !== attemptId) {
+        shownReminders.current = { attemptId, marks: readShown(attemptId) };
+      }
+      const shown = shownReminders.current.marks;
+      const due = reminderDue(left, totalMs, reminderIntervalMin, shown);
+      if (due === null) return;
+      shown.add(due);
+      writeShown(attemptId, shown);
+      setReminder(due); // a new reminder replaces the visible one
+    };
     const first = setTimeout(tick, 0);
     const timer = setInterval(tick, 500);
     return () => {
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [deadlineAt, serverNow]);
+  }, [attemptId, startedAt, deadlineAt, serverNow, reminderIntervalMin]);
+
+  // A reminder hides itself after a while; closing it sooner is up to the student.
+  useEffect(() => {
+    if (reminder === null) return;
+    const timer = setTimeout(() => setReminder(null), REMINDER_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [reminder]);
 
   // At expiry the server submits the saved answers; ask it to do so now (retrying at most every 5 s).
   useEffect(() => {
@@ -233,6 +297,9 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
             <p className="truncate text-sm font-semibold">{examSetName}</p>
             <p className="text-xs text-muted-foreground tabular-nums">
               {answeredCount} of {questions.length} answered
+              <span data-testid="exam-duration" className="hidden sm:inline">
+                , {formatDuration(Math.round((Date.parse(deadlineAt) - Date.parse(startedAt)) / 60_000))} exam
+              </span>
             </p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
@@ -262,6 +329,8 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
             style={{ transform: `scaleX(${answeredCount / questions.length})` }}
           />
         </div>
+        {/* Inside the sticky bar: it never covers the question, the answers or the bottom bar. */}
+        <TimeReminder minutes={reminder} onClose={() => setReminder(null)} />
       </header>
       <span id="main-content" tabIndex={-1} className="outline-none" />
 

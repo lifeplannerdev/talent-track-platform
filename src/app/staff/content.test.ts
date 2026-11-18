@@ -161,7 +161,7 @@ describe("saveExamSet", () => {
 
   it("saves every setting, warns about unknown topics and a small pool, and updates on edit", async () => {
     const r = await saveExamSet(
-      examSetInput({ name: `T8c full ${run}`, questionCount: 3, timeLimitMin: 45, passMarkPercent: 75, maxAttempts: 3, holdResult: true, topicMix: { Pflege: 2, Recht: 1 } }),
+      examSetInput({ name: `T8c full ${run}`, questionCount: 3, timeLimitMin: 480, passMarkPercent: 75, maxAttempts: 3, holdResult: true, topicMix: { Pflege: 2, Recht: 1 }, reminderIntervalMin: 30 }),
     );
     expect(r).toMatchObject({ ok: true });
     if (!r.ok) return;
@@ -174,17 +174,18 @@ describe("saveExamSet", () => {
     expect(row).toMatchObject({
       curriculum_id: curriculumId,
       question_count: 3,
-      time_limit_min: 45,
+      time_limit_min: 480,
+      reminder_interval_min: 30,
       pass_mark_percent: 75,
       max_attempts: 3,
       hold_result: true,
       topic_mix: { Pflege: 2, Recht: 1 },
     });
 
-    const edited = await saveExamSet(examSetInput({ id: r.id, name: `T8c full ${run}`, questionCount: 1, topicMix: {} }));
+    const edited = await saveExamSet(examSetInput({ id: r.id, name: `T8c full ${run}`, questionCount: 1, topicMix: {}, timeLimitMin: 150, reminderIntervalMin: 0 }));
     expect(edited).toMatchObject({ ok: true, id: r.id });
-    const after = await must(db.from("exam_sets").select("question_count, topic_mix, curriculum_id").eq("id", r.id).single());
-    expect(after).toEqual({ question_count: 1, topic_mix: {}, curriculum_id: curriculumId });
+    const after = await must(db.from("exam_sets").select("question_count, topic_mix, curriculum_id, time_limit_min, reminder_interval_min").eq("id", r.id).single());
+    expect(after).toEqual({ question_count: 1, topic_mix: {}, curriculum_id: curriculumId, time_limit_min: 150, reminder_interval_min: 0 });
   });
 });
 

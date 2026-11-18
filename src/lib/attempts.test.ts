@@ -298,6 +298,31 @@ describe("resume", () => {
     expect(first!.questions.map((q) => q.options.map((o) => o.id))).toEqual(stored.map((q) => q.option_order));
     expect(JSON.stringify(first)).not.toMatch(/correct|"points"/);
     expect(first!.questions[0].stemDe).toMatch(/^Frage/);
+    // The reminder schedule needs the full duration and the exam set's interval (default 15).
+    expect(Date.parse(first!.deadlineAt) - Date.parse(first!.startedAt)).toBe(20 * 60_000);
+    expect(first!.reminderIntervalMin).toBe(15);
+  });
+
+  it("staff edits to count and duration apply to new attempts only; the paper and deadline are fixed at start", async () => {
+    const student = await makeStudent();
+    const { setId } = await makeExamSet("edit", false, heldCurriculumId);
+    await grant(student, setId);
+    const first = await getAttemptForStudent(student, (await startAttempt(student, setId)).attemptId);
+    expect(first!.questions).toHaveLength(3);
+
+    await ok(db.from("exam_sets").update({ question_count: 2, time_limit_min: 150, reminder_interval_min: 30 }).eq("id", setId));
+    const resumed = await getAttemptForStudent(student, first!.id);
+    expect(resumed!.questions).toHaveLength(3);
+    expect(Date.parse(resumed!.deadlineAt) - Date.parse(resumed!.startedAt)).toBe(20 * 60_000);
+    // Reminders are display-only and follow the current setting.
+    expect(resumed!.reminderIntervalMin).toBe(30);
+
+    await submitAttempt(first!.id);
+    await grant(student, setId);
+    const second = await getAttemptForStudent(student, (await startAttempt(student, setId)).attemptId);
+    expect(second!.id).not.toBe(first!.id);
+    expect(second!.questions).toHaveLength(2);
+    expect(Date.parse(second!.deadlineAt) - Date.parse(second!.startedAt)).toBe(150 * 60_000);
   });
 
   it("returns null for another student's attempt", async () => {

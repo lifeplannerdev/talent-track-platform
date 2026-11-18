@@ -95,7 +95,11 @@ export type StudentAttempt = {
   id: string;
   status: AttemptStatus;
   examSetName: string;
+  /** When the attempt started; with deadlineAt it gives the full duration for the reminders. */
+  startedAt: string;
   deadlineAt: string;
+  /** Minutes between time reminders (exam_sets.reminder_interval_min); 0 = off. */
+  reminderIntervalMin: number;
   /** Database time when this was read; the client derives its clock skew from it. */
   serverNow: string;
   questions: ExamQuestion[];
@@ -253,10 +257,16 @@ export async function getAttemptForStudent(studentId: string, attemptId: string)
   const read = () =>
     db
       .from("attempts")
-      .select("id, status, deadline_at, exam_sets(name)")
+      .select("id, status, started_at, deadline_at, exam_sets(name, reminder_interval_min)")
       .eq("id", attemptId)
       .eq("student_id", studentId)
-      .maybeSingle<{ id: string; status: AttemptStatus; deadline_at: string; exam_sets: { name: string } }>();
+      .maybeSingle<{
+        id: string;
+        status: AttemptStatus;
+        started_at: string;
+        deadline_at: string;
+        exam_sets: { name: string; reminder_interval_min: number };
+      }>();
 
   let { data: attempt, error } = await read();
   if (error) throw toError(error, "Could not read attempt");
@@ -310,7 +320,9 @@ export async function getAttemptForStudent(studentId: string, attemptId: string)
     id: attempt.id,
     status: attempt.status,
     examSetName: attempt.exam_sets.name,
+    startedAt: new Date(attempt.started_at).toISOString(),
     deadlineAt: new Date(attempt.deadline_at).toISOString(),
+    reminderIntervalMin: attempt.exam_sets.reminder_interval_min,
     serverNow: new Date(now as string).toISOString(),
     questions,
     answers,

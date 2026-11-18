@@ -52,8 +52,9 @@ describe('validateExamSetFields', () => {
   })
 
   it('a missing reminder interval means the default of 15 minutes', () => {
-    const { reminderIntervalMin: _, ...withoutReminder } = base
-    expect(validateExamSetFields(withoutReminder)).toMatchObject({ ok: true, value: { reminderIntervalMin: 15 } })
+    const withoutReminder: Partial<typeof base> = { ...base }
+    delete withoutReminder.reminderIntervalMin
+    expect(validateExamSetFields(withoutReminder as Omit<typeof base, 'reminderIntervalMin'>)).toMatchObject({ ok: true, value: { reminderIntervalMin: 15 } })
   })
 
   it('rejects out-of-range numbers and a blank name, field by field', () => {

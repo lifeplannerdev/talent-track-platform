@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { LibraryIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
+import { formatDuration } from "@/lib/duration";
 import { poolWarning } from "@/lib/exam-set-fields";
 import { listCurriculumsWithSets } from "@/lib/staff-manage";
 import { PageHeader } from "@/components/app/page-header";
@@ -56,7 +57,7 @@ async function CurriculumList() {
                         <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
                           <span className="font-semibold">{s.name}</span>
                           <span className="flex items-center gap-2 text-muted-foreground tabular-nums">
-                            {s.approvedCount} approved / {s.questionCount} per paper
+                            {s.approvedCount} approved / {s.questionCount} per paper, {formatDuration(s.timeLimitMin)}
                             {poolWarning(s.approvedCount, s.questionCount) ? <Badge variant="warning">Small pool</Badge> : null}
                           </span>
                         </li>

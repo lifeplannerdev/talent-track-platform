@@ -20,8 +20,10 @@ async function Exam({ params }: { params: Promise<{ attemptId: string }> }) {
     <ExamClient
       attemptId={attempt.id}
       examSetName={attempt.examSetName}
+      startedAt={attempt.startedAt}
       deadlineAt={attempt.deadlineAt}
       serverNow={attempt.serverNow}
+      reminderIntervalMin={attempt.reminderIntervalMin}
       questions={attempt.questions}
       initialAnswers={attempt.answers}
     />

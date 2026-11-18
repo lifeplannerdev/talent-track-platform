@@ -81,7 +81,8 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   const setForm = page.getByRole("form", { name: "New exam set" });
   await setForm.getByLabel("Exam set name").fill(STAFF_EXAM_SET);
   await setForm.getByLabel("Questions per paper").fill("5");
-  await setForm.getByLabel("Time limit (minutes)").fill("30");
+  await setForm.getByLabel("Hours", { exact: true }).fill("2");
+  await setForm.getByLabel("Minutes", { exact: true }).fill("30");
   await setForm.getByLabel("Pass mark (%)").fill("60");
   await setForm.getByLabel("Maximum attempts").fill("2");
   await setForm.getByLabel("Hold results for review").uncheck();
@@ -91,6 +92,9 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   await expect(setForm).toContainText("Topic counts add up to 4, but the exam has 5 questions");
   await setForm.getByLabel("Topic mix (optional)").fill("Pflege: 3\nRecht: 2");
   await setForm.getByRole("button", { name: "Create exam set" }).click();
+  await expect(setForm.getByTestId("exam-set-preview")).toContainText(
+    "5 questions, 2 h 30 min, pass at 60%, 2 attempts, result shown at once, reminder every 15 min",
+  );
   await expect(setForm.getByTestId("exam-set-saved")).toContainText("Exam set created.");
   await expect(setForm.getByTestId("exam-set-warnings")).toContainText('Topic "Pflege" has no approved questions');
   await expect(page.getByTestId("exam-set-card").filter({ hasText: STAFF_EXAM_SET })).toBeVisible();

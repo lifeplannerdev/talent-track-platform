@@ -123,7 +123,8 @@ test("full flow: staff set up a nursing student and a bilingual exam, the studen
   const setForm = page.getByRole("form", { name: "New exam set" });
   await setForm.getByLabel("Exam set name").fill(FLOW_EXAM_SET);
   await setForm.getByLabel("Questions per paper").fill("5");
-  await setForm.getByLabel("Time limit (minutes)").fill("20");
+  await setForm.getByLabel("Hours", { exact: true }).fill("0");
+  await setForm.getByLabel("Minutes", { exact: true }).fill("20");
   await setForm.getByLabel("Pass mark (%)").fill("60");
   await setForm.getByLabel("Maximum attempts").fill("2");
   await expect(setForm.getByLabel("Hold results for review")).toBeChecked();

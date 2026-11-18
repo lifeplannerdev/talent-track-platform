@@ -170,6 +170,7 @@ export type ExamSetSummary = {
   maxAttempts: number;
   holdResult: boolean;
   topicMix: TopicMix;
+  reminderIntervalMin: number;
   approvedCount: number;
   draftCount: number;
   approvedTopics: { topic: string }[];
@@ -181,7 +182,7 @@ export async function listCurriculumsWithSets(): Promise<{ id: string; name: str
   const [{ data: curriculums, error }, questions] = await Promise.all([
     db
       .from("curriculums")
-      .select("id, name, exam_sets(id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result, topic_mix, created_at)")
+      .select("id, name, exam_sets(id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result, topic_mix, reminder_interval_min, created_at)")
       .order("name"),
     fetchAll(
       (from, to) => db.from("questions").select("exam_set_id, status, topic").order("id").range(from, to),
@@ -201,6 +202,7 @@ export async function listCurriculumsWithSets(): Promise<{ id: string; name: str
       max_attempts: number;
       hold_result: boolean;
       topic_mix: TopicMix | null;
+      reminder_interval_min: number;
       created_at: string;
     }[];
   };
@@ -223,6 +225,7 @@ export async function listCurriculumsWithSets(): Promise<{ id: string; name: str
           maxAttempts: s.max_attempts,
           holdResult: s.hold_result,
           topicMix: s.topic_mix ?? {},
+          reminderIntervalMin: s.reminder_interval_min,
           approvedCount: approved.length,
           draftCount: qs.length - approved.length,
           approvedTopics: approved.map((q) => ({ topic: q.topic as string })),

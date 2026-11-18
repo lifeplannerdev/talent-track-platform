@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { isUuid } from "@/lib/attempts";
-import { examSetWarnings, formatTopicMix } from "@/lib/exam-set-fields";
+import { examSetSummary, examSetWarnings, formatTopicMix } from "@/lib/exam-set-fields";
 import { listCurriculumsWithSets } from "@/lib/staff-manage";
 import { ChevronLeftIcon, FileStackIcon } from "lucide-react";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
@@ -55,9 +55,9 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
               <Card key={s.id} data-testid="exam-set-card">
                 <CardHeader>
                   <CardTitle>{s.name}</CardTitle>
-                  <CardDescription>
-                    {s.questionCount} questions, {s.timeLimitMin} min, pass mark {s.passMarkPercent}%, up to {s.maxAttempts} attempt
-                    {s.maxAttempts === 1 ? "" : "s"}, {s.holdResult ? "results held for review" : "results released at once"}
+                  <CardDescription data-testid="exam-set-summary">
+                    <span className="sr-only">Exam settings summary: </span>
+                    {examSetSummary(s)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">

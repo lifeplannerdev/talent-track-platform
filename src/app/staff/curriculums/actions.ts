@@ -71,6 +71,7 @@ export async function saveExamSet(input: ExamSetFields & { id?: string; curricul
     max_attempts: v.maxAttempts,
     hold_result: v.holdResult,
     topic_mix: v.topicMix,
+    reminder_interval_min: v.reminderIntervalMin,
   };
 
   let id: string;
