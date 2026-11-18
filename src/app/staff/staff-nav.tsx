@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
@@ -24,22 +25,38 @@ function currentHref(pathname: string | null): string | null {
   return match?.href ?? null;
 }
 
-/** Staff section links in the shared header; the current section is marked with aria-current. */
+/**
+ * Staff section links in the shared header; the current section is marked with aria-current
+ * and an ink underline. On narrow screens the row scrolls sideways and keeps the current
+ * section in view.
+ */
 export function StaffNav() {
   const current = currentHref(usePathname());
+  const activeRef = useRef<HTMLAnchorElement | null>(null);
+
+  useEffect(() => {
+    const link = activeRef.current;
+    const row = link?.closest("ul");
+    if (!link || !row || row.scrollWidth <= row.clientWidth) return;
+    // Scroll only the nav row (not the page) so the current section is visible.
+    row.scrollLeft = link.offsetLeft - (row.clientWidth - link.offsetWidth) / 2;
+  }, [current]);
+
   return (
-    <nav aria-label="Staff" className="-mx-1">
-      <ul className="flex flex-wrap gap-x-1 gap-y-1">
+    <nav aria-label="Staff">
+      <ul className="flex snap-x gap-1 overflow-x-auto px-3 [scrollbar-width:none] sm:px-5 lg:px-0 [&::-webkit-scrollbar]:hidden">
         {LINKS.map((l) => {
           const active = l.href === current;
           return (
-            <li key={l.href}>
+            <li key={l.href} className="shrink-0 snap-start">
               <Link
+                ref={active ? activeRef : undefined}
                 href={l.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative inline-flex h-9 items-center rounded-md px-2.5 text-sm font-semibold text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground",
-                  active && "bg-secondary text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground",
+                  "relative inline-flex h-11 items-center px-2.5 text-sm font-semibold whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-offset-[-2px] lg:h-14",
+                  "after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent after:transition-colors",
+                  active && "text-foreground after:bg-primary",
                 )}
               >
                 {l.label}

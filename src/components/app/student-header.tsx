@@ -6,7 +6,7 @@ import { Wordmark } from "./wordmark";
 export function StudentHeader({ signOut = false }: { signOut?: boolean }) {
   return (
     <header className="border-b bg-card print:hidden">
-      <div className="mx-auto flex h-16 w-full max-w-2xl items-center justify-between gap-3 px-4">
+      <div className="mx-auto flex h-14 w-full max-w-2xl items-center justify-between gap-3 px-4">
         <Wordmark />
         {signOut ? (
           <form action={logout}>

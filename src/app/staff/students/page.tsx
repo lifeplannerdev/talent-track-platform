@@ -1,13 +1,13 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { UsersIcon } from "lucide-react";
+import { UserPlusIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { listStudents } from "@/lib/staff-manage";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
 import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +36,7 @@ async function StudentList({ searchParams }: { searchParams: Promise<Record<stri
   return (
     <div className="flex flex-col gap-4">
       <form method="get" role="search" aria-label="Filter students" className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
-        <div className="flex min-w-48 flex-1 flex-col gap-1.5">
+        <div className="flex min-w-full flex-1 flex-col gap-1.5 sm:min-w-48">
           <Label htmlFor="q">Search</Label>
           <Input id="q" name="q" type="search" defaultValue={filters.q} placeholder="Name or username" />
         </div>
@@ -148,9 +148,9 @@ function ListSkeleton() {
 async function StaffForms() {
   await requireRole("staff");
   return (
-    <section aria-labelledby="add-heading" className="flex flex-col gap-3">
+    <section aria-labelledby="add-heading" className="flex scroll-mt-20 flex-col gap-3">
       <SectionHeading id="add-heading">Add students</SectionHeading>
-      <div className="grid items-start gap-6 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <AddStudentForm />
         <ImportStudents />
       </div>
@@ -163,7 +163,13 @@ export default function StudentsPage(props: PageProps<"/staff/students">) {
     <main className={staffMain}>
       <PageHeader
         title="Students"
-        description="Students sign in with the username and password you give them. Nursing students get Pflege Ausbildung and Life in Germany; every other track gets Life in Germany. You can change curriculums on each student’s page."
+        description="Students sign in with the username and password you give them. Nursing gets Pflege Ausbildung and Life in Germany; every other track gets Life in Germany."
+        actions={
+          <a href="#add-heading" className={buttonVariants({ variant: "outline" })}>
+            <UserPlusIcon data-icon="inline-start" />
+            Add or import
+          </a>
+        }
       />
       <Suspense fallback={<ListSkeleton />}>
         <StudentList searchParams={props.searchParams} />

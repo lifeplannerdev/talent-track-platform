@@ -7,22 +7,23 @@ import { StaffNav } from "./staff-nav";
 
 // Shared staff chrome: wordmark, section navigation and sign out. Pages render their own <main>.
 // The proxy and each page's requireRole('staff') guard access; this layout reads no session.
-// On phones the navigation wraps onto its own rows under the wordmark; from lg it sits inline.
+// Below lg the navigation is one row under the wordmark that scrolls sideways inside itself
+// (never the page); from lg it sits inline between the wordmark and sign out.
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <header className="border-b bg-card">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <Link href="/staff" className="order-1 rounded-md">
+      <header className="border-b bg-card lg:sticky lg:top-0 lg:z-20 print:hidden">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 px-4 sm:px-6 lg:flex-nowrap lg:px-8">
+          <Link href="/staff" className="order-1 flex h-14 items-center rounded-md">
             <Wordmark />
           </Link>
-          <div className="order-3 min-w-0 basis-full lg:order-2 lg:flex-1 lg:basis-auto">
-            <Suspense fallback={<div className="h-9" />}>
+          <div className="order-3 -mx-4 min-w-0 basis-[calc(100%+2rem)] border-t sm:-mx-6 sm:basis-[calc(100%+3rem)] lg:order-2 lg:mx-0 lg:flex-1 lg:basis-auto lg:border-t-0">
+            <Suspense fallback={<div className="h-11 lg:h-14" />}>
               <StaffNav />
             </Suspense>
           </div>
           <form action={logout} className="order-2 ml-auto lg:order-3 lg:ml-0">
-            <Button type="submit" variant="outline" size="sm">
+            <Button type="submit" variant="ghost" size="sm">
               Sign out
             </Button>
           </form>
