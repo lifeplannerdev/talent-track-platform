@@ -6,7 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 // result looks exactly like a missing one).
 export default function NotFound() {
   return (
-    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-start gap-4 px-4 pt-16 pb-16">
+    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-start gap-3 px-4 pt-10 pb-12 sm:pt-16">
       <span className="flex size-10 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
         <SearchXIcon aria-hidden="true" className="size-5" />
       </span>

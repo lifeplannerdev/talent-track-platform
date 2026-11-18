@@ -56,8 +56,8 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
                 <CardHeader>
                   <CardTitle>{s.name}</CardTitle>
                   <CardDescription>
-                    {s.questionCount} questions · {s.timeLimitMin} min · pass {s.passMarkPercent}% · up to {s.maxAttempts} attempt
-                    {s.maxAttempts === 1 ? "" : "s"} · {s.holdResult ? "results held for review" : "results released at once"}
+                    {s.questionCount} questions, {s.timeLimitMin} min, pass mark {s.passMarkPercent}%, up to {s.maxAttempts} attempt
+                    {s.maxAttempts === 1 ? "" : "s"}, {s.holdResult ? "results held for review" : "results released at once"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
@@ -127,7 +127,7 @@ export default function CurriculumPage(props: PageProps<"/staff/curriculums/[id]
           <ChevronLeftIcon aria-hidden="true" className="size-4" />
           All curriculums
         </Link>
-        <PageHeader title="Curriculum" />
+        <PageHeader title="Curriculum" description="Rename the curriculum, add exam sets and change their settings." />
       </div>
       <Suspense fallback={<DetailSkeleton />}>
         <CurriculumDetail params={props.params} />

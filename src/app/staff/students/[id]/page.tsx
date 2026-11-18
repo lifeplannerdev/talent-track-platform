@@ -215,7 +215,7 @@ export default function StudentPage(props: PageProps<"/staff/students/[id]">) {
           <ChevronLeftIcon aria-hidden="true" className="size-4" />
           All students
         </Link>
-        <PageHeader title="Student" />
+        <PageHeader title="Student" description="Curriculums and their order, results, and account settings for one student." />
       </div>
       <Suspense fallback={<DetailSkeleton />}>
         <StudentDetail params={props.params} />

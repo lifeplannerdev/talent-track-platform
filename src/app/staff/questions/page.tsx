@@ -43,7 +43,7 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
   const allSets = curriculums.flatMap((c) => c.examSets);
   const choices: ExamSetChoice[] = allSets.map((s) => ({ id: s.id, name: s.name, curriculumName: s.curriculumName }));
   const [{ questions, topics }, editing] = await Promise.all([listQuestions(filters), editId ? getQuestion(editId) : null]);
-  const setName = new Map(allSets.map((s) => [s.id, `${s.curriculumName} · ${s.name}`]));
+  const setName = new Map(allSets.map((s) => [s.id, `${s.curriculumName}, ${s.name}`]));
   const poolSets = allSets.filter(
     (s) => (!filters.examSet || s.id === filters.examSet) && (!filters.curriculum || s.curriculumId === filters.curriculum),
   );
