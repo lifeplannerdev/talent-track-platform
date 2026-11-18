@@ -114,6 +114,9 @@
   }
   html {
     @apply font-sans;
+    /* Sticky bars (exam bar, staff header from lg) never hide the focused or scrolled-to element. */
+    scroll-padding-top: 5rem;
+    scroll-padding-bottom: 5rem;
     accent-color: var(--primary);
     caret-color: var(--primary);
     scrollbar-color: #a7b0bf transparent;
@@ -159,12 +162,20 @@
 /* Printed result report: plain black on white, no app chrome (print:hidden in the markup). */
 @media print {
   @page {
-    margin: 16mm;
+    size: A4;
+    margin: 14mm 16mm;
   }
   html,
   body {
     background: #fff;
     color: #000;
+    font-size: 11pt;
+  }
+  /* Keep the report on one sheet where it fits: no breaks inside the summary, rows or facts. */
+  section,
+  tr,
+  dl {
+    break-inside: avoid;
   }
   /* No tinted fills or grey text on paper: tags, table heads and frames print in black. */
   [data-slot="badge"],

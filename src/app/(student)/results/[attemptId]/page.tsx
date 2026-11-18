@@ -7,11 +7,12 @@ import { formatDateTime } from "@/lib/format";
 import { getStudentResult, percentOf, type StudentResult } from "@/lib/results";
 import { ChevronLeftIcon, CircleCheckIcon, CircleXIcon, HourglassIcon } from "lucide-react";
 import { StudentHeader } from "@/components/app/student-header";
-import { studentMain } from "@/components/app/styles";
+import { ScoreBar } from "@/components/app/score-bar";
+import { factLabel, studentMain } from "@/components/app/styles";
+import { Wordmark } from "@/components/app/wordmark";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PrintButton } from "./print-button";
@@ -24,9 +25,9 @@ export const metadata: Metadata = { title: "Result | TalentTrack" };
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-xs font-semibold text-muted-foreground print:text-black">{label}</dt>
-      <dd className="text-base">{children}</dd>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt className={factLabel}>{label}</dt>
+      <dd className="text-base break-words">{children}</dd>
     </div>
   );
 }
@@ -42,12 +43,14 @@ function BackLink() {
 
 function AwaitingReview({ result }: { result: Extract<StudentResult, { status: "submitted" }> }) {
   return (
-    <section aria-labelledby="awaiting-heading" className="flex flex-col gap-6">
+    <section aria-labelledby="awaiting-heading" className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-semibold text-primary">{result.curriculumName}</p>
-        <h1 id="awaiting-heading" className="text-[1.75rem] font-semibold">
+        <h1 id="awaiting-heading" className="text-[1.625rem] leading-tight font-semibold sm:text-[1.75rem]">
           Submitted
         </h1>
+        <p className="text-base text-muted-foreground">
+          Thank you, your answers for {result.curriculumName || "this exam"} are in.
+        </p>
       </div>
       <p
         data-testid="result-status"
@@ -56,10 +59,13 @@ function AwaitingReview({ result }: { result: Extract<StudentResult, { status: "
         <HourglassIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
         <span>Submitted, awaiting review. Your trainer will release your result.</span>
       </p>
-      <dl className="flex flex-col gap-3 sm:flex-row sm:gap-10">
+      <dl className="grid grid-cols-1 gap-3 rounded-xl border px-4 py-3 sm:grid-cols-2">
         <Fact label="Exam">{result.examSetName}</Fact>
         <Fact label="Submitted">{formatDateTime(result.submittedAt)}</Fact>
       </dl>
+      <p className="text-sm text-muted-foreground">
+        Your score appears here and under Your results as soon as your trainer releases it.
+      </p>
       <div>
         <BackLink />
       </div>
@@ -68,19 +74,22 @@ function AwaitingReview({ result }: { result: Extract<StudentResult, { status: "
 }
 
 function Report({ result, studentName }: { result: Extract<StudentResult, { status: "released" }>; studentName: string }) {
+  const Outcome = result.passed ? CircleCheckIcon : CircleXIcon;
   return (
-    <Card className="print:gap-4 print:rounded-none print:py-0 print:shadow-none print:ring-0" data-testid="result-report">
-      <CardHeader className="print:px-0">
-        <CardDescription className="flex items-baseline gap-2 print:text-black">
-          <span className="font-heading font-semibold text-foreground print:text-black">TalentTrack</span>
-          <span>Life Planner</span>
-        </CardDescription>
-        <CardTitle>
-          <h1 className="text-[1.75rem] font-semibold">Ergebnis / Result</h1>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6 print:px-0">
-        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 print:grid-cols-2">
+    <Card size="sm" className="gap-0 py-0 print:overflow-visible print:rounded-none print:ring-0" data-testid="result-report">
+      {/* Letterhead: wordmark and the ink rule of an official sheet. */}
+      <div className="flex items-center justify-between gap-3 border-b-2 border-primary px-4 py-3 sm:px-6 print:px-0">
+        <Wordmark />
+        <p className="text-right text-xs text-muted-foreground print:text-black">
+          Prüfungsergebnis
+          <span className="block">Exam report</span>
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-5 px-4 py-5 sm:px-6 print:gap-4 print:px-0 print:py-4">
+        <h1 className="text-[1.625rem] leading-tight font-semibold sm:text-[1.75rem]">Ergebnis / Result</h1>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:gap-x-6 print:grid-cols-3">
           <Fact label="Name / Name">{studentName}</Fact>
           <Fact label="Lehrplan / Curriculum">{result.curriculumName}</Fact>
           <Fact label="Prüfung / Exam">{result.examSetName}</Fact>
@@ -88,29 +97,42 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
           <Fact label="Freigegeben / Released">{formatDateTime(result.releasedAt)}</Fact>
         </dl>
 
-        <Separator />
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-semibold text-muted-foreground print:text-black">Punkte / Points</p>
-            <p className="font-heading text-4xl font-semibold tabular-nums" data-testid="result-score">
-              {result.points} of {result.maxPoints}
-              <span className="ml-2 font-sans text-xl font-normal text-muted-foreground print:text-black">({result.percent}%)</span>
-            </p>
+        <section
+          aria-label="Gesamtergebnis / Overall result"
+          className="flex flex-col gap-3 rounded-lg bg-muted/60 p-4 ring-1 ring-border ring-inset print:bg-transparent print:ring-black"
+        >
+          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+            <div className="flex flex-col gap-1">
+              <p className={factLabel}>Punkte / Points</p>
+              <p className="font-heading text-[2.5rem] leading-none font-semibold tabular-nums" data-testid="result-score">
+                {result.points} of {result.maxPoints}
+                <span className="ml-2 font-sans text-xl font-normal text-muted-foreground print:text-black">
+                  ({result.percent}%)
+                </span>
+              </p>
+            </div>
+            <Badge
+              variant={result.passed ? "success" : "destructive"}
+              className="h-auto gap-1.5 rounded-md px-3 py-1.5 text-base print:border-black print:bg-transparent print:text-black"
+              data-testid="result-outcome"
+            >
+              <Outcome aria-hidden="true" />
+              {result.passed ? "Bestanden / Passed" : "Nicht bestanden / Not passed"}
+            </Badge>
           </div>
-          <Badge
-            variant={result.passed ? "success" : "destructive"}
-            className="h-auto gap-1.5 rounded-md px-3 py-1.5 text-base print:border-black print:bg-transparent print:text-black"
-            data-testid="result-outcome"
-          >
-            {result.passed ? <CircleCheckIcon aria-hidden="true" /> : <CircleXIcon aria-hidden="true" />}
-            {result.passed ? "Bestanden / Passed" : "Nicht bestanden / Not passed"}
-          </Badge>
-        </div>
+          <ScoreBar percent={result.percent} passMarkPercent={result.passMarkPercent} passed={result.passed} />
+          {result.passMarkPercent !== null ? (
+            <p className="text-sm text-muted-foreground print:text-black">
+              Bestehensgrenze / Pass mark:{" "}
+              <span className="font-semibold text-foreground tabular-nums">{result.passMarkPercent}%</span>
+              <span className="sr-only"> of the points</span>
+            </p>
+          ) : null}
+        </section>
 
         {result.topics.length > 0 ? (
           <section className="flex flex-col gap-2" aria-labelledby="topics-heading">
-            <h2 id="topics-heading" className="text-lg font-semibold">
+            <h2 id="topics-heading" className="text-base font-semibold sm:text-lg">
               Ergebnis nach Thema / Result by topic
             </h2>
             <Table data-testid="topic-table">
@@ -119,29 +141,42 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
                   <TableHead>Thema / Topic</TableHead>
                   <TableHead className="text-right">Punkte / Points</TableHead>
                   <TableHead className="text-right">%</TableHead>
+                  <TableHead className="hidden w-[32%] sm:table-cell print:table-cell">
+                    <span className="sr-only">Anteil / Share</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {result.topics.map((t) => (
-                  <TableRow key={t.topic}>
-                    <TableCell className="whitespace-normal">{t.topic}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {t.points} / {t.max}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {percentOf(t.points, t.max)}%
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {result.topics.map((t) => {
+                  const pct = percentOf(t.points, t.max);
+                  return (
+                    <TableRow key={t.topic} className="hover:bg-transparent">
+                      <TableCell className="whitespace-normal">{t.topic}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {t.points} / {t.max}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{pct}%</TableCell>
+                      <TableCell className="hidden sm:table-cell print:table-cell">
+                        <ScoreBar percent={pct} size="sm" />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </section>
         ) : null}
-      </CardContent>
-      <CardFooter className="flex flex-wrap gap-2 bg-transparent print:hidden">
+
+        <p className="text-xs text-muted-foreground print:text-black">
+          Automatisch bewertet; die Themen ergeben zusammen die Gesamtpunktzahl. / Scored automatically; the topics add up to the
+          total points.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-t px-4 py-3 sm:px-6 print:hidden">
         <PrintButton />
         <BackLink />
-      </CardFooter>
+      </div>
     </Card>
   );
 }

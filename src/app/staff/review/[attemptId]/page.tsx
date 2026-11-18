@@ -4,9 +4,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
+import { topicTotals } from "@/lib/report";
+import { percentOf } from "@/lib/results";
 import { getAttemptReview, type ReviewQuestion } from "@/lib/review";
 import { Badge } from "@/components/ui/badge";
-import { linkClass, staffMain } from "@/components/app/styles";
+import { SectionHeading } from "@/components/app/page-header";
+import { ScoreBar } from "@/components/app/score-bar";
+import { factLabel, linkClass, staffMain } from "@/components/app/styles";
 import { ChevronLeftIcon } from "lucide-react";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +25,7 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
       <CardHeader>
         <CardDescription>
           Question {q.position}
-          {q.topic ? ` · ${q.topic}` : null}
+          {q.topic ? <span className="ml-2">Topic: {q.topic}</span> : null}
         </CardDescription>
         <CardAction>
           {q.awardedPoints === null || q.maxPoints === null ? (
@@ -47,7 +51,7 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         {!answered ? <Badge variant="outline">Not answered</Badge> : null}
-        <ul className="flex flex-col gap-2" aria-label={`Options for question ${q.position}`}>
+        <ul className="flex flex-col gap-1.5" aria-label={`Options for question ${q.position}`}>
           {q.options.map((o) => {
             const correct = o.id === q.correctOptionId;
             const chosen = o.id === q.chosenOptionId;
@@ -57,7 +61,7 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
                 data-testid="review-option"
                 data-correct={correct || undefined}
                 data-chosen={chosen || undefined}
-                className="flex flex-col gap-2 rounded-md border p-3 data-chosen:not-data-correct:border-destructive/40 data-chosen:not-data-correct:bg-destructive-muted data-correct:border-success/40 data-correct:bg-success-muted md:flex-row md:items-center"
+                className="flex flex-col gap-1.5 rounded-md border px-3 py-2 data-chosen:not-data-correct:border-destructive/40 data-chosen:not-data-correct:bg-destructive-muted data-correct:border-success/40 data-correct:bg-success-muted md:flex-row md:items-center"
               >
                 <span className="grid flex-1 gap-1 md:grid-cols-2">
                   <span lang="de">{o.de}</span>
@@ -65,10 +69,8 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
                     {o.en}
                   </span>
                 </span>
-                <span className="flex shrink-0 flex-wrap gap-1">
-                  {chosen ? (
-                    <Badge variant={correct ? "success" : "destructive"}>Student&apos;s answer</Badge>
-                  ) : null}
+                <span className="flex shrink-0 flex-wrap gap-1 md:w-60 md:justify-end">
+                  {chosen ? <Badge variant={correct ? "success" : "destructive"}>Student&apos;s answer</Badge> : null}
                   {correct ? <Badge variant="success">Correct answer</Badge> : null}
                 </span>
               </li>
@@ -77,6 +79,15 @@ function QuestionCard({ q }: { q: ReviewQuestion }) {
         </ul>
       </CardContent>
     </Card>
+  );
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt className={factLabel}>{label}</dt>
+      <dd className="text-sm">{children}</dd>
+    </div>
   );
 }
 
@@ -89,16 +100,20 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
   const scored = review.points !== null && review.maxPoints !== null;
   const summary = scored ? `${review.points} of ${review.maxPoints}` : "not scored yet";
   const released = review.status === "released";
+  const percent = scored ? percentOf(review.points!, review.maxPoints!) : null;
+  const topics = topicTotals(review.questions);
+  const answered = review.questions.filter((q) => q.chosenOptionId !== null).length;
 
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
           <CardDescription>
-            {review.curriculumName} · {review.examSetName}
+            {review.curriculumName}
+            {review.examSetName ? <span className="text-muted-foreground">, {review.examSetName}</span> : null}
           </CardDescription>
           <CardTitle>
-            <h1 className="text-2xl font-semibold">{review.studentName}</h1>
+            <h1 className="text-[1.375rem] leading-tight font-semibold sm:text-2xl">{review.studentName}</h1>
           </CardTitle>
           <CardAction>
             <Badge variant={released ? "success" : "warning"} data-testid="review-status">
@@ -106,40 +121,96 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
             </Badge>
           </CardAction>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-muted-foreground">Submitted</dt>
-              <dd>{formatDateTime(review.submittedAt)}</dd>
+        <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="flex flex-col gap-4">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+              <Fact label="Submitted">{formatDateTime(review.submittedAt)}</Fact>
+              <Fact label="Answered">
+                <span className="tabular-nums">
+                  {answered} of {review.questions.length}
+                </span>
+              </Fact>
+              {released ? (
+                <div className="col-span-2 flex flex-col gap-0.5">
+                  <dt className={factLabel}>Released</dt>
+                  <dd className="text-sm">
+                    {formatDateTime(review.releasedAt)}
+                    {review.releasedBy ? ` by ${review.releasedBy}` : " automatically"}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            <div className="flex flex-col items-start gap-2">
+              <ReleaseButton
+                attemptId={review.id}
+                canRelease={!released && scored}
+                disabledLabel={released ? "Released" : "Scoring pending"}
+                summary={summary}
+              />
+              {!released && scored ? (
+                <p className="text-xs text-muted-foreground">The student sees no score until you release it.</p>
+              ) : null}
             </div>
-            <div>
-              <dt className="text-muted-foreground">Score</dt>
-              <dd className="font-heading text-lg font-semibold tabular-nums" data-testid="review-score">
-                {scored ? `${review.points} / ${review.maxPoints} · ${review.passed ? "Pass" : "Fail"}` : "Scoring pending"}
-              </dd>
-            </div>
-            {released ? (
-              <div>
-                <dt className="text-muted-foreground">Released</dt>
-                <dd>
-                  {formatDateTime(review.releasedAt)}
-                  {review.releasedBy ? ` by ${review.releasedBy}` : " automatically"}
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-          <div>
-            <ReleaseButton
-              attemptId={review.id}
-              canRelease={!released && scored}
-              disabledLabel={released ? "Released" : "Scoring pending"}
-              summary={summary}
-            />
           </div>
+
+          <section aria-label="Score" className="flex flex-col gap-3 rounded-lg bg-muted/60 p-4 ring-1 ring-border ring-inset">
+            <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+              <div className="flex flex-col gap-1">
+                <p className={factLabel}>Score</p>
+                <p className="font-heading text-[1.75rem] leading-none font-semibold tabular-nums" data-testid="review-score">
+                  {scored ? `${review.points} / ${review.maxPoints}` : "Scoring pending"}
+                  {percent !== null ? (
+                    <span className="ml-2 font-sans text-base font-normal text-muted-foreground">({percent}%)</span>
+                  ) : null}
+                </p>
+              </div>
+              {scored ? (
+                <Badge variant={review.passed ? "success" : "destructive"} className="h-auto px-2.5 py-1 text-sm">
+                  {review.passed ? "Pass" : "Fail"}
+                </Badge>
+              ) : null}
+            </div>
+            {percent !== null ? (
+              <>
+                <ScoreBar percent={percent} passMarkPercent={review.passMarkPercent} passed={review.passed} />
+                {review.passMarkPercent !== null ? (
+                  <p className="text-xs text-muted-foreground">
+                    Pass mark <span className="font-semibold text-foreground tabular-nums">{review.passMarkPercent}%</span>
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {topics.length > 1 ? (
+              <table className="w-full text-sm" aria-label="Points by topic">
+                <thead className="sr-only">
+                  <tr>
+                    <th scope="col">Topic</th>
+                    <th scope="col">Points</th>
+                    <th scope="col">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topics.map((t) => (
+                    <tr key={t.topic}>
+                      <td className="py-1 pr-3">{t.topic}</td>
+                      <td className="py-1 pr-3 text-right whitespace-nowrap tabular-nums">
+                        {t.points} / {t.max}
+                      </td>
+                      <td className="w-2/5 py-1">
+                        <ScoreBar percent={percentOf(t.points, t.max)} size="sm" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </section>
         </CardContent>
       </Card>
 
-      <h2 className="mt-2 text-lg font-semibold">Answers</h2>
+      <SectionHeading aside={<p className="text-xs text-muted-foreground">German with the English translation beside it.</p>}>
+        Answers
+      </SectionHeading>
       {review.questions.map((q) => (
         <QuestionCard key={q.attemptQuestionId} q={q} />
       ))}

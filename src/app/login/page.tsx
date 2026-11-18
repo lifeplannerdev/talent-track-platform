@@ -7,14 +7,16 @@ export const metadata: Metadata = { title: "Sign in | TalentTrack" };
 
 export default function LoginPage() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-12">
+    <main className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
       <Wordmark className="self-center" />
       <Card className="w-full max-w-sm shadow-panel">
         <CardHeader>
           <CardTitle>
             <h1 className="text-xl font-semibold">Sign in</h1>
           </CardTitle>
-          <CardDescription>Accounts are created by your instructors. There is no self sign-up.</CardDescription>
+          <CardDescription>
+            Welcome to TalentTrack. Use the account your trainer created for you; there is no self sign-up.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <LoginForm />

@@ -5,6 +5,7 @@ import { studentMain } from "@/components/app/styles";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireRole } from "@/lib/auth/require-role";
+import { firstName } from "@/lib/greeting";
 import { logout } from "@/app/login/actions";
 import { acceptConsent } from "./actions";
 
@@ -12,15 +13,17 @@ export const metadata: Metadata = { title: "Consent | TalentTrack" };
 
 async function ConsentContent() {
   const profile = await requireRole("student");
+  const name = firstName(profile.full_name, profile.username);
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-[1.75rem] font-semibold">Before you start</h1>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-[1.625rem] leading-tight font-semibold sm:text-[1.75rem]">Before you start</h1>
         <p className="text-base text-muted-foreground">
-          Hello {profile.full_name ?? profile.username}. Please read and accept to continue.
+          {name ? `Welcome, ${name}. ` : "Welcome. "}
+          This takes a minute: please read how your answers are used, then accept to continue.
         </p>
       </div>
-      <div className="flex max-w-[62ch] flex-col gap-4 text-[1.0625rem] leading-relaxed">
+      <div className="flex max-w-[62ch] flex-col gap-3 text-[1.0625rem] leading-relaxed">
         <p>
           TalentTrack stores your exam answers and results so that your instructors can assess your progress. Your
           answers are timed and saved automatically while you work.

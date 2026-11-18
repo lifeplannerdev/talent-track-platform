@@ -65,7 +65,11 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
   const [closedMessage, setClosedMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, startSubmit] = useTransition();
-  const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
+  const online = useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
 
   // Unsynced answers (network failures) and a queue so saves reach the server in order. Each
   // selection gets a revision, so only the response to the latest selection of a question can
@@ -223,7 +227,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="sticky top-0 z-10 border-b bg-card/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{examSetName}</p>
@@ -237,7 +241,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
               aria-label="Time remaining"
               data-testid="timer"
               className={cn(
-                "flex h-9 items-center gap-1.5 rounded-md border px-2.5 transition-colors",
+                "flex h-9 items-center gap-1.5 rounded-md border px-2.5 transition-colors pointer-coarse:h-11",
                 lowTime ? "border-destructive/40 bg-destructive-muted text-destructive" : "border-border bg-muted/60",
               )}
             >
@@ -251,6 +255,13 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
             </Button>
           </div>
         </div>
+        {/* Progress: how much of the sheet is answered (the same number is in the text above). */}
+        <div aria-hidden="true" className="h-0.5 w-full bg-border">
+          <div
+            className="h-full bg-primary motion-safe:transition-[width] motion-safe:duration-300 motion-safe:ease-out"
+            style={{ width: `${(answeredCount / questions.length) * 100}%` }}
+          />
+        </div>
       </header>
 
       {!online ? (
@@ -258,9 +269,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
           <Alert variant="warning" data-testid="offline-banner">
             <CloudOffIcon />
             <AlertTitle>You are offline</AlertTitle>
-            <AlertDescription>
-              Your answers will be saved when the connection is back. The timer keeps running.
-            </AlertDescription>
+            <AlertDescription>Your answers will be saved when the connection is back. The timer keeps running.</AlertDescription>
           </Alert>
         </div>
       ) : null}
@@ -279,8 +288,8 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
         </div>
       ) : null}
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pt-8 pb-16">
-        <section aria-labelledby="question-heading" className="flex flex-col gap-5">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 pt-5 pb-10 sm:pt-8 sm:pb-16">
+        <section aria-labelledby="question-heading" className="flex flex-col gap-4">
           <div className="flex min-h-5 items-center justify-between gap-2">
             <h1 id="question-heading" className="font-sans text-sm font-semibold tracking-normal text-primary">
               Question {index + 1} of {questions.length}
@@ -302,7 +311,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
             </p>
           </div>
 
-          <div lang="de" className="flex flex-col gap-6">
+          <div lang="de" className="flex flex-col gap-5">
             <p className="max-w-[60ch] text-stem font-semibold text-foreground sm:text-[1.5rem]" data-testid="question-stem">
               {question.stemDe}
             </p>
@@ -327,22 +336,29 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
           </div>
         </section>
 
-        <div className="flex items-center justify-between gap-3">
-          <Button variant="outline" size="lg" onClick={() => setIndex((i) => i - 1)} disabled={index === 0}>
+        {/* On phones the move-on controls stay in thumb reach at the bottom of the screen. */}
+        <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-between gap-3 border-t bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+          <Button
+            variant="outline"
+            size="lg"
+            className="flex-1 sm:flex-none"
+            onClick={() => setIndex((i) => i - 1)}
+            disabled={index === 0}
+          >
             <ChevronLeftIcon data-icon="inline-start" /> Previous
           </Button>
           {index < questions.length - 1 ? (
-            <Button variant="outline" size="lg" onClick={() => setIndex((i) => i + 1)}>
+            <Button variant="outline" size="lg" className="flex-1 sm:flex-none" onClick={() => setIndex((i) => i + 1)}>
               Next <ChevronRightIcon data-icon="inline-end" />
             </Button>
           ) : (
-            <Button size="lg" onClick={() => setConfirmOpen(true)} disabled={submitDisabled}>
+            <Button size="lg" className="flex-1 sm:flex-none" onClick={() => setConfirmOpen(true)} disabled={submitDisabled}>
               Review and submit
             </Button>
           )}
         </div>
 
-        <nav aria-label="Questions" className="flex flex-col gap-3 border-t pt-6">
+        <nav aria-label="Questions" className="flex flex-col gap-3 border-t pt-5">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <p className="text-sm font-semibold">Go to question</p>
             <p className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
@@ -372,12 +388,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
                     )}
                   >
                     {i + 1}
-                    {answered ? (
-                      <CheckIcon
-                        aria-hidden="true"
-                        className="absolute top-0.5 right-0.5 size-3! stroke-3"
-                      />
-                    ) : null}
+                    {answered ? <CheckIcon aria-hidden="true" className="absolute top-0.5 right-0.5 size-3! stroke-3" /> : null}
                   </Button>
                 </li>
               );
@@ -391,8 +402,7 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
           <DialogHeader>
             <DialogTitle>Submit your exam?</DialogTitle>
             <DialogDescription>
-              You answered {answeredCount} of {questions.length} questions. You cannot change your answers after
-              submitting.
+              You answered {answeredCount} of {questions.length} questions. You cannot change your answers after submitting.
               {unsaved ? " Some answers are still being saved; they will be sent first." : ""}
             </DialogDescription>
           </DialogHeader>
