@@ -1,5 +1,6 @@
 // Exam set settings: validation shared by the staff form and saveExamSet, plus the topic mix
 // text format used by the form ("topic: count", one per line) and the pool warnings.
+import { formatDuration, MAX_DURATION_MIN } from './duration'
 
 export type TopicMix = Record<string, number>
 
@@ -11,6 +12,8 @@ export type ExamSetFields = {
   maxAttempts: number | string
   holdResult: boolean
   topicMix: unknown
+  /** Minutes between time reminders on the exam screen; 0 = off. Missing means the default. */
+  reminderIntervalMin?: number | string
 }
 
 export type ExamSetValue = {
@@ -21,7 +24,12 @@ export type ExamSetValue = {
   maxAttempts: number
   holdResult: boolean
   topicMix: TopicMix
+  reminderIntervalMin: number
 }
+
+/** Default and bounds of exam_sets.reminder_interval_min (migration 0018). */
+export const DEFAULT_REMINDER_INTERVAL_MIN = 15
+export const MAX_REMINDER_INTERVAL_MIN = 120
 
 export type ExamSetField = keyof ExamSetFields
 
@@ -67,12 +75,18 @@ export function validateExamSetFields(
   const questionCount = toInt(fields.questionCount)
   if (questionCount === null || questionCount < 1 || questionCount > 500) errors.questionCount = 'Enter a whole number from 1 to 500'
   const timeLimitMin = toInt(fields.timeLimitMin)
-  if (timeLimitMin === null || timeLimitMin < 1 || timeLimitMin > 600) errors.timeLimitMin = 'Enter a whole number of minutes from 1 to 600'
+  if (timeLimitMin === null || timeLimitMin < 1 || timeLimitMin > MAX_DURATION_MIN) {
+    errors.timeLimitMin = `Enter a duration from 1 min to ${formatDuration(MAX_DURATION_MIN)}`
+  }
   const passMarkPercent = toInt(fields.passMarkPercent)
   if (passMarkPercent === null || passMarkPercent < 0 || passMarkPercent > 100) errors.passMarkPercent = 'Enter a whole number from 0 to 100'
   const maxAttempts = toInt(fields.maxAttempts)
   if (maxAttempts === null || maxAttempts < 1 || maxAttempts > 50) errors.maxAttempts = 'Enter a whole number from 1 to 50'
   if (typeof fields.holdResult !== 'boolean') errors.holdResult = 'Choose whether results are held'
+  const reminderIntervalMin = fields.reminderIntervalMin === undefined ? DEFAULT_REMINDER_INTERVAL_MIN : toInt(fields.reminderIntervalMin)
+  if (reminderIntervalMin === null || reminderIntervalMin < 0 || reminderIntervalMin > MAX_REMINDER_INTERVAL_MIN) {
+    errors.reminderIntervalMin = 'Enter 0 (no reminders) or a whole number of minutes from 1 to 120'
+  }
 
   const mix = validateTopicMix(fields.topicMix, errors.questionCount ? null : questionCount)
   if (!mix.ok) errors.topicMix = mix.message
@@ -88,8 +102,27 @@ export function validateExamSetFields(
       maxAttempts: maxAttempts!,
       holdResult: fields.holdResult,
       topicMix: mix.mix,
+      reminderIntervalMin: reminderIntervalMin!,
     },
   }
+}
+
+export type ExamSetSummaryInput = Pick<
+  ExamSetValue,
+  'questionCount' | 'timeLimitMin' | 'passMarkPercent' | 'maxAttempts' | 'holdResult' | 'reminderIntervalMin'
+>
+
+/** One line of what students will experience, for the staff form and the curriculum page. */
+export function examSetSummary(s: ExamSetSummaryInput): string {
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  return [
+    plural(s.questionCount, 'question'),
+    formatDuration(s.timeLimitMin),
+    `pass at ${s.passMarkPercent}%`,
+    plural(s.maxAttempts, 'attempt'),
+    s.holdResult ? 'result held for review' : 'result shown at once',
+    s.reminderIntervalMin > 0 ? `reminder every ${formatDuration(s.reminderIntervalMin)}` : 'no time reminders',
+  ].join(', ')
 }
 
 /** Reads the form's topic mix text: one "topic: count" (or "topic = count") per line. */

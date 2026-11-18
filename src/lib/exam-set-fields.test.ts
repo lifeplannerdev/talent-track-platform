@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { examSetWarnings, formatTopicMix, parseTopicMixText, poolWarning, validateExamSetFields } from './exam-set-fields'
+import { examSetSummary, examSetWarnings, formatTopicMix, parseTopicMixText, poolWarning, validateExamSetFields } from './exam-set-fields'
 
 const base = {
   name: 'Grundlagen',
@@ -9,6 +9,7 @@ const base = {
   maxAttempts: '2',
   holdResult: true,
   topicMix: {},
+  reminderIntervalMin: '15',
 }
 
 describe('validateExamSetFields', () => {
@@ -23,8 +24,36 @@ describe('validateExamSetFields', () => {
         maxAttempts: 2,
         holdResult: true,
         topicMix: {},
+        reminderIntervalMin: 15,
       },
     })
+  })
+
+  it('allows exams from 1 minute to 12 hours', () => {
+    expect(validateExamSetFields({ ...base, timeLimitMin: 1 }).ok).toBe(true)
+    expect(validateExamSetFields({ ...base, timeLimitMin: 480 }).ok).toBe(true)
+    expect(validateExamSetFields({ ...base, timeLimitMin: 720 }).ok).toBe(true)
+    expect(validateExamSetFields({ ...base, timeLimitMin: 721 })).toEqual({
+      ok: false,
+      errors: { timeLimitMin: 'Enter a duration from 1 min to 12 h' },
+    })
+    expect(validateExamSetFields({ ...base, timeLimitMin: 0 })).toMatchObject({ ok: false, errors: { timeLimitMin: expect.any(String) } })
+  })
+
+  it('reminder interval: 0 (off) or 1 to 120 minutes', () => {
+    expect(validateExamSetFields({ ...base, reminderIntervalMin: 0 })).toMatchObject({ ok: true, value: { reminderIntervalMin: 0 } })
+    expect(validateExamSetFields({ ...base, reminderIntervalMin: '120' }).ok).toBe(true)
+    for (const bad of [121, -1, '1.5', 'x', '']) {
+      expect(validateExamSetFields({ ...base, reminderIntervalMin: bad as never })).toEqual({
+        ok: false,
+        errors: { reminderIntervalMin: 'Enter 0 (no reminders) or a whole number of minutes from 1 to 120' },
+      })
+    }
+  })
+
+  it('a missing reminder interval means the default of 15 minutes', () => {
+    const { reminderIntervalMin: _, ...withoutReminder } = base
+    expect(validateExamSetFields(withoutReminder)).toMatchObject({ ok: true, value: { reminderIntervalMin: 15 } })
   })
 
   it('rejects out-of-range numbers and a blank name, field by field', () => {
@@ -68,6 +97,29 @@ describe('validateExamSetFields', () => {
   it('drops zero counts and trims topic names', () => {
     const r = validateExamSetFields({ ...base, topicMix: { ' Pflege ': 10, Recht: 0 } })
     expect(r).toMatchObject({ ok: true, value: { topicMix: { Pflege: 10 } } })
+  })
+})
+
+describe('examSetSummary', () => {
+  const settings = {
+    questionCount: 30,
+    timeLimitMin: 150,
+    passMarkPercent: 60,
+    maxAttempts: 2,
+    holdResult: true,
+    reminderIntervalMin: 15,
+  }
+
+  it('says in one line what students will experience', () => {
+    expect(examSetSummary(settings)).toBe(
+      '30 questions, 2 h 30 min, pass at 60%, 2 attempts, result held for review, reminder every 15 min',
+    )
+  })
+
+  it('singular counts, immediate results and reminders off', () => {
+    expect(
+      examSetSummary({ ...settings, questionCount: 1, timeLimitMin: 45, maxAttempts: 1, holdResult: false, reminderIntervalMin: 0 }),
+    ).toBe('1 question, 45 min, pass at 60%, 1 attempt, result shown at once, no time reminders')
   })
 })
 
