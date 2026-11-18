@@ -335,6 +335,8 @@ describe("getStudentResult after release", () => {
       maxPoints: 7,
       passed: false,
       percent: 57.1,
+      // 57.1% < 60% agrees with "not passed", so the pass mark is shown on the report.
+      passMarkPercent: 60,
       examSetName: `T6 set ${run}`,
       curriculumName: `T6 curriculum ${run}`,
     });
@@ -357,7 +359,7 @@ describe("getStudentResult after release", () => {
     try {
       session.client = staffClient;
       const review = await getAttemptReview(attemptId);
-      expect(review).toMatchObject({ points: 4, maxPoints: 7 });
+      expect(review).toMatchObject({ points: 4, maxPoints: 7, passMarkPercent: 60 });
       expect(review!.questions.reduce((s, q) => s + (q.awardedPoints ?? 0), 0)).toBe(4);
       expect(review!.questions.reduce((s, q) => s + (q.maxPoints ?? 0), 0)).toBe(7);
       for (const q of review!.questions) {

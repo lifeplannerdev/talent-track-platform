@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAll, isUuid } from "./attempts";
+import { consistentPassMark } from "./report";
+import { percentOf } from "./results";
 import type { QuestionOption } from "./types";
 
 // Staff review readers. They use the session client, so RLS decides: staff can read
@@ -32,12 +34,12 @@ type AttemptRow = {
   passed: boolean | null;
   student: Person;
   releaser?: Person;
-  exam_sets: { name: string; curriculums: { name: string } | null } | null;
+  exam_sets: { name: string; pass_mark_percent?: number | null; curriculums: { name: string } | null } | null;
 };
 
 const ATTEMPT_FIELDS =
   "id, status, deadline_at, submitted_at, released_at, points, max_points, passed, " +
-  "student:profiles!attempts_student_id_fkey(full_name, username), exam_sets(name, curriculums(name))";
+  "student:profiles!attempts_student_id_fkey(full_name, username), exam_sets(name, pass_mark_percent, curriculums(name))";
 
 function toItem(a: AttemptRow): ReviewListItem {
   return {
@@ -158,6 +160,8 @@ export type AttemptReview = ReviewListItem & {
   status: AttemptRow["status"];
   releasedAt: string | null;
   releasedBy: string | null;
+  /** The exam set's pass mark, or null when unscored or it no longer agrees with the stored outcome. */
+  passMarkPercent: number | null;
   questions: ReviewQuestion[];
 };
 
@@ -210,6 +214,14 @@ export async function getAttemptReview(attemptId: string): Promise<AttemptReview
     status: attempt.status,
     releasedAt: attempt.released_at,
     releasedBy: attempt.releaser ? nameOf(attempt.releaser) : null,
+    passMarkPercent:
+      attempt.points === null || attempt.max_points === null || attempt.passed === null
+        ? null
+        : consistentPassMark({
+            percent: percentOf(attempt.points, attempt.max_points),
+            passed: attempt.passed,
+            passMarkPercent: attempt.exam_sets?.pass_mark_percent,
+          }),
     questions: paper.map((r) => {
       const q = r.questions;
       return {

@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isUuid } from "./attempts";
+import { consistentPassMark } from "./report";
 
 export type TopicScore = { topic: string; points: number; max: number };
 
@@ -22,6 +23,8 @@ export type StudentResult =
       maxPoints: number;
       percent: number;
       passed: boolean;
+      /** The exam set's pass mark, or null when it no longer agrees with the stored outcome. */
+      passMarkPercent: number | null;
     } & Common & { topics: TopicScore[] });
 
 type ViewRow = {
@@ -117,9 +120,9 @@ export async function getStudentResult(studentId: string, attemptId: string): Pr
 
   const { data: set } = await supabase
     .from("exam_sets")
-    .select("name, curriculums(name)")
+    .select("name, pass_mark_percent, curriculums(name)")
     .eq("id", attempt.exam_set_id)
-    .maybeSingle<{ name: string; curriculums: { name: string } | null }>();
+    .maybeSingle<{ name: string; pass_mark_percent: number | null; curriculums: { name: string } | null }>();
   const common: Common = {
     id: attempt.id,
     examSetName: set?.name ?? "",
@@ -131,14 +134,16 @@ export async function getStudentResult(studentId: string, attemptId: string): Pr
     return { status: "submitted", ...common };
   }
 
+  const percent = percentOf(attempt.points, attempt.max_points);
   return {
     status: "released",
     ...common,
     releasedAt: attempt.released_at,
     points: attempt.points,
     maxPoints: attempt.max_points,
-    percent: percentOf(attempt.points, attempt.max_points),
+    percent,
     passed: attempt.passed,
+    passMarkPercent: consistentPassMark({ percent, passed: attempt.passed, passMarkPercent: set?.pass_mark_percent }),
     topics: await topicBreakdown(studentId, attempt.id),
   };
 }
