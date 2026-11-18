@@ -66,8 +66,14 @@ Headings: semibold, tracking -0.012em, balanced wrapping. No all-caps labels.
 
 ### Spacing, radius, elevation
 
-- 4 px base grid (Tailwind spacing). Staff pages: `staffMain` (max 72 rem, 32 px top);
-  student pages: `studentMain` (max 42 rem, centred). Sections are separated by 24 to 32 px.
+- 4 px base grid (Tailwind spacing). Staff pages: `staffMain` (max 80 rem, 20 px top on phones,
+  24 px from 640 px, 16/24/32 px side gutters); student pages: `studentMain` (max 42 rem, centred,
+  24 to 32 px top). Sections are separated by 20 px; groups inside a section by 8 to 16 px.
+- Cards pad 16 px on phones and 20 px from 640 px (`size="sm"`: 14 / 16 px). Table heads are 36 px,
+  cells 8 px vertical padding. Page titles are 22 px on phones, 24 px from 640 px.
+- Touch targets: controls are compact for a mouse (36 px buttons, inputs and selects) and grow to
+  44 px on touch screens through the `pointer-coarse:` variant in `button.tsx`, `input.tsx` and
+  `native-select.tsx`. Student pages use `size="lg"` (44 px) everywhere.
 - Radius `--radius` 0.5 rem: controls 6 px (`rounded-md`), panels and cards 12 px (`rounded-xl`),
   status tags 5 px (`rounded-sm`). No pills except tiny legend swatches.
 - Elevation is a 1 px border (`ring-border`). Only overlays carry a shadow: `shadow-overlay`
@@ -77,7 +83,8 @@ Headings: semibold, tracking -0.012em, balanced wrapping. No all-caps labels.
 ### Motion
 
 150 ms colour and border transitions on controls; the answer mark scales in when chosen (the
-one authored moment); dialogs fade and zoom slightly. `prefers-reduced-motion` turns all
+one authored moment); the exam progress line under the sticky bar grows with `transform` only;
+dialogs fade and zoom slightly. `prefers-reduced-motion` turns all
 animation and transitions off (global rule in `globals.css`).
 
 ## Components and conventions
@@ -105,11 +112,35 @@ animation and transitions off (global rule in `globals.css`).
 - **Links** in text use `linkClass` (`src/components/app/styles.ts`): Königsblau and always
   underlined.
 - **Chrome:** staff pages get the header from `src/app/staff/layout.tsx` (wordmark, `StaffNav`,
-  sign out). Student pages use `StudentHeader`; the exam page has its own sticky bar.
+  sign out; sticky from `lg`). Below `lg` the nav is one row under the wordmark that scrolls
+  sideways inside itself and keeps the current section in view; the current section has a 2 px
+  Königsblau underline and `aria-current="page"`. Student pages use `StudentHeader` (56 px); the
+  exam page has its own sticky bar with a progress line. A "Skip to main content" link in the root
+  layout jumps to `#main-content`, placed right after each header.
+- **Exam on phones:** Previous / Next (or Review and submit) sit in a sticky bottom bar in thumb
+  reach (`sm:` back to inline), full width each, with the safe-area inset.
+- **Greetings:** the student start page (h1) and the staff dashboard (description) greet with
+  `greeting()` from `src/lib/greeting.ts`: "Good morning / afternoon / evening, <first name>" in
+  India time (Asia/Kolkata), first word of the full name, else the username. Each page has a one
+  line orientation under its title; it never promises anything the code does not do.
+- **Score report** (`/results/[id]`, `data-testid="result-report"`): letterhead (wordmark and a
+  2 px Königsblau rule), h1 "Ergebnis / Result", bilingual facts in two columns (three in print),
+  a summary panel with the score in Lexend, the Bestanden / Passed badge and a `ScoreBar`
+  (`src/components/app/score-bar.tsx`: ink fill on a ruled track, black tick at the pass mark),
+  then the topic table with a bar column. The pass mark is shown only when it agrees with the
+  stored outcome (`consistentPassMark`, `src/lib/report.ts`), because staff may change it after
+  scoring. Before release: no numbers at all. The staff evaluation view uses the same summary
+  panel plus per-topic totals from the scoring snapshot (`topicTotals`).
+- **No template chrome:** no eyebrow labels above headings, no "A · B · C" meta strings (use
+  commas or separate facts), sentence case everywhere.
+- **Button links:** `buttonVariants()` returns merged classes (variant classes win over the base),
+  so `<Link className={buttonVariants({ variant: "outline" })}>` keeps its border.
 - **Wordmark:** text only, "TalentTrack" with "Life Planner" underneath and a small mark of two
   ruled lines. No logo files exist; do not invent one.
-- **Print:** the result report prints black on white with no chrome (`print:hidden` on headers
-  and buttons; badges, table heads and frames are forced to black in `@media print`).
+- **Print:** the result report prints on A4 (14/16 mm margins, 11 pt) with no app chrome
+  (`print:hidden` on headers and buttons); the letterhead rule and the bars keep their ink
+  (`print-color-adjust: exact`); badges, table heads and frames are forced to black; sections,
+  rows and fact lists do not break across pages, so a normal report fits one sheet.
 
 ## Rules for future UI work
 

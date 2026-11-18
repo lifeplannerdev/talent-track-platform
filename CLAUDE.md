@@ -76,6 +76,7 @@ Superpowers (TDD). Project log lives on the Monday board named "TalentTrackPlatf
 - Students: white paper, narrow centred column (`studentMain`), `StudentHeader`, `size="lg"` buttons; exam text uses `text-stem` / `text-option`. Staff: grey canvas, `src/app/staff/layout.tsx` header with `StaffNav` (client, marks the current section from the path), `staffMain`, `PageHeader`, framed tables.
 - Shared pieces: `src/components/app/` (wordmark, page header, student header, error state, class strings in `styles.ts`). Status badges use `success` / `warning` / `destructive` / `outline`.
 - `e2e/design.spec.ts` runs axe (WCAG 2.2 AA, serious and critical fail), asserts no horizontal page overflow and refreshes the screenshots in `docs/design-review/` at 375 px and desktop. `e2e/full-flow.spec.ts` is the end-to-end flow. If screenshots look unstyled after switching branches, delete `.next` (stale Turbopack CSS cache).
+- UI polish (branch `ui-polish`): staff pages are 80 rem wide with compact headers and a one-row scrolling nav below lg; controls grow to 44 px on touch (`pointer-coarse:`); greetings come from `greeting()` (`src/lib/greeting.ts`, India time); the score report and evaluation summary use `ScoreBar` and show the pass mark only via `consistentPassMark` (`src/lib/report.ts`; `passMarkPercent` on `StudentResult` and `AttemptReview`). Details in DESIGN.md.
 - `next.config.ts` sends `frame-ancestors 'none'`, `X-Frame-Options: DENY` and baseline security headers on every route.
 
 ## Production checklist (later, nothing remote is touched by this repo yet)
