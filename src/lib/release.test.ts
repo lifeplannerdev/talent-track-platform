@@ -111,7 +111,7 @@ function expectTopicsAddUp(result: { points: number; maxPoints: number; topics: 
 
 /** Staff edit every question of the set after scoring: new key, new points, new topic. */
 async function editQuestions() {
-  await ok(db.from("questions").update({ correct_option_id: "a", points: 10, topic: "geändert" }).eq("exam_set_id", setId));
+  await ok(db.from("questions").update({ correct_option_id: "a", points: 10, topic: "geÃ¤ndert" }).eq("exam_set_id", setId));
 }
 async function restoreQuestions() {
   const rows = await must(db.from("questions").select("id, stem_de").eq("exam_set_id", setId));
@@ -334,8 +334,8 @@ describe("getStudentResult after release", () => {
       points: 4,
       maxPoints: 7,
       passed: false,
-      percent: 57.1,
-      // 57.1% < 60% agrees with "not passed", so the pass mark is shown on the report.
+      percentLabel: "57.1%",
+      // The pass mark snapshot taken when the attempt started.
       passMarkPercent: 60,
       examSetName: `T6 set ${run}`,
       curriculumName: `T6 curriculum ${run}`,
@@ -352,6 +352,21 @@ describe("getStudentResult after release", () => {
     expect(json).not.toContain(student.id);
   });
 
+  it("reports keep the pass mark snapshot when staff change the exam set's pass mark later", async () => {
+    const student = await makeUser("student");
+    const attemptId = await submittedAttempt(student.id, (topic, points) => (topic === "alltag" && points === 3 ? "a" : "b"));
+    await releaseAttempt(attemptId, staffId);
+    await db.from("exam_sets").update({ pass_mark_percent: 50 }).eq("id", setId);
+    try {
+      session.client = staffClient;
+      expect(await getAttemptReview(attemptId)).toMatchObject({ percentLabel: "57.1%", passed: false, passMarkPercent: 60 });
+      session.client = student.client;
+      expect(await getStudentResult(student.id, attemptId)).toMatchObject({ percentLabel: "57.1%", passed: false, passMarkPercent: 60 });
+    } finally {
+      await db.from("exam_sets").update({ pass_mark_percent: 60 }).eq("id", setId);
+    }
+  });
+
   it("questions edited after scoring change neither the breakdown nor the staff evaluation", async () => {
     const student = await makeUser("student");
     const attemptId = await submittedAttempt(student.id, (topic, points) => (topic === "alltag" && points === 3 ? "a" : "b"));
@@ -364,7 +379,7 @@ describe("getStudentResult after release", () => {
       expect(review!.questions.reduce((s, q) => s + (q.maxPoints ?? 0), 0)).toBe(7);
       for (const q of review!.questions) {
         expect(q.correctOptionId).toBe("b");
-        expect(q.topic).not.toBe("geändert");
+        expect(q.topic).not.toBe("geÃ¤ndert");
       }
       // The answer "a" now matches the live key, but it was wrong when scored.
       const wrong = review!.questions.find((q) => q.chosenOptionId === "a")!;

@@ -1,8 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAll, isUuid } from "./attempts";
-import { consistentPassMark } from "./report";
-import { percentOf } from "./results";
+import { formatPercent } from "./percent";
 import type { QuestionOption } from "./types";
 
 // Staff review readers. They use the session client, so RLS decides: staff can read
@@ -32,14 +31,15 @@ type AttemptRow = {
   points: number | null;
   max_points: number | null;
   passed: boolean | null;
+  pass_mark_percent: number | null;
   student: Person;
   releaser?: Person;
-  exam_sets: { name: string; pass_mark_percent?: number | null; curriculums: { name: string } | null } | null;
+  exam_sets: { name: string; curriculums: { name: string } | null } | null;
 };
 
 const ATTEMPT_FIELDS =
-  "id, status, deadline_at, submitted_at, released_at, points, max_points, passed, " +
-  "student:profiles!attempts_student_id_fkey(full_name, username), exam_sets(name, pass_mark_percent, curriculums(name))";
+  "id, status, deadline_at, submitted_at, released_at, points, max_points, passed, pass_mark_percent, " +
+  "student:profiles!attempts_student_id_fkey(full_name, username), exam_sets(name, curriculums(name))";
 
 function toItem(a: AttemptRow): ReviewListItem {
   return {
@@ -160,7 +160,9 @@ export type AttemptReview = ReviewListItem & {
   status: AttemptRow["status"];
   releasedAt: string | null;
   releasedBy: string | null;
-  /** The exam set's pass mark, or null when unscored or it no longer agrees with the stored outcome. */
+  /** The headline result ("92%"), or null when not scored yet. */
+  percentLabel: string | null;
+  /** The pass mark snapshot taken when the attempt started (null only for legacy attempts). */
   passMarkPercent: number | null;
   questions: ReviewQuestion[];
 };
@@ -214,14 +216,8 @@ export async function getAttemptReview(attemptId: string): Promise<AttemptReview
     status: attempt.status,
     releasedAt: attempt.released_at,
     releasedBy: attempt.releaser ? nameOf(attempt.releaser) : null,
-    passMarkPercent:
-      attempt.points === null || attempt.max_points === null || attempt.passed === null
-        ? null
-        : consistentPassMark({
-            percent: percentOf(attempt.points, attempt.max_points),
-            passed: attempt.passed,
-            passMarkPercent: attempt.exam_sets?.pass_mark_percent,
-          }),
+    percentLabel: attempt.points === null || attempt.max_points === null ? null : formatPercent(attempt.points, attempt.max_points),
+    passMarkPercent: attempt.pass_mark_percent,
     questions: paper.map((r) => {
       const q = r.questions;
       return {

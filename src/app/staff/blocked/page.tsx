@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ShieldCheckIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
+import { formatPercent } from "@/lib/percent";
 import { listBlockedStudents } from "@/lib/staff-overview";
 import { PageHeader } from "@/components/app/page-header";
 import { linkClass, staffMain } from "@/components/app/styles";
@@ -61,7 +62,17 @@ async function BlockedList() {
               {r.maxAttempts === null ? r.attemptsUsed : `${r.attemptsUsed} of ${r.maxAttempts}`}
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {r.lastPoints === null ? "No score" : `${r.lastPoints} / ${r.lastMaxPoints}`}
+              {r.lastPoints === null || r.lastMaxPoints === null ? (
+                "No score"
+              ) : (
+                <>
+                  <span className="block font-semibold">{formatPercent(r.lastPoints, r.lastMaxPoints)}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {r.lastPoints} / {r.lastMaxPoints}
+                    <span className="sr-only"> points</span>
+                  </span>
+                </>
+              )}
             </TableCell>
             <TableCell>
               <div className="flex flex-col items-start gap-2">

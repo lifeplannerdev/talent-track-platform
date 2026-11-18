@@ -83,6 +83,8 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   await setForm.getByLabel("Questions per paper").fill("5");
   await setForm.getByLabel("Hours", { exact: true }).fill("2");
   await setForm.getByLabel("Minutes", { exact: true }).fill("30");
+  // A new exam set proposes the 90% standard; staff can still choose another pass mark.
+  await expect(setForm.getByLabel("Pass mark (%)")).toHaveValue("90");
   await setForm.getByLabel("Pass mark (%)").fill("60");
   await setForm.getByLabel("Maximum attempts").fill("2");
   await setForm.getByLabel("Hold results for review").uncheck();

@@ -87,7 +87,8 @@ export async function seed() {
   ]);
   if (aError) throw aError;
 
-  await seedExam(STUDENT_EXAM, EXAM_CURRICULUM_HELD, true, create);
+  // 60% so the held scenario in results.spec (2 of 3 = 66.7%) is a pass; the others use the 90% default.
+  await seedExam(STUDENT_EXAM, EXAM_CURRICULUM_HELD, true, create, { passMarkPercent: 60 });
   await seedExam(STUDENT_EXAM_OPEN, EXAM_CURRICULUM_OPEN, false, create);
   await seedExam(STUDENT_BLOCK, BLOCK_CURRICULUM, true, create, {
     questionCount: 2,
@@ -137,7 +138,8 @@ async function seedExam(
       name: holdResult ? "Grundlagen (held)" : "Grundlagen",
       question_count: opts.questionCount ?? 3,
       time_limit_min: 30,
-      pass_mark_percent: opts.passMarkPercent ?? 60,
+      // Without an explicit pass mark the database default applies (90%, migration 0019).
+      ...(opts.passMarkPercent === undefined ? {} : { pass_mark_percent: opts.passMarkPercent }),
       max_attempts: opts.maxAttempts ?? 1,
       hold_result: holdResult,
     })

@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isUuid } from "./attempts";
-import { consistentPassMark } from "./report";
+import { formatPercent, percentValue } from "./percent";
 
 export type TopicScore = { topic: string; points: number; max: number };
 
@@ -21,9 +21,12 @@ export type StudentResult =
       releasedAt: string | null;
       points: number;
       maxPoints: number;
+      /** Exact share of the points (0 to 100), for the bar. Show percentLabel as text. */
       percent: number;
+      /** The headline result, e.g. "92%" or "66.7%" (formatPercent). */
+      percentLabel: string;
       passed: boolean;
-      /** The exam set's pass mark, or null when it no longer agrees with the stored outcome. */
+      /** The pass mark snapshot taken when the attempt started (null only for legacy attempts). */
       passMarkPercent: number | null;
     } & Common & { topics: TopicScore[] });
 
@@ -95,11 +98,6 @@ export async function listStudentResults(studentId: string): Promise<StudentResu
   });
 }
 
-/** One decimal place, e.g. 57.1. */
-export function percentOf(points: number, max: number): number {
-  return max > 0 ? Math.round((points / max) * 1000) / 10 : 0;
-}
-
 /**
  * The session student's own attempt, or null if it is not theirs (or does not exist).
  * Reads through the student_attempts view with the session client, so RLS and the view's
@@ -120,9 +118,9 @@ export async function getStudentResult(studentId: string, attemptId: string): Pr
 
   const { data: set } = await supabase
     .from("exam_sets")
-    .select("name, pass_mark_percent, curriculums(name)")
+    .select("name, curriculums(name)")
     .eq("id", attempt.exam_set_id)
-    .maybeSingle<{ name: string; pass_mark_percent: number | null; curriculums: { name: string } | null }>();
+    .maybeSingle<{ name: string; curriculums: { name: string } | null }>();
   const common: Common = {
     id: attempt.id,
     examSetName: set?.name ?? "",
@@ -134,38 +132,43 @@ export async function getStudentResult(studentId: string, attemptId: string): Pr
     return { status: "submitted", ...common };
   }
 
-  const percent = percentOf(attempt.points, attempt.max_points);
+  const details = await releasedDetails(studentId, attempt.id);
   return {
     status: "released",
     ...common,
     releasedAt: attempt.released_at,
     points: attempt.points,
     maxPoints: attempt.max_points,
-    percent,
+    percent: percentValue(attempt.points, attempt.max_points),
+    percentLabel: formatPercent(attempt.points, attempt.max_points),
     passed: attempt.passed,
-    passMarkPercent: consistentPassMark({ percent, passed: attempt.passed, passMarkPercent: set?.pass_mark_percent }),
-    topics: await topicBreakdown(studentId, attempt.id),
+    passMarkPercent: details.passMarkPercent,
+    topics: details.topics,
   };
 }
 
 /**
- * Per-topic points of a released attempt from the scoring snapshot stored on
- * attempt_questions (migration 0007), so it always adds up to the stored total even if
- * questions were edited later. attempt_questions is staff-only, so this runs with the service
- * role, but only after checking again that the attempt belongs to this student and is
- * released. Only topic totals leave this function.
+ * The pass mark snapshot (attempts.pass_mark_percent, migration 0019) and the per-topic points
+ * of a released attempt from the scoring snapshot on attempt_questions (migration 0007), so the
+ * breakdown always adds up to the stored total and the pass mark is the one the attempt was
+ * scored against, even if staff edited questions or the exam set later. Both are not readable by
+ * students, so this runs with the service role, but only after checking again that the attempt
+ * belongs to this student and is released. Only the pass mark and topic totals leave it.
  */
-async function topicBreakdown(studentId: string, attemptId: string): Promise<TopicScore[]> {
+async function releasedDetails(
+  studentId: string,
+  attemptId: string,
+): Promise<{ passMarkPercent: number | null; topics: TopicScore[] }> {
   const db = createAdminClient();
   const { data: owned, error } = await db
     .from("attempts")
-    .select("id")
+    .select("id, pass_mark_percent")
     .eq("id", attemptId)
     .eq("student_id", studentId)
     .eq("status", "released")
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{ id: string; pass_mark_percent: number | null }>();
   if (error) throw new Error(`Could not read attempt: ${error.message}`);
-  if (!owned) return [];
+  if (!owned) return { passMarkPercent: null, topics: [] };
 
   const { data: rows, error: qError } = await db
     .from("attempt_questions")
@@ -182,5 +185,8 @@ async function topicBreakdown(studentId: string, attemptId: string): Promise<Top
     t.points += r.awarded_points;
     topics.set(t.topic, t);
   }
-  return [...topics.values()].sort((a, b) => a.topic.localeCompare(b.topic));
+  return {
+    passMarkPercent: owned.pass_mark_percent,
+    topics: [...topics.values()].sort((a, b) => a.topic.localeCompare(b.topic)),
+  };
 }

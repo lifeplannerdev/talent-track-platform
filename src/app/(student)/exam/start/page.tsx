@@ -2,12 +2,13 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CircleCheckIcon, ClockIcon, HourglassIcon, InboxIcon, ListChecksIcon, LockIcon } from "lucide-react";
+import { CircleCheckIcon, ClockIcon, HourglassIcon, InboxIcon, ListChecksIcon, LockIcon, TargetIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
 import { getExamStartState, type ExamSetInfo, type ExamStartState } from "@/lib/exam-start";
 import { formatDuration } from "@/lib/duration";
 import { formatDateTime } from "@/lib/format";
 import { greeting } from "@/lib/greeting";
+import { formatPercent } from "@/lib/percent";
 import { listStudentResults, type StudentResultListItem } from "@/lib/results";
 import { StudentHeader } from "@/components/app/student-header";
 import { linkClass, studentMain } from "@/components/app/styles";
@@ -30,7 +31,7 @@ const START_ERRORS: Record<string, string> = {
   result_pending: "Your last result is still awaiting review. You can continue after your trainer releases it.",
 };
 
-function ExamFacts({ examSet }: { examSet: ExamSetInfo }) {
+function ExamFacts({ examSet, showPassMark }: { examSet: ExamSetInfo; showPassMark: boolean }) {
   return (
     <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
       <div className="flex items-center gap-2">
@@ -51,6 +52,19 @@ function ExamFacts({ examSet }: { examSet: ExamSetInfo }) {
           {formatDuration(examSet.timeLimitMin)}
         </dd>
       </div>
+      {/* Only before the start: once an attempt exists its own pass mark snapshot applies, and
+          pages before release show no percentages at all. */}
+      {showPassMark ? (
+        <div className="flex items-center gap-2">
+          <dt className="flex items-center gap-2 text-muted-foreground">
+            <TargetIcon aria-hidden="true" className="size-4 text-primary" />
+            Pass mark
+          </dt>
+          <dd className="font-heading text-base font-semibold tabular-nums" data-testid="pass-mark">
+            {examSet.passMarkPercent}%
+          </dd>
+        </div>
+      ) : null}
     </dl>
   );
 }
@@ -90,8 +104,13 @@ function ResultsList({ results }: { results: StudentResultListItem[] }) {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {r.status === "released" && r.points !== null && r.maxPoints !== null ? (
                 <>
-                  <span className="font-heading text-lg font-semibold tabular-nums">
-                    {r.points} / {r.maxPoints}
+                  <span className="flex items-baseline gap-2">
+                    <span className="font-heading text-xl font-semibold tabular-nums" data-testid="result-percent">
+                      {formatPercent(r.points, r.maxPoints)}
+                    </span>
+                    <span className="text-sm text-muted-foreground tabular-nums">
+                      {r.points} / {r.maxPoints} points
+                    </span>
                   </span>
                   <Badge variant={r.passed ? "success" : "destructive"}>{r.passed ? "Passed" : "Not passed"}</Badge>
                 </>
@@ -221,7 +240,7 @@ async function NextExam({ state, searchParams }: { state: ExamStartState; search
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {examSet ? <ExamFacts examSet={examSet} /> : null}
+          {examSet ? <ExamFacts examSet={examSet} showPassMark={state.kind === "ready"} /> : null}
           {errorText ? (
             <Alert variant="destructive">
               <AlertDescription>{errorText}</AlertDescription>
@@ -234,6 +253,7 @@ async function NextExam({ state, searchParams }: { state: ExamStartState; search
                 <li>The questions are in German.</li>
                 <li>The timer starts when you press Start and keeps running if you leave the page.</li>
                 <li>Your answers are saved automatically, and the exam is submitted when the time is up.</li>
+                <li>You pass with {examSet ? `${examSet.passMarkPercent}%` : "the pass mark"} of the points or more.</li>
               </ul>
               <form action={startExam}>
                 <Button type="submit" size="lg" className="w-full sm:w-auto sm:min-w-48">

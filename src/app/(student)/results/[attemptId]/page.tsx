@@ -4,7 +4,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
-import { getStudentResult, percentOf, type StudentResult } from "@/lib/results";
+import { formatPercent, percentValue } from "@/lib/percent";
+import { getStudentResult, type StudentResult } from "@/lib/results";
 import { ChevronLeftIcon, CircleCheckIcon, CircleXIcon, HourglassIcon } from "lucide-react";
 import { StudentHeader } from "@/components/app/student-header";
 import { ScoreBar } from "@/components/app/score-bar";
@@ -64,7 +65,7 @@ function AwaitingReview({ result }: { result: Extract<StudentResult, { status: "
         <Fact label="Submitted">{formatDateTime(result.submittedAt)}</Fact>
       </dl>
       <p className="text-sm text-muted-foreground">
-        Your score appears here and under Your results as soon as your trainer releases it.
+        Your percentage and result appear here and under Your results as soon as your trainer releases it.
       </p>
       <div>
         <BackLink />
@@ -102,13 +103,13 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
           className="flex flex-col gap-3 rounded-lg bg-muted/60 p-4 ring-1 ring-border ring-inset print:bg-transparent print:ring-black"
         >
           <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-            <div className="flex flex-col gap-1">
-              <p className={factLabel}>Punkte / Points</p>
-              <p className="font-heading text-[2.5rem] leading-none font-semibold tabular-nums" data-testid="result-score">
-                {result.points} of {result.maxPoints}
-                <span className="ml-2 font-sans text-xl font-normal text-muted-foreground print:text-black">
-                  ({result.percent}%)
-                </span>
+            <div className="flex flex-col gap-1.5">
+              <p className={factLabel}>Prozent / Percent</p>
+              <p className="font-heading text-[3rem] leading-none font-semibold tabular-nums sm:text-[3.5rem]" data-testid="result-score">
+                {result.percentLabel}
+              </p>
+              <p className="text-base text-muted-foreground tabular-nums print:text-black" data-testid="result-points">
+                {result.points} von {result.maxPoints} Punkten / {result.points} of {result.maxPoints} points
               </p>
             </div>
             <Badge
@@ -122,8 +123,8 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
           </div>
           <ScoreBar percent={result.percent} passMarkPercent={result.passMarkPercent} passed={result.passed} />
           {result.passMarkPercent !== null ? (
-            <p className="text-sm text-muted-foreground print:text-black">
-              Bestehensgrenze / Pass mark:{" "}
+            <p className="text-sm text-muted-foreground print:text-black" data-testid="result-pass-mark">
+              Bestehensgrenze / Pass mark{" "}
               <span className="font-semibold text-foreground tabular-nums">{result.passMarkPercent}%</span>
               <span className="sr-only"> of the points</span>
             </p>
@@ -139,8 +140,8 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
               <TableHeader>
                 <TableRow>
                   <TableHead>Thema / Topic</TableHead>
+                  <TableHead className="text-right">Prozent / Percent</TableHead>
                   <TableHead className="text-right">Punkte / Points</TableHead>
-                  <TableHead className="text-right">%</TableHead>
                   <TableHead className="hidden w-[32%] sm:table-cell print:table-cell">
                     <span className="sr-only">Anteil / Share</span>
                   </TableHead>
@@ -148,16 +149,15 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
               </TableHeader>
               <TableBody>
                 {result.topics.map((t) => {
-                  const pct = percentOf(t.points, t.max);
                   return (
                     <TableRow key={t.topic} className="hover:bg-transparent">
                       <TableCell className="whitespace-normal">{t.topic}</TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-semibold tabular-nums">{formatPercent(t.points, t.max)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums print:text-black">
                         {t.points} / {t.max}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{pct}%</TableCell>
                       <TableCell className="hidden sm:table-cell print:table-cell">
-                        <ScoreBar percent={pct} size="sm" />
+                        <ScoreBar percent={percentValue(t.points, t.max)} size="sm" />
                       </TableCell>
                     </TableRow>
                   );
@@ -168,8 +168,9 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
         ) : null}
 
         <p className="text-xs text-muted-foreground print:text-black">
-          Automatisch bewertet; die Themen ergeben zusammen die Gesamtpunktzahl. / Scored automatically; the topics add up to the
-          total points.
+          Automatisch bewertet; bestanden ab der Bestehensgrenze in Prozent der Punkte; die Themen ergeben zusammen die
+          Gesamtpunktzahl. / Scored automatically; passed at or above the pass mark as a percentage of the points; the topics
+          add up to the total points.
         </p>
       </div>
 

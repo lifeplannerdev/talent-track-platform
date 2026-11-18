@@ -88,6 +88,7 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   await expect(page).toHaveURL(/\/staff\/review$/);
   const row = page.getByRole("row").filter({ hasText: STUDENT_EXAM.fullName });
   await expect(row).toContainText(EXAM_CURRICULUM_HELD);
+  await expect(row).toContainText("66.7%");
   await expect(row).toContainText("2 / 3");
   await row.getByRole("link", { name: STUDENT_EXAM.fullName }).click();
   await expect(page).toHaveURL(new RegExp(`/staff/review/${attemptId}$`));
@@ -102,6 +103,8 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   await expect(page.getByText("Correct answer")).toHaveCount(3);
   await expect(page.getByTestId("awarded-points").filter({ hasText: "1 / 1 points" })).toHaveCount(2);
   await expect(page.getByTestId("awarded-points").filter({ hasText: "0 / 1 points" })).toHaveCount(1);
+  await expect(page.getByTestId("review-score")).toHaveText("66.7%");
+  await expect(page.getByTestId("review-points")).toHaveText("2 of 3 points");
   await expect(page.getByTestId("review-status")).toHaveText("Awaiting release");
 
   await page.getByRole("button", { name: "Release result" }).click();
@@ -149,12 +152,16 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   // The passed assignment is no longer the student's next exam; the result stays reachable.
   await expect(page.getByTestId("all-completed")).toBeVisible();
   const resultRow = page.getByTestId("results-list").getByRole("listitem").filter({ hasText: EXAM_CURRICULUM_HELD });
+  await expect(resultRow.getByTestId("result-percent")).toHaveText("66.7%");
   await expect(resultRow).toContainText("2 / 3");
   await expect(resultRow).toContainText("Passed");
   await resultRow.getByRole("link", { name: /View result/ }).click();
   await expect(page).toHaveURL(resultUrl);
   await expect(page.getByRole("heading", { name: "Ergebnis / Result" })).toBeVisible();
-  await expect(page.getByTestId("result-score")).toHaveText(/^2 of 3\s*\(66\.7%\)$/);
+  await expect(page.getByTestId("result-score")).toHaveText("66.7%");
+  await expect(page.getByTestId("result-points")).toContainText("2 of 3 points");
+  // The pass mark snapshot of the attempt (this exam set uses 60%).
+  await expect(page.getByTestId("result-pass-mark")).toContainText("60%");
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
   const topics = page.getByTestId("topic-table");
   await expect(topics).toContainText("Thema / Topic");
@@ -180,9 +187,12 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
 
 test("a released result is only visible to its own student", async ({ page }) => {
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
+  // This exam set was created without a pass mark: the 90% standard applies and is shown up front.
+  await expect(page.getByTestId("pass-mark")).toHaveText("90%");
   const attemptId = await takeExam(page, ["Nein", "Nein", "Nein"]); // not held: released at once
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
-  await expect(page.getByTestId("result-score")).toHaveText(/^3 of 3\s*\(100%\)$/);
+  await expect(page.getByTestId("result-score")).toHaveText("100%");
+  await expect(page.getByTestId("result-pass-mark")).toContainText("90%");
 
   // Another student with a valid session gets not found and none of the numbers.
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);

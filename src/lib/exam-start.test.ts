@@ -140,7 +140,7 @@ describe("getExamStartState", () => {
     await assign(s.id, curB, 2, "open");
     await must(db.from("attempt_grants").insert({ student_id: s.id, exam_set_id: setB1 }).select("id"));
     session.client = s.client;
-    expect(await getExamStartState(s.id)).toMatchObject({ kind: "ready", examSet: { id: setB1 } });
+    expect(await getExamStartState(s.id)).toMatchObject({ kind: "ready", examSet: { id: setB1, passMarkPercent: 50 } });
   });
 
   it("a grant on another exam set is not 'ready' while a result in the curriculum is held", async () => {

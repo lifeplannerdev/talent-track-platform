@@ -188,7 +188,8 @@ test("full flow: staff set up a nursing student and a bilingual exam, the studen
   await signIn(page, STUDENT_FLOW.username, STUDENT_FLOW.password, /\/exam\/start$/);
   await page.goto(`/results/${attemptId}`);
   await expect(page.getByRole("heading", { name: "Ergebnis / Result" })).toBeVisible();
-  await expect(page.getByTestId("result-score")).toHaveText(/^5 of 5\s*\(100%\)$/);
+  await expect(page.getByTestId("result-score")).toHaveText("100%");
+  await expect(page.getByTestId("result-points")).toContainText("5 of 5 points");
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
   await expect(page.getByText("Prüfung / Exam")).toBeVisible();
   await expect(page.getByText(FLOW_EXAM_SET)).toBeVisible();

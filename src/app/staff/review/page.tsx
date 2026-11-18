@@ -5,8 +5,8 @@ import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
 import { listSubmittedAttempts } from "@/lib/review";
-import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/app/page-header";
+import { ResultScore } from "@/components/app/result-score";
 import { linkClass, staffMain } from "@/components/app/styles";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,16 +56,7 @@ async function ReviewList() {
             </TableCell>
             <TableCell>{formatDateTime(a.submittedAt)}</TableCell>
             <TableCell className="text-right">
-              {a.points === null || a.maxPoints === null ? (
-                <Badge variant="outline">Scoring pending</Badge>
-              ) : (
-                <span className="inline-flex items-center gap-2">
-                  <span className="tabular-nums">
-                    {a.points} / {a.maxPoints}
-                  </span>
-                  <Badge variant={a.passed ? "success" : "destructive"}>{a.passed ? "Pass" : "Fail"}</Badge>
-                </span>
-              )}
+              <ResultScore points={a.points} maxPoints={a.maxPoints} passed={a.passed} />
             </TableCell>
           </TableRow>
         ))}

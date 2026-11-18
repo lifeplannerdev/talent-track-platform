@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { greeting } from "@/lib/greeting";
+import { formatPercent } from "@/lib/percent";
 import { getDashboard } from "@/lib/staff-overview";
 import { cn } from "cn";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
@@ -108,8 +109,16 @@ async function DashboardContent() {
                       <span className="block font-semibold">{b.studentName}</span>
                       <span className="block text-muted-foreground">{b.curriculumName}</span>
                     </span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {b.lastPoints === null ? "No score" : `Last score ${b.lastPoints} / ${b.lastMaxPoints}`}
+                    <span className="text-muted-foreground tabular-nums">
+                      {b.lastPoints === null || b.lastMaxPoints === null ? (
+                        "No score"
+                      ) : (
+                        <>
+                          Last score{" "}
+                          <span className="font-semibold text-foreground">{formatPercent(b.lastPoints, b.lastMaxPoints)}</span>{" "}
+                          ({b.lastPoints} / {b.lastMaxPoints})
+                        </>
+                      )}
                     </span>
                   </li>
                 ))}

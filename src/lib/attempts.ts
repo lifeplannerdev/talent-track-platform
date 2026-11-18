@@ -370,13 +370,15 @@ async function finalizeAttempt(attemptId: string): Promise<void> {
   const db = createAdminClient();
   const { data: attempt, error } = await db
     .from("attempts")
-    .select("status, points, deadline_at, exam_set_id, exam_sets(pass_mark_percent)")
+    .select("status, points, deadline_at, exam_set_id, pass_mark_percent, exam_sets(pass_mark_percent)")
     .eq("id", attemptId)
     .maybeSingle<{
       status: AttemptStatus;
       points: number | null;
       deadline_at: string;
       exam_set_id: string;
+      /** Snapshot taken by start_attempt (0019); null only for legacy rows. */
+      pass_mark_percent: number | null;
       exam_sets: { pass_mark_percent: number };
     }>();
   if (error) throw toError(error, "Could not read attempt");
@@ -429,7 +431,8 @@ async function finalizeAttempt(attemptId: string): Promise<void> {
     points: q.points,
     status: q.status,
   }));
-  const result = scoreAttempt(questions, chosen, attempt.exam_sets.pass_mark_percent);
+  // The pass mark in force when the attempt started (record_score checks the same value).
+  const result = scoreAttempt(questions, chosen, attempt.pass_mark_percent ?? attempt.exam_sets.pass_mark_percent);
 
   const { error: scoreError } = await db.rpc("record_score", {
     p_attempt_id: attemptId,

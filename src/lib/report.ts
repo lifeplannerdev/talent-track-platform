@@ -2,16 +2,6 @@
 
 export type TopicTotal = { topic: string; points: number; max: number };
 
-/**
- * The exam set's current pass mark, but only if it agrees with the stored outcome. Staff may
- * change the pass mark after scoring; a pass mark that contradicts "passed" would mislead, so
- * it is left out (null) rather than shown.
- */
-export function consistentPassMark(r: { percent: number; passed: boolean; passMarkPercent: number | null | undefined }): number | null {
-  if (r.passMarkPercent === null || r.passMarkPercent === undefined) return null;
-  return r.percent >= r.passMarkPercent === r.passed ? r.passMarkPercent : null;
-}
-
 /** Points per topic from scored questions (unscored ones are skipped), sorted by topic. */
 export function topicTotals(
   questions: { topic: string | null; awardedPoints: number | null; maxPoints: number | null }[],

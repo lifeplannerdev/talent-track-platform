@@ -9,6 +9,8 @@ export type ExamSetInfo = {
   curriculumName: string;
   questionCount: number;
   timeLimitMin: number;
+  /** The exam set's pass mark now (copied onto the attempt when it starts). */
+  passMarkPercent: number;
 };
 
 export type ExamStartState =
@@ -61,7 +63,7 @@ export async function getExamStartState(studentId: string): Promise<ExamStartSta
     supabase.from("curriculums").select("name").eq("id", next.curriculum_id).maybeSingle<{ name: string }>(),
     supabase
       .from("exam_sets")
-      .select("id, name, question_count, time_limit_min")
+      .select("id, name, question_count, time_limit_min, pass_mark_percent")
       .eq("curriculum_id", next.curriculum_id)
       .order("created_at", { ascending: true }),
   ]);
@@ -73,6 +75,7 @@ export async function getExamStartState(studentId: string): Promise<ExamStartSta
     curriculumName,
     questionCount: s.question_count,
     timeLimitMin: s.time_limit_min,
+    passMarkPercent: s.pass_mark_percent,
   }));
   if (examSets.length === 0) return { kind: "waiting", curriculumName, examSet: null };
 

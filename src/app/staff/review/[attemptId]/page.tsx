@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
 import { topicTotals } from "@/lib/report";
-import { percentOf } from "@/lib/results";
+import { formatPercent, percentValue } from "@/lib/percent";
 import { getAttemptReview, type ReviewQuestion } from "@/lib/review";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeading } from "@/components/app/page-header";
@@ -98,9 +98,9 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
   if (!review || review.status === "in_progress") notFound();
 
   const scored = review.points !== null && review.maxPoints !== null;
-  const summary = scored ? `${review.points} of ${review.maxPoints}` : "not scored yet";
+  const summary = scored ? `${review.percentLabel} (${review.points} of ${review.maxPoints} points)` : "not scored yet";
   const released = review.status === "released";
-  const percent = scored ? percentOf(review.points!, review.maxPoints!) : null;
+  const percent = scored ? percentValue(review.points!, review.maxPoints!) : null;
   const topics = topicTotals(review.questions);
   const answered = review.questions.filter((q) => q.chosenOptionId !== null).length;
 
@@ -156,13 +156,15 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
           <section aria-label="Score" className="flex flex-col gap-3 rounded-lg bg-muted/60 p-4 ring-1 ring-border ring-inset">
             <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
               <div className="flex flex-col gap-1">
-                <p className={factLabel}>Score</p>
-                <p className="font-heading text-[1.75rem] leading-none font-semibold tabular-nums" data-testid="review-score">
-                  {scored ? `${review.points} / ${review.maxPoints}` : "Scoring pending"}
-                  {percent !== null ? (
-                    <span className="ml-2 font-sans text-base font-normal text-muted-foreground">({percent}%)</span>
-                  ) : null}
+                <p className={factLabel}>Percent</p>
+                <p className="font-heading text-[2rem] leading-none font-semibold tabular-nums" data-testid="review-score">
+                  {scored ? review.percentLabel : "Scoring pending"}
                 </p>
+                {scored ? (
+                  <p className="text-sm text-muted-foreground tabular-nums" data-testid="review-points">
+                    {review.points} of {review.maxPoints} points
+                  </p>
+                ) : null}
               </div>
               {scored ? (
                 <Badge variant={review.passed ? "success" : "destructive"} className="h-auto px-2.5 py-1 text-sm">
@@ -181,10 +183,11 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
               </>
             ) : null}
             {topics.length > 1 ? (
-              <table className="w-full text-sm" aria-label="Points by topic">
+              <table className="w-full text-sm" aria-label="Result by topic">
                 <thead className="sr-only">
                   <tr>
                     <th scope="col">Topic</th>
+                    <th scope="col">Percent</th>
                     <th scope="col">Points</th>
                     <th scope="col">Share</th>
                   </tr>
@@ -193,11 +196,12 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
                   {topics.map((t) => (
                     <tr key={t.topic}>
                       <td className="py-1 pr-3">{t.topic}</td>
-                      <td className="py-1 pr-3 text-right whitespace-nowrap tabular-nums">
+                      <td className="py-1 pr-3 text-right font-semibold whitespace-nowrap tabular-nums">{formatPercent(t.points, t.max)}</td>
+                      <td className="py-1 pr-3 text-right whitespace-nowrap text-muted-foreground tabular-nums">
                         {t.points} / {t.max}
                       </td>
                       <td className="w-2/5 py-1">
-                        <ScoreBar percent={percentOf(t.points, t.max)} size="sm" />
+                        <ScoreBar percent={percentValue(t.points, t.max)} size="sm" />
                       </td>
                     </tr>
                   ))}

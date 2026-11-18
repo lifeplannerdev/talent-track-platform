@@ -481,6 +481,20 @@ describe("submitAttempt", () => {
     expect(await assignmentStatus(student, openCurriculumId)).toBe("open");
   });
 
+  it("scores against the pass mark snapshot taken at start, not a pass mark changed during the exam", async () => {
+    const snap = await makeExamSet("snapshot", true);
+    const student = await makeStudent();
+    await ok(db.from("assignments").insert({ student_id: student, curriculum_id: snap.curriculumId, position: 3 }));
+    await grant(student, snap.setId);
+    const { attemptId } = await startAttempt(student, snap.setId);
+    expect((await attemptRow(attemptId)).pass_mark_percent).toBe(60);
+    // Staff drop the pass mark to 0 while the exam runs: 0 points would now "pass" live.
+    await ok(db.from("exam_sets").update({ pass_mark_percent: 0 }).eq("id", snap.setId));
+    await submitAttempt(attemptId);
+    const row = await attemptRow(attemptId);
+    expect(row).toMatchObject({ status: "submitted", points: 0, passed: false, pass_mark_percent: 60 });
+  });
+
   it("scores with the answer key read at submit time and ignores later staff edits", async () => {
     const student = await makeStudent();
     await grant(student, heldSetId);

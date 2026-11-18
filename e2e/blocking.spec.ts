@@ -101,7 +101,7 @@ test("a student who fails the last allowed attempt is blocked, appears on the Bl
   await expect(card.getByTestId("blocked-total")).not.toHaveText("0");
   const preview = card.getByTestId("blocked-preview-row").filter({ hasText: STUDENT_BLOCK.fullName });
   await expect(preview).toContainText(BLOCK_CURRICULUM);
-  await expect(preview).toContainText("Last score 0 / 2");
+  await expect(preview).toContainText("Last score 0% (0 / 2)");
   await expect(page.getByTestId("count-blocked")).not.toHaveText("0");
 
   // Blocked page.
@@ -110,6 +110,7 @@ test("a student who fails the last allowed attempt is blocked, appears on the Bl
   const row = page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName });
   await expect(row).toContainText(BLOCK_CURRICULUM);
   await expect(row).toContainText("2 of 2");
+  await expect(row).toContainText("0%");
   await expect(row).toContainText("0 / 2");
   await expect(row.getByRole("link", { name: "Reassign curriculums" })).toHaveAttribute("href", /\/staff\/students\/[0-9a-f-]{36}$/);
 

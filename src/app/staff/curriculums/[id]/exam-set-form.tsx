@@ -18,6 +18,7 @@ import {
   type ExamSetField,
   type TopicMix,
 } from "@/lib/exam-set-fields";
+import { DEFAULT_PASS_MARK_PERCENT } from "@/lib/percent";
 import { saveExamSet } from "../actions";
 
 export type ExamSetInitial = {
@@ -36,7 +37,7 @@ export const NEW_EXAM_SET: ExamSetInitial = {
   name: "",
   questionCount: 20,
   timeLimitMin: 30,
-  passMarkPercent: 60,
+  passMarkPercent: DEFAULT_PASS_MARK_PERCENT,
   maxAttempts: 2,
   holdResult: true,
   topicMix: {},
@@ -239,8 +240,8 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
       {!isNew ? (
         <Alert variant="warning" data-testid="exam-set-edit-warning">
           <AlertDescription>
-            Exams already in progress keep their questions and time limit, but the pass mark and result holding saved here
-            apply to them when they are submitted. Change these outside exam times when you can.
+            Exams already started keep their questions, time limit and pass mark. Result holding saved here applies to them
+            when they are submitted, so change it outside exam times when you can.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -278,7 +279,7 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
         <NumberField
           id={`${prefix}-pass`}
           label="Pass mark (%)"
-          hint="0 to 100 percent of the points."
+          hint={`The standard is ${DEFAULT_PASS_MARK_PERCENT}%. Students pass with this share of the points or more (0 to 100).`}
           value={values.passMarkPercent}
           error={errors.passMarkPercent}
           onChange={set("passMarkPercent")}
