@@ -141,7 +141,7 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
                 <TableRow>
                   <TableHead>Thema / Topic</TableHead>
                   <TableHead className="text-right">Prozent / Percent</TableHead>
-                  <TableHead className="text-right">Punkte / Points</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell print:table-cell">Punkte / Points</TableHead>
                   <TableHead className="hidden w-[32%] sm:table-cell print:table-cell">
                     <span className="sr-only">Anteil / Share</span>
                   </TableHead>
@@ -152,8 +152,14 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
                   return (
                     <TableRow key={t.topic} className="hover:bg-transparent">
                       <TableCell className="whitespace-normal">{t.topic}</TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">{formatPercent(t.points, t.max)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground tabular-nums print:text-black">
+                      <TableCell className="text-right tabular-nums">
+                        <span className="font-semibold">{formatPercent(t.points, t.max)}</span>
+                        {/* Phones: the points sit under the percentage instead of in their own column. */}
+                        <span className="block text-xs text-muted-foreground sm:hidden print:hidden">
+                          {t.points} / {t.max}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden text-right text-muted-foreground tabular-nums sm:table-cell print:table-cell print:text-black">
                         {t.points} / {t.max}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell print:table-cell">

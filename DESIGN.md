@@ -131,14 +131,30 @@ animation and transitions off (global rule in `globals.css`).
   `greeting()` from `src/lib/greeting.ts`: "Good morning / afternoon / evening, <first name>" in
   India time (Asia/Kolkata), first word of the full name, else the username. Each page has a one
   line orientation under its title; it never promises anything the code does not do.
+- **Percent first:** the headline result everywhere is the percentage, never raw points. It is
+  written by `formatPercent()` (`src/lib/percent.ts`): "92%" when whole, else one decimal ("66.7%"),
+  and it never rounds up onto a whole number (89.95% shows "89.9%"), so a fail never reads as the
+  pass mark. The percentage is the large Lexend figure; points follow as small muted secondary
+  text ("23 of 25 points", "2 / 3" in tables). Shared table cell: `ResultScore`
+  (`src/components/app/result-score.tsx`): percent, points, Pass / Fail badge. Bars take the exact
+  share from `percentValue()`. Pass or fail is decided exactly by `meetsPassMark()`
+  (points x 100 >= pass mark x max). The standard pass mark is 90% (`DEFAULT_PASS_MARK_PERCENT`).
 - **Score report** (`/results/[id]`, `data-testid="result-report"`): letterhead (wordmark and a
   2 px Königsblau rule), h1 "Ergebnis / Result", bilingual facts in two columns (three in print),
-  a summary panel with the score in Lexend, the Bestanden / Passed badge and a `ScoreBar`
-  (`src/components/app/score-bar.tsx`: ink fill on a ruled track, black tick at the pass mark),
-  then the topic table with a bar column. The pass mark is shown only when it agrees with the
-  stored outcome (`consistentPassMark`, `src/lib/report.ts`), because staff may change it after
-  scoring. Before release: no numbers at all. The staff evaluation view uses the same summary
-  panel plus per-topic totals from the scoring snapshot (`topicTotals`).
+  a summary panel with "Prozent / Percent" over the percentage in Lexend (`result-score`, 48 px,
+  56 px from 640 px), the points line under it (`result-points`, bilingual), the Bestanden /
+  Passed badge, a `ScoreBar` (`src/components/app/score-bar.tsx`: ink fill on a ruled track, black
+  tick at the pass mark) and "Bestehensgrenze / Pass mark 90%" (`result-pass-mark`), then the
+  topic table: Thema / Topic, Prozent / Percent (semibold), Punkte / Points (muted), bar. The
+  pass mark is the attempt's own snapshot (`attempts.pass_mark_percent`, taken at start), so it
+  always agrees with the stored outcome. Before release: no numbers at all (no percentage, no
+  points, no pass mark on that page). The staff evaluation view uses the same summary panel
+  (`review-score` percent, `review-points`) plus per-topic totals from the scoring snapshot
+  (`topicTotals`).
+- **Exam start card:** before the start it lists Questions, Time limit and Pass mark (target
+  icon, `pass-mark`); the rules list says "You pass with 90% of the points or more." Once an attempt
+  exists the pass mark fact is hidden (the attempt's snapshot applies). "Your results" rows show
+  the percentage large, "2 / 3 points" muted and the Passed / Not passed badge.
 - **No template chrome:** no eyebrow labels above headings, no "A · B · C" meta strings (use
   commas or separate facts), sentence case everywhere.
 - **Button links:** `buttonVariants()` returns merged classes (variant classes win over the base),
