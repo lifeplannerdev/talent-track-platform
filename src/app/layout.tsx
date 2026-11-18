@@ -33,11 +33,17 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${sourceSans.variable} ${lexend.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="flex min-h-full flex-col">{children}</body>
+    <html lang="en" className={`${sourceSans.variable} ${lexend.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col">
+        {/* Keyboard users can jump past the header; the target sits right after each header. */}
+        <a
+          href="#main-content"
+          className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2"
+        >
+          Skip to main content
+        </a>
+        {children}
+      </body>
     </html>
   );
 }

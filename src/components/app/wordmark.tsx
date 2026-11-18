@@ -6,7 +6,7 @@ import { cn } from "cn";
  */
 export function Wordmark({ className, compact = false }: { className?: string; compact?: boolean }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
+    <span translate="no" className={cn("inline-flex items-center gap-2.5", className)}>
       <span aria-hidden="true" className="flex h-7 w-6 shrink-0 flex-col justify-center gap-1 rounded-[5px] bg-primary px-1.5">
         <span className="h-[3px] rounded-full bg-primary-foreground" />
         <span className="h-[3px] w-2/3 rounded-full bg-primary-foreground/70" />

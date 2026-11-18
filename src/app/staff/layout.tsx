@@ -29,6 +29,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
           </form>
         </div>
       </header>
+      <span id="main-content" tabIndex={-1} className="outline-none" />
       {children}
     </>
   );

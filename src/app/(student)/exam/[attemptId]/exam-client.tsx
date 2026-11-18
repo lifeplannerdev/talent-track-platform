@@ -256,13 +256,14 @@ export function ExamClient({ attemptId, examSetName, deadlineAt, serverNow, ques
           </div>
         </div>
         {/* Progress: how much of the sheet is answered (the same number is in the text above). */}
-        <div aria-hidden="true" className="h-0.5 w-full bg-border">
+        <div aria-hidden="true" className="h-0.5 w-full overflow-hidden bg-border">
           <div
-            className="h-full bg-primary motion-safe:transition-[width] motion-safe:duration-300 motion-safe:ease-out"
-            style={{ width: `${(answeredCount / questions.length) * 100}%` }}
+            className="h-full origin-left bg-primary motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-out"
+            style={{ transform: `scaleX(${answeredCount / questions.length})` }}
           />
         </div>
       </header>
+      <span id="main-content" tabIndex={-1} className="outline-none" />
 
       {!online ? (
         <div className="mx-auto w-full max-w-3xl px-4 pt-4">
