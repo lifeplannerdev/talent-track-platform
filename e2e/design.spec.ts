@@ -68,6 +68,8 @@ test("student screens: login, consent, empty start, exam start, exam, submit dia
   page,
 }, info) => {
   const findings: Finding[] = [];
+  // Fake clock (time still flows) so the exam can jump to its 15-minute reminder.
+  await page.clock.install();
 
   await page.goto("/login");
   await review(page, info, "01-login", findings);
@@ -87,6 +89,10 @@ test("student screens: login, consent, empty start, exam start, exam, submit dia
   await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("timer")).toHaveText(/^\d\d:\d\d$/);
   await review(page, info, "05-exam-question", findings);
+  await page.clock.fastForward("15:05");
+  await expect(page.getByTestId("time-reminder")).toHaveText("15 minutes left.");
+  await review(page, info, "05-exam-reminder", findings);
+  await page.getByRole("button", { name: "Close reminder" }).click();
   await answerAll(page, ["Nein", "Ja", "Nein"]);
   await review(page, info, "05-exam-last-question", findings);
   await page.getByRole("button", { name: "Review and submit" }).click();
@@ -164,6 +170,9 @@ test("staff screens: dashboard, review, evaluation, blocked, grants, students, s
   const { data: c } = await db.from("curriculums").select("id").eq("name", "E2E Exam Curriculum Held").single();
   await page.goto(`/staff/curriculums/${c!.id}`);
   await review(page, info, "18-staff-curriculum", findings);
+  await page.getByTestId("exam-set-card").first().getByText("Edit settings").click();
+  await expect(page.getByTestId("exam-set-card").first().getByTestId("exam-set-preview")).toBeVisible();
+  await review(page, info, "18-staff-exam-set-settings", findings);
   const { data: set } = await db.from("exam_sets").select("id").eq("curriculum_id", c!.id).single();
   await page.goto(`/staff/questions?examSet=${set!.id}`);
   await review(page, info, "19-staff-questions", findings);

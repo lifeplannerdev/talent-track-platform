@@ -119,6 +119,14 @@ animation and transitions off (global rule in `globals.css`).
   layout jumps to `#main-content`, placed right after each header.
 - **Exam on phones:** Previous / Next (or Review and submit) sit in a sticky bottom bar in thumb
   reach (`sm:` back to inline), full width each, with the safe-area inset.
+- **Time reminder (exam):** a slim full-width band inside the sticky exam bar, under the progress
+  line: blue tint (`bg-secondary`) for interval reminders, `bg-destructive-muted` from 5 minutes
+  left, clock icon, "30 minutes left." in Lexend, a 44 px ghost close button. It pushes content
+  down instead of overlaying it, never takes focus and fades in (motion-safe only). It is the one
+  allowed exception to "no banners" on the exam surface because it is about the exam itself.
+- **Durations** are always written by `formatDuration()`: "2 h 30 min", "2 h", "45 min". Staff
+  enter them as an hours field and a minutes field under one "Time limit" legend, each with its
+  unit ("h", "min") after the field.
 - **Greetings:** the student start page (h1) and the staff dashboard (description) greet with
   `greeting()` from `src/lib/greeting.ts`: "Good morning / afternoon / evening, <first name>" in
   India time (Asia/Kolkata), first word of the full name, else the username. Each page has a one
@@ -146,7 +154,8 @@ animation and transitions off (global rule in `globals.css`).
 
 1. Use the tokens; never raw hex in components (add a token in `globals.css` first).
 2. Königsblau is for action, selection and focus only, not for decoration.
-3. Keep the student exam surface distraction-free: no extra navigation, banners or promos.
+3. Keep the student exam surface distraction-free: no extra navigation, banners or promos (the
+   time reminder is the only band allowed there).
 4. German exam text stays at `text-stem` / `text-option`; never shrink it to fit.
 5. Every interactive element keeps the visible focus outline (2 px Königsblau, 2 px offset).
 6. Check new screens at 375 px and desktop: no horizontal page scroll, AA contrast, axe clean

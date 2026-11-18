@@ -87,6 +87,7 @@ function NumberField({
         id={id}
         type="number"
         inputMode="numeric"
+        autoComplete="off"
         min={min}
         max={max}
         step={1}
@@ -123,13 +124,17 @@ function DurationField({
 }) {
   const hintId = `${prefix}-duration-hint`;
   const part = (id: string, label: string, unit: string, value: string, onChange: (v: string) => void, max: number) => (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <div>
+      {/* The unit after the field labels it visually; the full word is for screen readers. */}
+      <Label htmlFor={id} className="sr-only">
+        {label}
+      </Label>
       <div className="flex items-center gap-2">
         <Input
           id={id}
           type="number"
           inputMode="numeric"
+          autoComplete="off"
           min={0}
           max={max}
           step={1}
@@ -148,7 +153,7 @@ function DurationField({
   return (
     <fieldset className="flex min-w-0 flex-col gap-1.5">
       <legend className="mb-1.5 text-sm leading-none font-medium">Time limit</legend>
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
         {part(`${prefix}-hours`, "Hours", "h", hours, onHours, MAX_DURATION_MIN / 60)}
         {part(`${prefix}-minutes`, "Minutes", "min", minutes, onMinutes, 59)}
       </div>
@@ -329,12 +334,16 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
           {errors.topicMix ?? "One “topic: count” per line. The counts must add up to the questions per paper. Leave empty to draw from all topics."}
         </p>
       </div>
-      <div className="flex flex-col gap-1 rounded-md border-l-2 border-primary bg-muted/70 px-3.5 py-2.5" data-testid="exam-set-preview">
-        <p className="text-xs font-medium text-muted-foreground">Students will get</p>
-        <p className="text-sm">
-          {preview.ok ? examSetSummary(preview.value) : "Fill in the settings above to see what students will get."}
-        </p>
-      </div>
+      <p className="rounded-md bg-muted px-3.5 py-2.5 text-sm" data-testid="exam-set-preview">
+        {preview.ok ? (
+          <>
+            <span className="font-semibold">Students will get: </span>
+            {examSetSummary(preview.value)}
+          </>
+        ) : (
+          "Fill in the settings above to see what students will get."
+        )}
+      </p>
       <div aria-live="polite" className="flex flex-col gap-2">
         {message ? (
           <Alert variant="destructive">
