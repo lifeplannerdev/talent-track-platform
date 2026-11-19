@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { examSetSummary, examSetWarnings, formatTopicMix, parseTopicMixText, poolWarning, validateExamSetFields } from './exam-set-fields'
+import {
+  DEFAULT_MAX_ATTEMPTS,
+  examSetSummary,
+  examSetWarnings,
+  formatTopicMix,
+  parseTopicMixText,
+  poolWarning,
+  validateCurriculumFields,
+  validateExamSetFields,
+} from './exam-set-fields'
 
 const base = {
   name: 'Grundlagen',
   questionCount: '10',
   timeLimitMin: '30',
   passMarkPercent: '60',
-  maxAttempts: '2',
-  holdResult: true,
   topicMix: {},
   reminderIntervalMin: '15',
 }
@@ -21,12 +28,18 @@ describe('validateExamSetFields', () => {
         questionCount: 10,
         timeLimitMin: 30,
         passMarkPercent: 60,
-        maxAttempts: 2,
-        holdResult: true,
         topicMix: {},
         reminderIntervalMin: 15,
       },
     })
+  })
+
+  it('no longer takes hold or attempt settings (they moved: no hold, attempts per curriculum)', () => {
+    const r = validateExamSetFields({ ...base, holdResult: true, maxAttempts: '0' } as typeof base)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value).not.toHaveProperty('holdResult')
+    expect(r.value).not.toHaveProperty('maxAttempts')
   })
 
   it('allows exams from 1 minute to 12 hours', () => {
@@ -64,11 +77,10 @@ describe('validateExamSetFields', () => {
       questionCount: '0',
       timeLimitMin: '1.5',
       passMarkPercent: '101',
-      maxAttempts: '0',
     })
     expect(r.ok).toBe(false)
     if (r.ok) return
-    expect(Object.keys(r.errors).sort()).toEqual(['maxAttempts', 'name', 'passMarkPercent', 'questionCount', 'timeLimitMin'])
+    expect(Object.keys(r.errors).sort()).toEqual(['name', 'passMarkPercent', 'questionCount', 'timeLimitMin'])
   })
 
   it('rejects a negative numeric pass mark', () => {
@@ -106,21 +118,46 @@ describe('examSetSummary', () => {
     questionCount: 30,
     timeLimitMin: 150,
     passMarkPercent: 60,
-    maxAttempts: 2,
-    holdResult: true,
     reminderIntervalMin: 15,
   }
 
   it('says in one line what students will experience', () => {
     expect(examSetSummary(settings)).toBe(
-      '30 questions, 2 h 30 min, pass at 60%, 2 attempts, result held for review, reminder every 15 min',
+      '30 questions, 2 h 30 min, pass at 60%, result shown at once, reminder every 15 min',
     )
   })
 
   it('singular counts, immediate results and reminders off', () => {
     expect(
-      examSetSummary({ ...settings, questionCount: 1, timeLimitMin: 45, maxAttempts: 1, holdResult: false, reminderIntervalMin: 0 }),
-    ).toBe('1 question, 45 min, pass at 60%, 1 attempt, result shown at once, no time reminders')
+      examSetSummary({ ...settings, questionCount: 1, timeLimitMin: 45, reminderIntervalMin: 0 }),
+    ).toBe('1 question, 45 min, pass at 60%, result shown at once, no time reminders')
+  })
+})
+
+describe('validateCurriculumFields', () => {
+  it('accepts a name and attempts per student from 1 to 20', () => {
+    expect(validateCurriculumFields({ name: ' Pflege ', maxAttempts: '3' })).toEqual({ ok: true, value: { name: 'Pflege', maxAttempts: 3 } })
+    expect(validateCurriculumFields({ name: 'A', maxAttempts: 1 })).toMatchObject({ ok: true, value: { maxAttempts: 1 } })
+    expect(validateCurriculumFields({ name: 'A', maxAttempts: 20 })).toMatchObject({ ok: true, value: { maxAttempts: 20 } })
+  })
+
+  it('a missing attempts value means the default of 2', () => {
+    expect(DEFAULT_MAX_ATTEMPTS).toBe(2)
+    expect(validateCurriculumFields({ name: 'A' })).toEqual({ ok: true, value: { name: 'A', maxAttempts: 2 } })
+  })
+
+  it('rejects attempts outside 1..20 and a blank or long name, field by field', () => {
+    for (const bad of [0, 21, -1, '1.5', 'x', '']) {
+      expect(validateCurriculumFields({ name: 'A', maxAttempts: bad as never })).toEqual({
+        ok: false,
+        errors: { maxAttempts: 'Enter a whole number from 1 to 20' },
+      })
+    }
+    expect(validateCurriculumFields({ name: ' ', maxAttempts: 2 })).toEqual({ ok: false, errors: { name: 'Enter a name' } })
+    expect(validateCurriculumFields({ name: 'x'.repeat(121), maxAttempts: 2 })).toEqual({
+      ok: false,
+      errors: { name: 'Use at most 120 characters' },
+    })
   })
 })
 

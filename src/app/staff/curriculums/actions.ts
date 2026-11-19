@@ -68,8 +68,6 @@ export async function saveExamSet(input: ExamSetFields & { id?: string; curricul
     question_count: v.questionCount,
     time_limit_min: v.timeLimitMin,
     pass_mark_percent: v.passMarkPercent,
-    max_attempts: v.maxAttempts,
-    hold_result: v.holdResult,
     topic_mix: v.topicMix,
     reminder_interval_min: v.reminderIntervalMin,
   };

@@ -27,8 +27,6 @@ export type ExamSetInitial = {
   questionCount: number;
   timeLimitMin: number;
   passMarkPercent: number;
-  maxAttempts: number;
-  holdResult: boolean;
   topicMix: TopicMix;
   reminderIntervalMin: number;
 };
@@ -38,8 +36,6 @@ export const NEW_EXAM_SET: ExamSetInitial = {
   questionCount: 20,
   timeLimitMin: 30,
   passMarkPercent: DEFAULT_PASS_MARK_PERCENT,
-  maxAttempts: 2,
-  holdResult: true,
   topicMix: {},
   reminderIntervalMin: DEFAULT_REMINDER_INTERVAL_MIN,
 };
@@ -50,9 +46,7 @@ type Values = {
   hours: string;
   minutes: string;
   passMarkPercent: string;
-  maxAttempts: string;
   reminderIntervalMin: string;
-  holdResult: boolean;
   topicMixText: string;
 };
 
@@ -175,9 +169,7 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
     hours: String(startDuration.hours),
     minutes: String(startDuration.minutes),
     passMarkPercent: String(initial.passMarkPercent),
-    maxAttempts: String(initial.maxAttempts),
     reminderIntervalMin: String(initial.reminderIntervalMin),
-    holdResult: initial.holdResult,
     topicMixText: formatTopicMix(initial.topicMix),
   });
   const [errors, setErrors] = useState<Partial<Record<ExamSetField, string>>>({});
@@ -193,8 +185,6 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
     questionCount: values.questionCount,
     timeLimitMin: timeLimitMin ?? "",
     passMarkPercent: values.passMarkPercent,
-    maxAttempts: values.maxAttempts,
-    holdResult: values.holdResult,
     topicMix: {},
     reminderIntervalMin: values.reminderIntervalMin,
   };
@@ -217,8 +207,6 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
           questionCount: values.questionCount,
           timeLimitMin,
           passMarkPercent: values.passMarkPercent,
-          maxAttempts: values.maxAttempts,
-          holdResult: values.holdResult,
           topicMix: mix.mix,
           reminderIntervalMin: values.reminderIntervalMin,
         });
@@ -240,8 +228,8 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
       {!isNew ? (
         <Alert variant="warning" data-testid="exam-set-edit-warning">
           <AlertDescription>
-            Exams already started keep their questions, time limit and pass mark. Result holding saved here applies to them
-            when they are submitted, so change it outside exam times when you can.
+            Exams already started keep their questions, time limit and pass mark. Changes here apply to attempts started
+            afterwards.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -287,16 +275,6 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
           max={100}
         />
         <NumberField
-          id={`${prefix}-attempts`}
-          label="Maximum attempts"
-          hint="After the last failed attempt the student is blocked until you give another."
-          value={values.maxAttempts}
-          error={errors.maxAttempts}
-          onChange={set("maxAttempts")}
-          min={1}
-          max={50}
-        />
-        <NumberField
           id={`${prefix}-reminder`}
           label="Time reminder every (minutes)"
           hint="Students see how much time is left at each interval and at 5 and 1 minute. Enter 0 for no reminders."
@@ -306,19 +284,6 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
           min={0}
           max={MAX_REMINDER_INTERVAL_MIN}
         />
-      </div>
-      <div className="flex items-start gap-2">
-        <input
-          id={`${prefix}-hold`}
-          type="checkbox"
-          checked={values.holdResult}
-          onChange={(e) => set("holdResult")(e.target.checked)}
-          className="mt-0.5 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        />
-        <Label htmlFor={`${prefix}-hold`} className="flex-col items-start gap-1 leading-snug">
-          Hold results for review
-          <span className="text-xs font-normal text-muted-foreground">Students see their result only after you release it.</span>
-        </Label>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${prefix}-mix`}>Topic mix (optional)</Label>

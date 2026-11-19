@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-import { AttemptError, startAttempt } from "@/lib/attempts";
+import { StartError, startAttempt } from "@/lib/attempts";
 import type { QuestionFields } from "@/lib/question-fields";
 import { QUESTION_CSV_MAX_BYTES } from "@/lib/csv/limits";
 import { saveCurriculum, saveExamSet } from "./curriculums/actions";
@@ -69,8 +69,6 @@ const examSetInput = (over: Record<string, unknown> = {}) => ({
   questionCount: 2,
   timeLimitMin: 20,
   passMarkPercent: 60,
-  maxAttempts: 2,
-  holdResult: false,
   topicMix: {},
   ...over,
 });
@@ -154,14 +152,14 @@ describe("saveExamSet", () => {
   });
 
   it("rejects invalid settings field by field", async () => {
-    const r = await saveExamSet(examSetInput({ passMarkPercent: 120, maxAttempts: 0 }));
-    expect(r).toMatchObject({ ok: false, errors: { passMarkPercent: expect.any(String), maxAttempts: expect.any(String) } });
+    const r = await saveExamSet(examSetInput({ passMarkPercent: 120, questionCount: 0 }));
+    expect(r).toMatchObject({ ok: false, errors: { passMarkPercent: expect.any(String), questionCount: expect.any(String) } });
     expect(await saveExamSet(examSetInput({ curriculumId: randomUUID() }))).toMatchObject({ ok: false, message: "Curriculum not found" });
   });
 
   it("saves every setting, warns about unknown topics and a small pool, and updates on edit", async () => {
     const r = await saveExamSet(
-      examSetInput({ name: `T8c full ${run}`, questionCount: 3, timeLimitMin: 480, passMarkPercent: 75, maxAttempts: 3, holdResult: true, topicMix: { Pflege: 2, Recht: 1 }, reminderIntervalMin: 30 }),
+      examSetInput({ name: `T8c full ${run}`, questionCount: 3, timeLimitMin: 480, passMarkPercent: 75, topicMix: { Pflege: 2, Recht: 1 }, reminderIntervalMin: 30 }),
     );
     expect(r).toMatchObject({ ok: true });
     if (!r.ok) return;
@@ -177,8 +175,6 @@ describe("saveExamSet", () => {
       time_limit_min: 480,
       reminder_interval_min: 30,
       pass_mark_percent: 75,
-      max_attempts: 3,
-      hold_result: true,
       topic_mix: { Pflege: 2, Recht: 1 },
     });
 
@@ -228,16 +224,18 @@ describe("saveQuestion and setQuestionStatus", () => {
   });
 
   it("approve/draft changes pool eligibility used by drawPaper", async () => {
-    const setId = await newSet({ questionCount: 1 });
+    // Its own curriculum, so this exam set is the only one startAttempt can choose.
+    const own = await must(db.from("curriculums").insert({ name: `T8c pool ${run}` }).select("id").single());
+    const setId = await newSet({ questionCount: 1, curriculumId: own.id });
     const r = await saveQuestion({ examSetId: setId, fields: questionFields("Pool"), status: "draft" });
     if (!r.ok) throw new Error(r.message);
     const student = await makeUser("student");
-    await db.from("assignments").insert({ student_id: student.id, curriculum_id: curriculumId, position: 1 });
-    await db.from("attempt_grants").insert({ student_id: student.id, exam_set_id: setId });
+    await db.from("assignments").insert({ student_id: student.id, curriculum_id: own.id, position: 1 });
 
-    await expect(startAttempt(student.id, setId)).rejects.toThrow(AttemptError);
+    await expect(startAttempt(student.id, own.id)).rejects.toMatchObject({ code: "unavailable" });
+    await expect(startAttempt(student.id, own.id)).rejects.toThrow(StartError);
     expect(await setQuestionStatus(r.id, "approved")).toEqual({ ok: true });
-    const { attemptId } = await startAttempt(student.id, setId);
+    const { attemptId } = await startAttempt(student.id, own.id);
     const paper = await must(db.from("attempt_questions").select("question_id").eq("attempt_id", attemptId));
     expect(paper).toEqual([{ question_id: r.id }]);
 

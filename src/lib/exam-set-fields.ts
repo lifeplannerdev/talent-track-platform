@@ -9,8 +9,6 @@ export type ExamSetFields = {
   questionCount: number | string
   timeLimitMin: number | string
   passMarkPercent: number | string
-  maxAttempts: number | string
-  holdResult: boolean
   topicMix: unknown
   /** Minutes between time reminders on the exam screen; 0 = off. Missing means the default. */
   reminderIntervalMin?: number | string
@@ -21,8 +19,6 @@ export type ExamSetValue = {
   questionCount: number
   timeLimitMin: number
   passMarkPercent: number
-  maxAttempts: number
-  holdResult: boolean
   topicMix: TopicMix
   reminderIntervalMin: number
 }
@@ -80,9 +76,6 @@ export function validateExamSetFields(
   }
   const passMarkPercent = toInt(fields.passMarkPercent)
   if (passMarkPercent === null || passMarkPercent < 0 || passMarkPercent > 100) errors.passMarkPercent = 'Enter a whole number from 0 to 100'
-  const maxAttempts = toInt(fields.maxAttempts)
-  if (maxAttempts === null || maxAttempts < 1 || maxAttempts > 50) errors.maxAttempts = 'Enter a whole number from 1 to 50'
-  if (typeof fields.holdResult !== 'boolean') errors.holdResult = 'Choose whether results are held'
   const reminderIntervalMin = fields.reminderIntervalMin === undefined ? DEFAULT_REMINDER_INTERVAL_MIN : toInt(fields.reminderIntervalMin)
   if (reminderIntervalMin === null || reminderIntervalMin < 0 || reminderIntervalMin > MAX_REMINDER_INTERVAL_MIN) {
     errors.reminderIntervalMin = 'Enter 0 (no reminders) or a whole number of minutes from 1 to 120'
@@ -99,8 +92,6 @@ export function validateExamSetFields(
       questionCount: questionCount!,
       timeLimitMin: timeLimitMin!,
       passMarkPercent: passMarkPercent!,
-      maxAttempts: maxAttempts!,
-      holdResult: fields.holdResult,
       topicMix: mix.mix,
       reminderIntervalMin: reminderIntervalMin!,
     },
@@ -109,7 +100,7 @@ export function validateExamSetFields(
 
 export type ExamSetSummaryInput = Pick<
   ExamSetValue,
-  'questionCount' | 'timeLimitMin' | 'passMarkPercent' | 'maxAttempts' | 'holdResult' | 'reminderIntervalMin'
+  'questionCount' | 'timeLimitMin' | 'passMarkPercent' | 'reminderIntervalMin'
 >
 
 /** One line of what students will experience, for the staff form and the curriculum page. */
@@ -119,10 +110,33 @@ export function examSetSummary(s: ExamSetSummaryInput): string {
     plural(s.questionCount, 'question'),
     formatDuration(s.timeLimitMin),
     `pass at ${s.passMarkPercent}%`,
-    plural(s.maxAttempts, 'attempt'),
-    s.holdResult ? 'result held for review' : 'result shown at once',
+    // Marks are always shown at once (spec change 1); attempts are set per curriculum.
+    'result shown at once',
     s.reminderIntervalMin > 0 ? `reminder every ${formatDuration(s.reminderIntervalMin)}` : 'no time reminders',
   ].join(', ')
+}
+
+/** Default and bounds of curriculums.max_attempts (migration 0020): attempts per student. */
+export const DEFAULT_MAX_ATTEMPTS = 2
+export const MAX_CURRICULUM_ATTEMPTS = 20
+
+export type CurriculumFields = { name: string; maxAttempts?: number | string }
+export type CurriculumValue = { name: string; maxAttempts: number }
+
+/** Curriculum settings: name and attempts per student (1..20, missing means the default of 2). */
+export function validateCurriculumFields(
+  fields: CurriculumFields,
+): { ok: true; value: CurriculumValue } | { ok: false; errors: Partial<Record<keyof CurriculumFields, string>> } {
+  const errors: Partial<Record<keyof CurriculumFields, string>> = {}
+  const name = typeof fields?.name === 'string' ? fields.name.trim() : ''
+  if (!name) errors.name = 'Enter a name'
+  else if (name.length > 120) errors.name = 'Use at most 120 characters'
+  const maxAttempts = fields?.maxAttempts === undefined ? DEFAULT_MAX_ATTEMPTS : toInt(fields.maxAttempts)
+  if (maxAttempts === null || maxAttempts < 1 || maxAttempts > MAX_CURRICULUM_ATTEMPTS) {
+    errors.maxAttempts = `Enter a whole number from 1 to ${MAX_CURRICULUM_ATTEMPTS}`
+  }
+  if (Object.keys(errors).length > 0) return { ok: false, errors }
+  return { ok: true, value: { name, maxAttempts: maxAttempts! } }
 }
 
 /** Reads the form's topic mix text: one "topic: count" (or "topic = count") per line. */
