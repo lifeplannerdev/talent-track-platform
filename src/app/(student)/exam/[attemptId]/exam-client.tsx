@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { saveAnswerAction, submitExam } from "../actions";
+import { submitDialogText } from "./submit-copy";
 import { TimeReminder } from "./time-reminder";
 
 type SaveState = "saving" | "saved" | "pending" | "error";
@@ -182,7 +183,7 @@ export function ExamClient({
             }
           } else if (result.code === "deadline_passed" || result.code === "closed") {
             pending.current.clear();
-            setClosedMessage("Time is up. Your saved answers have been submitted.");
+            setClosedMessage("Time is up. Your saved answers have been submitted; opening your result.");
             submitted.current = true;
             router.replace(`/results/${attemptId}`);
           } else if (isLatest()) {
@@ -471,10 +472,7 @@ export function ExamClient({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Submit your exam?</DialogTitle>
-            <DialogDescription>
-              You answered {answeredCount} of {questions.length} questions. You cannot change your answers after submitting.
-              {unsaved ? " Some answers are still being saved; they will be sent first." : ""}
-            </DialogDescription>
+            <DialogDescription>{submitDialogText(answeredCount, questions.length, unsaved)}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>Keep working</DialogClose>

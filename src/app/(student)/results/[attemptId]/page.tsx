@@ -6,7 +6,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
 import { formatPercent, percentValue } from "@/lib/percent";
 import { getStudentResult, type StudentResult } from "@/lib/results";
-import { ChevronLeftIcon, CircleCheckIcon, CircleXIcon, HourglassIcon } from "lucide-react";
+import { ChevronLeftIcon, CircleCheckIcon, CircleXIcon } from "lucide-react";
 import { StudentHeader } from "@/components/app/student-header";
 import { ScoreBar } from "@/components/app/score-bar";
 import { factLabel, studentMain } from "@/components/app/styles";
@@ -16,13 +16,15 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CalculatingResult } from "./calculating";
 import { PrintButton } from "./print-button";
 
 export const metadata: Metadata = { title: "Result | TalentTrack" };
 
-// English interface; the released report itself is bilingual (German / English) and prints
-// as a clean report. Before release nothing about the score reaches this page: the data comes
-// from the student_attempts view, which masks the numbers, and getStudentResult returns none.
+// English interface; the report itself is bilingual (German / English) and prints as a clean
+// report. It shows as soon as the attempt is scored (spec change 1: scoring releases at once).
+// Until the score exists nothing about it reaches this page: the student_attempts view masks the
+// numbers and getStudentResult returns none (CalculatingResult).
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -39,38 +41,6 @@ function BackLink() {
       <ChevronLeftIcon data-icon="inline-start" />
       Back to exams
     </Link>
-  );
-}
-
-function AwaitingReview({ result }: { result: Extract<StudentResult, { status: "submitted" }> }) {
-  return (
-    <section aria-labelledby="awaiting-heading" className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
-        <h1 id="awaiting-heading" className="text-[1.625rem] leading-tight font-semibold sm:text-[1.75rem]">
-          Submitted
-        </h1>
-        <p className="text-base text-muted-foreground">
-          Thank you, your answers for {result.curriculumName || "this exam"} are in.
-        </p>
-      </div>
-      <p
-        data-testid="result-status"
-        className="flex items-start gap-3 rounded-lg bg-secondary px-4 py-3 text-base text-secondary-foreground"
-      >
-        <HourglassIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-        <span>Submitted, awaiting review. Your trainer will release your result.</span>
-      </p>
-      <dl className="grid grid-cols-1 gap-3 rounded-xl border px-4 py-3 sm:grid-cols-2">
-        <Fact label="Exam">{result.examSetName}</Fact>
-        <Fact label="Submitted">{formatDateTime(result.submittedAt)}</Fact>
-      </dl>
-      <p className="text-sm text-muted-foreground">
-        Your percentage and result appear here and under Your results as soon as your trainer releases it.
-      </p>
-      <div>
-        <BackLink />
-      </div>
-    </section>
   );
 }
 
@@ -95,7 +65,6 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
           <Fact label="Lehrplan / Curriculum">{result.curriculumName}</Fact>
           <Fact label="Prüfung / Exam">{result.examSetName}</Fact>
           <Fact label="Abgegeben / Submitted">{formatDateTime(result.submittedAt)}</Fact>
-          <Fact label="Freigegeben / Released">{formatDateTime(result.releasedAt)}</Fact>
         </dl>
 
         <section
@@ -198,7 +167,7 @@ async function Result({ params }: { params: Promise<{ attemptId: string }> }) {
   const result = await getStudentResult(profile.id, attemptId);
   if (!result) notFound();
   if (result.status === "in_progress") redirect(`/exam/${result.id}`);
-  if (result.status === "submitted") return <AwaitingReview result={result} />;
+  if (result.status === "submitted") return <CalculatingResult result={result} />;
   return <Report result={result} studentName={profile.full_name ?? profile.username} />;
 }
 
