@@ -12,7 +12,16 @@ const asg = (s: string, c: string, status: "open" | "passed" | "blocked", max = 
   student: person(s),
   curriculums: { name: `Curriculum ${c}`, max_attempts: max },
 });
-const set = (id: string, c: string, created: string) => ({ id, name: `Set ${id}`, curriculum_id: c, created_at: created });
+const set = (id: string, c: string, created: string, count = 1) => ({
+  id,
+  name: `Set ${id}`,
+  curriculum_id: c,
+  created_at: created,
+  question_count: count,
+  topic_mix: null,
+});
+// One approved question per exam set unless a test says otherwise.
+const approved = (...setIds: string[]) => setIds.map((exam_set_id) => ({ exam_set_id, topic: "t" }));
 const att = (
   id: string,
   s: string,
@@ -53,6 +62,7 @@ const input: OverviewInput = {
     att("a9", "6", "e1b", "released", 0, 2, "2026-01-06T10:00:00Z"),
     att("a10", "7", "e2", "released", 0, 2, "2026-01-07T10:00:00Z"),
   ],
+  questions: approved("e1", "e1b", "e2", "e3"),
 };
 
 describe("summarizeDashboard", () => {
@@ -124,6 +134,21 @@ describe("blockedFrom", () => {
 });
 
 describe("extraAttemptCandidatesFrom", () => {
+  it("unused exam sets that cannot fill a paper do not count (the student sees 'unavailable'), even with repeats allowed", () => {
+    // s5 has e1 and e1b unused, but e1b needs 3 questions and has 1; e1 has none at all.
+    const thin: OverviewInput = {
+      assignments: [asg("5", "c1", "open"), asg("9", "c1", "open", 2, 0, true)],
+      examSets: [set("e1", "c1", "2026-01-01"), set("e1b", "c1", "2026-01-02", 3)],
+      attempts: [],
+      questions: approved("e1b"),
+    };
+    expect(extraAttemptCandidatesFrom(thin).map((r) => [r.studentId, r.reason, r.examSetsLeft])).toEqual([
+      ["5", "no_exam_sets_left", 0],
+      ["9", "no_exam_sets_left", 0],
+    ]);
+    expect(summarizeDashboard({ ...thin, studentTotal: 2 }).examSetsShort).toBe(2);
+  });
+
   it("lists blocked students and open ones with attempts left but no unused exam set (repeats not allowed)", () => {
     const rows = extraAttemptCandidatesFrom(input);
     expect(rows.map((r) => [r.studentId, r.curriculumId, r.reason])).toEqual([

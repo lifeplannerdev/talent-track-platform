@@ -5,6 +5,8 @@
 // assignments.extra_attempts); "attempts used" matches record_score (migration 0020): the
 // student's attempts over all exam sets of the curriculum with status 'submitted' or 'released'.
 
+import { canFillPaper } from "./exam-set-choice";
+
 type Person = { full_name: string | null; username: string; batch: string | null } | null;
 const nameOf = (p: Person) => p?.full_name || p?.username || "Unknown";
 
@@ -17,7 +19,16 @@ export type AssignmentRow = {
   student: Person;
   curriculums: { name: string; max_attempts: number } | null;
 };
-export type ExamSetRow = { id: string; name: string; curriculum_id: string; created_at: string };
+export type ExamSetRow = {
+  id: string;
+  name: string;
+  curriculum_id: string;
+  created_at: string;
+  question_count: number;
+  topic_mix: Record<string, number> | null;
+};
+/** Approved questions only (their exam set and topic), for the canFillPaper rule. */
+export type QuestionRow = { exam_set_id: string; topic: string };
 export type AttemptRow = {
   id: string;
   student_id: string;
@@ -32,6 +43,7 @@ export type OverviewInput = {
   assignments: AssignmentRow[];
   examSets: ExamSetRow[];
   attempts: AttemptRow[];
+  questions: QuestionRow[];
 };
 
 export type BlockedStudent = {
@@ -43,7 +55,7 @@ export type BlockedStudent = {
   attemptsUsed: number;
   /** curriculums.max_attempts + extra_attempts. */
   allowance: number;
-  /** Exam sets of the curriculum the student has not had yet. */
+  /** Exam sets of the curriculum the student has not had yet that can fill a paper. */
   examSetsLeft: number;
   /** The exam set of the student's latest scored attempt in the curriculum ("" if none). */
   lastExamSetName: string;
@@ -80,14 +92,21 @@ export type Dashboard = {
 };
 
 /** Per assignment: allowance, attempts used, unused exam sets, busy, effective status, last score. */
-function facts({ examSets, attempts }: OverviewInput, a: AssignmentRow) {
+function facts({ examSets, attempts, questions }: OverviewInput, a: AssignmentRow) {
   const sets = examSets.filter((s) => s.curriculum_id === a.curriculum_id);
   const setIds = new Set(sets.map((s) => s.id));
   const mine = attempts.filter((t) => t.student_id === a.student_id && setIds.has(t.exam_set_id));
   const used = mine.filter((t) => t.status === "submitted" || t.status === "released").length;
   const allowance = (a.curriculums?.max_attempts ?? 0) + a.extra_attempts;
   const usedSets = new Set(mine.map((t) => t.exam_set_id));
-  const examSetsLeft = sets.filter((s) => !usedSets.has(s.id)).length;
+  // Same rule as startAttempt and the student's card: only sets whose approved questions can fill a paper.
+  const usable = sets.filter((s) =>
+    canFillPaper(
+      { questionCount: s.question_count, topicMix: s.topic_mix },
+      questions.filter((q) => q.exam_set_id === s.id).map((q) => q.topic),
+    ),
+  );
+  const examSetsLeft = usable.filter((s) => !usedSets.has(s.id)).length;
   // In progress, or submitted and still being scored: the outcome is not known yet.
   const busy = mine.some((t) => t.status === "in_progress" || (t.status === "submitted" && t.points === null));
   const status: AssignmentRow["status"] =
@@ -95,7 +114,7 @@ function facts({ examSets, attempts }: OverviewInput, a: AssignmentRow) {
   const last = mine
     .filter((t) => t.points !== null)
     .sort((x, y) => (y.submitted_at ?? "").localeCompare(x.submitted_at ?? ""))[0];
-  return { used, allowance, examSetsLeft, busy, status, last, sets };
+  return { used, allowance, examSetsLeft, usableSets: usable.length, busy, status, last, sets };
 }
 
 /** Blocked assignments (status 'blocked', or open with no attempts left), latest failure first, then by name. */
@@ -127,8 +146,8 @@ export function blockedFrom(input: OverviewInput): BlockedStudent[] {
 
 /**
  * Students who need staff for their next attempt, one row per curriculum: blocked (see
- * blockedFrom), or open with attempts left but no unused exam set and repeats not allowed (they
- * see "contact your trainer"). Ordered by student name, then curriculum name.
+ * blockedFrom), or open with attempts left but no unused exam set that can fill a paper, and
+ * repeats not allowed or no set usable at all (they see "contact your trainer"). Ordered by student name, then curriculum name.
  */
 export function extraAttemptCandidatesFrom(input: OverviewInput): ExtraAttemptRow[] {
   const rows: ExtraAttemptRow[] = [];
@@ -136,7 +155,13 @@ export function extraAttemptCandidatesFrom(input: OverviewInput): ExtraAttemptRo
     const f = facts(input, a);
     let reason: ExtraAttemptRow["reason"] | null = null;
     if (f.status === "blocked") reason = "blocked";
-    else if (f.status === "open" && !f.busy && f.used < f.allowance && f.examSetsLeft === 0 && !a.allow_repeats) {
+    else if (
+      f.status === "open" &&
+      !f.busy &&
+      f.used < f.allowance &&
+      f.examSetsLeft === 0 &&
+      (!a.allow_repeats || f.usableSets === 0)
+    ) {
       reason = "no_exam_sets_left";
     }
     if (!reason) continue;

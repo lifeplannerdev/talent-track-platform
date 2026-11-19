@@ -11,6 +11,7 @@ import {
   type Dashboard,
   type ExamSetRow,
   type ExtraAttemptRow,
+  type QuestionRow,
 } from "./staff-overview-core";
 
 export type { BlockedStudent, Dashboard, ExtraAttemptRow } from "./staff-overview-core";
@@ -21,7 +22,7 @@ export type { BlockedStudent, Dashboard, ExtraAttemptRow } from "./staff-overvie
 
 async function load() {
   const supabase = await createClient();
-  const [assignments, examSets, attempts] = await Promise.all([
+  const [assignments, examSets, attempts, questions] = await Promise.all([
     fetchAll(
       (from, to) =>
         supabase
@@ -39,7 +40,7 @@ async function load() {
       (from, to) =>
         supabase
           .from("exam_sets")
-          .select("id, name, curriculum_id, created_at")
+          .select("id, name, curriculum_id, created_at, question_count, topic_mix")
           .order("created_at")
           .order("id")
           .range(from, to)
@@ -56,8 +57,19 @@ async function load() {
           .overrideTypes<AttemptRow[], { merge: false }>(),
       "Could not read attempts",
     ),
+    fetchAll(
+      (from, to) =>
+        supabase
+          .from("questions")
+          .select("exam_set_id, topic")
+          .eq("status", "approved")
+          .order("id")
+          .range(from, to)
+          .overrideTypes<QuestionRow[], { merge: false }>(),
+      "Could not read questions",
+    ),
   ]);
-  return { supabase, input: { assignments, examSets, attempts } };
+  return { supabase, input: { assignments, examSets, attempts, questions } };
 }
 
 /** Every blocked student (status 'blocked', or open with no attempts left), most recently failed first. */
