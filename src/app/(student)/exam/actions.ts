@@ -7,6 +7,7 @@ import {
   getAttemptStatus,
   isUuid,
   saveAnswer,
+  StartError,
   startAttempt,
   submitAttempt,
   type AttemptErrorCode,
@@ -16,18 +17,26 @@ import { getExamStartState } from "@/lib/exam-start";
 // Every action authenticates itself (requireStudentWithConsent calls getUser and refuses a
 // student without consent) and uses the session's user id. Ids from the client are only used together with that id.
 
-/** Starts (or resumes) the student's next exam. The exam set is chosen on the server. */
-export async function startExam(): Promise<void> {
+/**
+ * Starts (or resumes) the student's exam in one assigned curriculum. The exam set is chosen on
+ * the server (startAttempt). On a refusal the start page shows why (?error=<code>).
+ */
+export async function startExam(curriculumId: string): Promise<void> {
   const profile = await requireStudentWithConsent();
-  const state = await getExamStartState(profile.id);
-  if (state.kind === "in_progress") redirect(`/exam/${state.attemptId}`);
-  if (state.kind !== "ready") redirect("/exam/start");
+  if (!isUuid(curriculumId)) redirect("/exam/start?error=not_open");
 
   let attemptId: string;
   try {
-    ({ attemptId } = await startAttempt(profile.id, state.examSet.id));
+    ({ attemptId } = await startAttempt(profile.id, curriculumId));
   } catch (e) {
-    if (e instanceof AttemptError) redirect(`/exam/start?error=${e.code}`);
+    if (e instanceof StartError) {
+      // A second click or tab lost the race: go to the attempt that won.
+      if (e.code === "in_progress") {
+        const card = (await getExamStartState(profile.id)).find((c) => c.curriculumId === curriculumId);
+        if (card?.kind === "in_progress" && card.attemptId) redirect(`/exam/${card.attemptId}`);
+      }
+      redirect(`/exam/start?error=${e.code}`);
+    }
     throw e;
   }
   redirect(`/exam/${attemptId}`);
@@ -53,7 +62,10 @@ export async function saveAnswerAction(
   }
 }
 
-/** Submits the student's own attempt (also used by the client when the timer runs out). */
+/**
+ * Submits the student's own attempt (also used by the client when the timer runs out); it is
+ * scored and released at once, so the student goes straight to the result.
+ */
 export async function submitExam(attemptId: string): Promise<void> {
   const profile = await requireStudentWithConsent();
   const status = await getAttemptStatus(profile.id, attemptId);

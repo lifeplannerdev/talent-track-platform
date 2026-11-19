@@ -2,10 +2,9 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CircleCheckIcon, ClockIcon, HourglassIcon, InboxIcon, ListChecksIcon, LockIcon, TargetIcon } from "lucide-react";
+import { CircleCheckIcon, HourglassIcon, InboxIcon, LockIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
-import { getExamStartState, type ExamSetInfo, type ExamStartState } from "@/lib/exam-start";
-import { formatDuration } from "@/lib/duration";
+import { getExamStartState, type CurriculumCard } from "@/lib/exam-start";
 import { formatDateTime } from "@/lib/format";
 import { greeting } from "@/lib/greeting";
 import { formatPercent } from "@/lib/percent";
@@ -17,57 +16,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { startExam } from "../actions";
 
 export const metadata: Metadata = { title: "Exam | TalentTrack" };
 
 const START_ERRORS: Record<string, string> = {
-  no_grant: "There is no attempt available for you right now. Please ask your trainer.",
-  insufficient_pool: "This exam cannot be started yet. Please tell your trainer.",
+  unavailable: "This exam cannot be started right now. Please contact your trainer.",
+  no_attempts_left: "You have used all your attempts for this exam. Please contact your trainer.",
+  blocked: "You have used all your attempts for this exam. Please contact your trainer.",
+  passed: "You have already passed this exam.",
   not_open: "This exam is not open for you. Please ask your trainer.",
-  in_progress: "You already have an exam in progress. Please finish it first.",
-  result_pending: "Your last result is still awaiting review. You can continue after your trainer releases it.",
+  in_progress: "You already have this exam in progress. Please finish it first.",
+  calculating: "Your last result is still being calculated. Please try again in a moment.",
+  exam_set_used: "This exam could not be started. Please try again.",
 };
-
-function ExamFacts({ examSet, showPassMark }: { examSet: ExamSetInfo; showPassMark: boolean }) {
-  return (
-    <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-      <div className="flex items-center gap-2">
-        <dt className="flex items-center gap-2 text-muted-foreground">
-          <ListChecksIcon aria-hidden="true" className="size-4 text-primary" />
-          Questions
-        </dt>
-        <dd className="font-heading text-base font-semibold tabular-nums" data-testid="question-count">
-          {examSet.questionCount}
-        </dd>
-      </div>
-      <div className="flex items-center gap-2">
-        <dt className="flex items-center gap-2 text-muted-foreground">
-          <ClockIcon aria-hidden="true" className="size-4 text-primary" />
-          Time limit
-        </dt>
-        <dd className="font-heading text-base font-semibold tabular-nums" data-testid="time-limit">
-          {formatDuration(examSet.timeLimitMin)}
-        </dd>
-      </div>
-      {/* Only before the start: once an attempt exists its own pass mark snapshot applies, and
-          pages before release show no percentages at all. */}
-      {showPassMark ? (
-        <div className="flex items-center gap-2">
-          <dt className="flex items-center gap-2 text-muted-foreground">
-            <TargetIcon aria-hidden="true" className="size-4 text-primary" />
-            Pass mark
-          </dt>
-          <dd className="font-heading text-base font-semibold tabular-nums" data-testid="pass-mark">
-            {examSet.passMarkPercent}%
-          </dd>
-        </div>
-      ) : null}
-    </dl>
-  );
-}
 
 function StatusNote({ testId, children }: { testId: string; children: React.ReactNode }) {
   return (
@@ -115,7 +78,7 @@ function ResultsList({ results }: { results: StudentResultListItem[] }) {
                   <Badge variant={r.passed ? "success" : "destructive"}>{r.passed ? "Passed" : "Not passed"}</Badge>
                 </>
               ) : (
-                <Badge variant="warning">Awaiting review</Badge>
+                <Badge variant="warning">Being calculated</Badge>
               )}
               <Link href={`/results/${r.id}`} className={linkClass}>
                 {r.status === "released" ? "View result" : "View status"}
@@ -132,34 +95,19 @@ function ResultsList({ results }: { results: StudentResultListItem[] }) {
   );
 }
 
-/** One short orientation line under the greeting; empty states explain themselves. */
-const LEAD: Partial<Record<ExamStartState["kind"], string>> = {
-  ready: "Your next exam is ready. Start whenever you feel settled.",
-  in_progress: "You have an exam in progress. Pick up where you left off.",
-  awaiting_review: "Well done for finishing. Your exam is now with your trainer.",
-  waiting: "Your next exam is lined up. Your trainer will open an attempt for you.",
+const KIND_LABEL: Record<CurriculumCard["kind"], string> = {
+  ready: "Ready",
+  in_progress: "In progress",
+  calculating: "Being calculated",
+  passed: "Passed",
+  blocked: "Contact your trainer",
+  unavailable: "Contact your trainer",
 };
 
 async function StartContent({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const profile = await requireRole("student");
   if (!profile.consent_at) redirect("/consent");
-  const [state, results] = await Promise.all([getExamStartState(profile.id), listStudentResults(profile.id)]);
-  const lead = LEAD[state.kind];
-  return (
-    <>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-[1.625rem] leading-tight font-semibold sm:text-[1.875rem]" data-testid="greeting">
-          {greeting({ fullName: profile.full_name, username: profile.username }, new Date())}
-        </h1>
-        {lead ? <p className="text-base text-muted-foreground">{lead}</p> : null}
-      </div>
-      <NextExam state={state} searchParams={searchParams} />
-      <ResultsList results={results} />
-    </>
-  );
-}
-
-async function NextExam({ state, searchParams }: { state: ExamStartState; searchParams: Promise<{ error?: string }> }) {
+  const [cards, results] = await Promise.all([getExamStartState(profile.id), listStudentResults(profile.id)]);
   const { error } = await searchParams;
   // Own keys only: "?error=__proto__" must not pick up an inherited object.
   const errorText = error
@@ -167,123 +115,108 @@ async function NextExam({ state, searchParams }: { state: ExamStartState; search
       ? START_ERRORS[error]
       : "The exam could not be started. Please try again."
     : null;
-
-  if (state.kind === "none") {
-    return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <InboxIcon aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle>No exam yet</EmptyTitle>
-          <EmptyDescription data-testid="no-exams">
-            No exams are assigned to you yet. Your trainer will add your first exam here; check back soon.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
-
-  if (state.kind === "completed") {
-    return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <CircleCheckIcon aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle>All exams completed</EmptyTitle>
-          <EmptyDescription data-testid="all-completed">
-            Congratulations, you have passed every exam assigned to you. Your results are listed below.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
-
-  if (state.kind === "blocked") {
-    return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <LockIcon aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle>Please contact your trainer</EmptyTitle>
-          <EmptyDescription data-testid="blocked-contact-trainer">
-            You have used all attempts{state.curriculumNames.length ? ` for ${state.curriculumNames.join(", ")}` : ""}. Only your
-            trainer can give you another attempt.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
-
-  const examSet = state.examSet;
-  const curriculumName = examSet?.curriculumName ?? (state.kind === "waiting" ? state.curriculumName : "");
-
   return (
-    <section aria-labelledby="next-exam-heading">
-      <Card className="gap-4">
-        <CardHeader className="gap-1">
-          <CardTitle>
-            <h2
-              id="next-exam-heading"
-              className="text-[1.375rem] leading-tight font-semibold sm:text-2xl"
-              data-testid="next-exam"
-            >
-              {curriculumName}
-              {examSet ? (
-                <span className="mt-0.5 block font-sans text-base font-normal tracking-normal text-muted-foreground">
-                  {examSet.name}
-                </span>
-              ) : null}
-            </h2>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {examSet ? <ExamFacts examSet={examSet} showPassMark={state.kind === "ready"} /> : null}
-          {errorText ? (
-            <Alert variant="destructive">
-              <AlertDescription>{errorText}</AlertDescription>
-            </Alert>
-          ) : null}
-          {state.kind === "ready" ? (
-            <>
-              <Separator />
-              <ul className="flex max-w-[62ch] list-disc flex-col gap-1.5 pl-5 text-base leading-relaxed marker:text-primary">
-                <li>The questions are in German.</li>
-                <li>The timer starts when you press Start and keeps running if you leave the page.</li>
-                <li>Your answers are saved automatically, and the exam is submitted when the time is up.</li>
-                <li>You pass with {examSet ? `${examSet.passMarkPercent}%` : "the pass mark"} of the points or more.</li>
-              </ul>
-              <form action={startExam}>
-                <Button type="submit" size="lg" className="w-full sm:w-auto sm:min-w-48">
-                  Start exam
-                </Button>
-              </form>
-            </>
-          ) : null}
-          {state.kind === "in_progress" ? (
-            <>
-              <StatusNote testId="in-progress">You have an exam in progress. The timer is still running.</StatusNote>
-              <Link
-                href={`/exam/${state.attemptId}`}
-                className={buttonVariants({ size: "lg", className: "w-full sm:w-auto sm:min-w-48" })}
-              >
-                Resume exam
-              </Link>
-            </>
-          ) : null}
-          {state.kind === "awaiting_review" ? (
-            <StatusNote testId="awaiting-review">Submitted, awaiting review. Your trainer will release your result.</StatusNote>
-          ) : null}
-          {state.kind === "waiting" ? (
-            <StatusNote testId="waiting-for-grant">Waiting for your trainer to give you an attempt.</StatusNote>
-          ) : null}
-        </CardContent>
-      </Card>
-    </section>
+    <>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-[1.625rem] leading-tight font-semibold sm:text-[1.875rem]" data-testid="greeting">
+          {greeting({ fullName: profile.full_name, username: profile.username }, new Date())}
+        </h1>
+        {cards.length ? (
+          <p className="text-base text-muted-foreground">Each exam is separate. Take them in any order.</p>
+        ) : null}
+      </div>
+      {errorText ? (
+        <Alert variant="destructive">
+          <AlertDescription>{errorText}</AlertDescription>
+        </Alert>
+      ) : null}
+      {cards.length === 0 ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <InboxIcon aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>No exam yet</EmptyTitle>
+            <EmptyDescription data-testid="no-exams">
+              No exams are assigned to you yet. Your trainer will add your first exam here; check back soon.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <ul className="grid gap-4 sm:grid-cols-2">
+          {cards.map((c) => (
+            <li key={c.curriculumId}>
+              <CurriculumCardView card={c} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <ResultsList results={results} />
+    </>
   );
 }
+
+// Minimal cards (spec change 1, Task 2); the student interface is designed in Task 3.
+function CurriculumCardView({ card }: { card: CurriculumCard }) {
+  const headingId = `curriculum-${card.curriculumId}`;
+  return (
+    <Card className="h-full gap-4" data-testid="curriculum-card" aria-labelledby={headingId}>
+      <CardHeader className="gap-1">
+        <CardTitle>
+          <h2 id={headingId} className="text-[1.375rem] leading-tight font-semibold sm:text-2xl">
+            {card.name}
+          </h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={card.kind === "passed" ? "success" : card.kind === "ready" ? "outline" : "warning"}>
+            {KIND_LABEL[card.kind]}
+          </Badge>
+          {card.kind !== "passed" ? (
+            <span className="text-sm text-muted-foreground" data-testid="attempts-left">
+              {card.attemptsLeft === 1 ? "1 attempt left" : `${card.attemptsLeft} attempts left`}
+            </span>
+          ) : null}
+        </div>
+        {card.kind === "ready" ? (
+          <form action={startExam.bind(null, card.curriculumId)}>
+            <Button type="submit" size="lg" className="w-full sm:w-auto sm:min-w-48" data-testid="start-exam">
+              Start exam
+            </Button>
+          </form>
+        ) : null}
+        {card.kind === "in_progress" && card.attemptId ? (
+          <Link
+            href={`/exam/${card.attemptId}`}
+            data-testid="resume-exam"
+            className={buttonVariants({ size: "lg", className: "w-full sm:w-auto sm:min-w-48" })}
+          >
+            Resume exam
+          </Link>
+        ) : null}
+        {card.kind === "calculating" ? (
+          <StatusNote testId="calculating">Your result is being calculated. Reload the page in a moment.</StatusNote>
+        ) : null}
+        {card.kind === "passed" ? (
+          <p className="flex items-center gap-2 text-base">
+            <CircleCheckIcon aria-hidden="true" className="size-5 text-success" />
+            You passed this exam.
+          </p>
+        ) : null}
+        {card.kind === "blocked" || card.kind === "unavailable" ? (
+          <p className="flex items-start gap-2 text-base" data-testid="contact-trainer">
+            <LockIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+            {card.kind === "blocked"
+              ? "You have used all attempts for this exam. Only your trainer can give you another attempt."
+              : "This exam cannot be started right now. Please contact your trainer."}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function StartSkeleton() {
   return (
     <div role="status" aria-label="Loading your exam" className="flex flex-col gap-4">

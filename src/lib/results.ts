@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { isUuid } from "./attempts";
+import { isUuid, scorePendingAttempt } from "./attempts";
 import { formatPercent, percentValue } from "./percent";
 
 export type TopicScore = { topic: string; points: number; max: number };
@@ -9,9 +9,10 @@ export type TopicScore = { topic: string; points: number; max: number };
 type Common = { id: string; examSetName: string; curriculumName: string; submittedAt: string | null };
 
 /**
- * What a student may see of their own attempt. Before release there are no numbers at all;
- * after release the stored score, pass or fail and a per-topic breakdown. Never answer keys,
- * chosen options or question-by-question results.
+ * What a student may see of their own attempt. An attempt is released the moment it is scored
+ * (spec change 1), so 'submitted' only means the score is still being calculated (no numbers at
+ * all); 'released' carries the stored score, pass or fail and a per-topic breakdown. Never answer
+ * keys, chosen options or question-by-question results.
  */
 export type StudentResult =
   | { status: "in_progress"; id: string }
@@ -42,7 +43,7 @@ type ViewRow = {
   passed: boolean | null;
 };
 
-/** One row of the student's own results list. Numbers are null until the result is released. */
+/** One row of the student's own results list. Numbers are null while the score is being calculated. */
 export type StudentResultListItem = {
   id: string;
   status: "submitted" | "released";
@@ -56,8 +57,9 @@ export type StudentResultListItem = {
 
 /**
  * The session student's submitted and released attempts, newest first, through the
- * student_attempts view with the session client (the view masks the numbers until release).
- * In-progress attempts are left out. studentId must be the session user (requireRole).
+ * student_attempts view with the session client (the view shows numbers once released, which is
+ * as soon as the attempt is scored). In-progress attempts are left out. studentId must be the
+ * session user (requireRole).
  */
 export async function listStudentResults(studentId: string): Promise<StudentResultListItem[]> {
   if (!isUuid(studentId)) return [];
@@ -100,11 +102,13 @@ export async function listStudentResults(studentId: string): Promise<StudentResu
 
 /**
  * The session student's own attempt, or null if it is not theirs (or does not exist).
- * Reads through the student_attempts view with the session client, so RLS and the view's
- * masking decide what is visible. studentId must be the session user (requireRole).
+ * Reads through the student_attempts view with the session client, so RLS and the view
+ * decide what is visible. A submitted attempt left unscored by an interrupted submit is scored
+ * first, so the result shows at once. studentId must be the session user (requireRole).
  */
 export async function getStudentResult(studentId: string, attemptId: string): Promise<StudentResult | null> {
   if (!isUuid(attemptId) || !isUuid(studentId)) return null;
+  await scorePendingAttempt(studentId, attemptId);
   const supabase = await createClient();
   const { data: attempt, error } = await supabase
     .from("student_attempts")
@@ -153,7 +157,7 @@ export async function getStudentResult(studentId: string, attemptId: string): Pr
  * breakdown always adds up to the stored total and the pass mark is the one the attempt was
  * scored against, even if staff edited questions or the exam set later. Both are not readable by
  * students, so this runs with the service role, but only after checking again that the attempt
- * belongs to this student and is released. Only the pass mark and topic totals leave it.
+ * belongs to this student and is released (scored). Only the pass mark and topic totals leave it.
  */
 async function releasedDetails(
   studentId: string,
