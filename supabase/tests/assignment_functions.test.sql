@@ -29,12 +29,13 @@ insert into public.assignments (student_id, curriculum_id, position) values
   ('00000000-0000-0000-0000-0000000016b1', '10000000-0000-0000-0000-0000000016c3', 3),
   ('00000000-0000-0000-0000-0000000016b2', '10000000-0000-0000-0000-0000000016c1', 1),
   ('00000000-0000-0000-0000-0000000016b2', '10000000-0000-0000-0000-0000000016c2', 2);
--- Anna: a submitted attempt in curriculum one and an unused grant there. Ben: an exam in progress in curriculum two.
+-- Anna: a submitted attempt in curriculum one and extra attempts there (0021: grants are gone,
+-- extras live on the assignment row). Ben: an exam in progress in curriculum two.
 insert into public.attempts (student_id, exam_set_id, status, deadline_at, submitted_at) values
   ('00000000-0000-0000-0000-0000000016b1', '20000000-0000-0000-0000-0000000016e1', 'submitted', now() - interval '1 hour', now() - interval '1 hour'),
   ('00000000-0000-0000-0000-0000000016b2', '20000000-0000-0000-0000-0000000016e2', 'in_progress', now() + interval '1 hour', null);
-insert into public.attempt_grants (student_id, exam_set_id) values
-  ('00000000-0000-0000-0000-0000000016b1', '20000000-0000-0000-0000-0000000016e1');
+update public.assignments set extra_attempts = 2, allow_repeats = true
+where student_id = '00000000-0000-0000-0000-0000000016b1' and curriculum_id = '10000000-0000-0000-0000-0000000016c1';
 
 create function pg_temp.order_of(p_student uuid) returns text language sql as $f$
   select string_agg(c.name, ',' order by a.position)
@@ -81,9 +82,8 @@ select is((select count(*)::int from public.assignments where student_id = '0000
 select is(public.remove_curriculum('00000000-0000-0000-0000-0000000016a1', '00000000-0000-0000-0000-0000000016b1', '10000000-0000-0000-0000-0000000016c1', true),
   '{"ok": true}'::jsonb, 'confirmed removal succeeds');
 select is((select count(*)::int from public.assignments where student_id = '00000000-0000-0000-0000-0000000016b1'
-  and curriculum_id = '10000000-0000-0000-0000-0000000016c1') + (select count(*)::int from public.attempt_grants
-  where student_id = '00000000-0000-0000-0000-0000000016b1' and used_attempt_id is null), 0,
-  'the assignment and the unused grant are gone');
+  and curriculum_id = '10000000-0000-0000-0000-0000000016c1'), 0,
+  'the assignment is gone, and with it its extra attempts and allow_repeats');
 select is((select count(*)::int from public.attempts where student_id = '00000000-0000-0000-0000-0000000016b1'), 1, 'the attempt stays for the record');
 select throws_ok($$select public.remove_curriculum('00000000-0000-0000-0000-0000000016a1', '00000000-0000-0000-0000-0000000016b1', '10000000-0000-0000-0000-0000000016c4', true)$$,
   'P0001', 'not_assigned', 'a curriculum that is not assigned is refused');

@@ -21,8 +21,8 @@ set constraints all immediate;
 set constraints all deferred;
 
 insert into public.curriculums (id, name) values ('10000000-0000-0000-0000-000000000001', 'RLS Life in Germany');
-insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result)
-values ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'LiG set 1', 2, 30, 60, 2, true);
+insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, pass_mark_percent)
+values ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'LiG set 1', 2, 30, 60);
 
 insert into public.questions (id, exam_set_id, topic, difficulty, stem_de, stem_en, options, correct_option_id, points, status)
 select ('30000000-0000-0000-0000-00000000000' || n)::uuid, '20000000-0000-0000-0000-000000000001', 'law', 'easy',
@@ -38,10 +38,10 @@ values ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-0000000
 insert into public.assignments (student_id, curriculum_id, position, status) values
   ('00000000-0000-0000-0000-0000000000b1', '10000000-0000-0000-0000-000000000001', 1, 'passed'),
   ('00000000-0000-0000-0000-0000000000b2', '10000000-0000-0000-0000-000000000001', 1, 'blocked');
-insert into public.attempt_grants (student_id, exam_set_id)
-values ('00000000-0000-0000-0000-0000000000b2', '20000000-0000-0000-0000-000000000001');
 
--- Anna: one released attempt, one held (submitted) attempt, one in progress. Ben: one in progress.
+-- Anna: one released attempt, one submitted attempt (a score row written but not released, which
+-- record_score never leaves behind since 0020; the view must still hide it), one in progress.
+-- Ben: one in progress.
 insert into public.attempts (id, student_id, exam_set_id, status, deadline_at, submitted_at, points, max_points, passed, released_at) values
   ('40000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-000000000001', 'released',  now() - interval '2 days', now() - interval '2 days', 8, 10, true,  now() - interval '1 day'),
   ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-000000000001', 'submitted', now() - interval '1 hour', now() - interval '1 hour', 6, 10, true,  null),
@@ -132,7 +132,7 @@ select is((select count(*)::int from public.answers where attempt_question_id = 
   'student cannot read another student''s answers');
 select is((select count(*)::int from public.student_assignments), 1, 'student sees only their own assignment through the view');
 select is((select count(*)::int from public.assignments), 0, 'student cannot select the assignments table directly');
-select is((select count(*)::int from public.attempt_grants), 0, 'student cannot read attempt_grants');
+select hasnt_table('public', 'attempt_grants', 'attempt_grants is gone (0020), so there is nothing grant-related for a student to read');
 select throws_ok($$insert into public.attempts (student_id, exam_set_id, deadline_at) values ('00000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-000000000001', now() + interval '1 hour')$$, '42501',
   null, 'student cannot insert attempts');
 select throws_ok($$update public.attempts set status = 'released', points = 10 where id = '40000000-0000-0000-0000-000000000003'$$, '42501',
@@ -141,8 +141,8 @@ select throws_ok($$insert into public.attempt_questions (attempt_id, question_id
   null, 'student cannot insert attempt_questions');
 select is((select count(*)::int from public.curriculums), 1, 'student reads only the curriculum assigned to them');
 select is((select count(*)::int from public.exam_sets), 1, 'student reads only the exam sets of assigned curriculums');
-select is((select status from public.student_assignments), 'open',
-  'assignment status is masked to open while a submitted attempt awaits release');
+select is((select status from public.student_assignments), 'passed',
+  'student_assignments shows the real status even while an attempt is submitted (no masking since 0020)');
 
 reset role;
 update public.attempts set status = 'released', released_at = now() where id = '40000000-0000-0000-0000-000000000002';

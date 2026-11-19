@@ -21,8 +21,8 @@ select col_default_is('public', 'exam_sets', 'pass_mark_percent', '90', 'pass_ma
 select col_not_null('public', 'exam_sets', 'pass_mark_percent', 'pass_mark_percent stays not null');
 
 -- An exam set created without a pass mark gets 90.
-insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min, max_attempts, hold_result)
-values ('20000000-0000-0000-0000-0000000019e1', '10000000-0000-0000-0000-0000000019c1', 'PF held', 2, 15, 2, true);
+insert into public.exam_sets (id, curriculum_id, name, question_count, time_limit_min)
+values ('20000000-0000-0000-0000-0000000019e1', '10000000-0000-0000-0000-0000000019c1', 'PF set', 2, 15);
 select is((select pass_mark_percent from public.exam_sets where id = '20000000-0000-0000-0000-0000000019e1'),
   90, 'a new exam set without a pass mark passes at 90%');
 
@@ -35,10 +35,7 @@ from generate_series(1, 2) n;
 insert into public.assignments (student_id, curriculum_id, position, status) values
   ('00000000-0000-0000-0000-0000000019b1', '10000000-0000-0000-0000-0000000019c1', 1, 'open'),
   ('00000000-0000-0000-0000-0000000019b2', '10000000-0000-0000-0000-0000000019c1', 1, 'open');
-insert into public.attempt_grants (student_id, exam_set_id) values
-  ('00000000-0000-0000-0000-0000000019b1', '20000000-0000-0000-0000-0000000019e1'),
-  ('00000000-0000-0000-0000-0000000019b2', '20000000-0000-0000-0000-0000000019e1'),
-  ('00000000-0000-0000-0000-0000000019b3', '20000000-0000-0000-0000-0000000019e1');
+-- No grants since 0020: Anna and Ben start their free attempts; Cara has no assignment.
 
 create temp table ids (name text primary key, id uuid);
 grant all on ids to public;
@@ -100,7 +97,7 @@ end $d$;
 select throws_ok($$select public.record_score((select id from ids where name = 'a1'), 1, 2, true, pg_temp.snap((select id from ids where name = 'a1'), array[1, 0]))$$,
   'P0001', 'invalid_outcome', '1 of 2 cannot be recorded as passed against the 90% snapshot (live mark is 50)');
 select is((select public.record_score((select id from ids where name = 'a1'), 1, 2, false, pg_temp.snap((select id from ids where name = 'a1'), array[1, 0]))),
-  'submitted', '1 of 2 is recorded as failed against the 90% snapshot');
+  'released', '1 of 2 is recorded as failed against the 90% snapshot (and released at once, 0020)');
 select is((select passed from public.attempts where id = (select id from ids where name = 'a1')),
   false, 'the stored outcome follows the snapshot, not the live exam set');
 select throws_ok($$select public.record_score((select id from ids where name = 'b1'), 1, 2, false, pg_temp.snap((select id from ids where name = 'b1'), array[1, 0]))$$,
