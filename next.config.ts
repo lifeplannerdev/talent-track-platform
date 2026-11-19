@@ -27,6 +27,11 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Spec change 1 merged the staff Results list into the read-only Attempts list (/staff/review);
+  // old links keep working (the query string, e.g. filters, is passed on).
+  async redirects() {
+    return [{ source: "/staff/results", destination: "/staff/review", permanent: false }];
+  },
   turbopack: {
     rules: {
       "*.css": {

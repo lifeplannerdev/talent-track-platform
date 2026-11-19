@@ -5,12 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
 
-const LINKS = [
+export const STAFF_LINKS = [
   { href: "/staff", label: "Dashboard" },
-  { href: "/staff/review", label: "Review" },
-  { href: "/staff/results", label: "Results" },
+  { href: "/staff/review", label: "Attempts" },
   { href: "/staff/blocked", label: "Blocked" },
-  { href: "/staff/grants", label: "Give attempts" },
+  { href: "/staff/grants", label: "Extra attempts" },
   { href: "/staff/students", label: "Students" },
   { href: "/staff/curriculums", label: "Curriculums" },
   { href: "/staff/questions", label: "Questions" },
@@ -19,7 +18,7 @@ const LINKS = [
 function currentHref(pathname: string | null): string | null {
   if (!pathname) return null;
   // Longest matching prefix wins, so /staff/students/[id] marks Students, not Dashboard.
-  const match = [...LINKS]
+  const match = [...STAFF_LINKS]
     .filter((l) => pathname === l.href || (l.href !== "/staff" && pathname.startsWith(`${l.href}/`)))
     .sort((a, b) => b.href.length - a.href.length)[0];
   return match?.href ?? null;
@@ -45,7 +44,7 @@ export function StaffNav() {
   return (
     <nav aria-label="Staff">
       <ul className="flex snap-x gap-1 overflow-x-auto px-3 [scrollbar-width:none] sm:px-5 lg:px-0 [&::-webkit-scrollbar]:hidden">
-        {LINKS.map((l) => {
+        {STAFF_LINKS.map((l) => {
           const active = l.href === current;
           return (
             <li key={l.href} className="shrink-0 snap-start">

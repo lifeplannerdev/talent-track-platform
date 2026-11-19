@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
+import { ATTEMPT_STATUS, attemptStatusKind } from "@/lib/attempt-status";
 import { topicTotals } from "@/lib/report";
 import { formatPercent, percentValue } from "@/lib/percent";
 import { getAttemptReview, type ReviewQuestion } from "@/lib/review";
@@ -98,6 +99,7 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
 
   const scored = review.points !== null && review.maxPoints !== null;
   const released = review.status === "released";
+  const status = ATTEMPT_STATUS[attemptStatusKind(review)];
   const percent = scored ? percentValue(review.points!, review.maxPoints!) : null;
   const topics = topicTotals(review.questions);
   const answered = review.questions.filter((q) => q.chosenOptionId !== null).length;
@@ -114,8 +116,8 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
             <h1 className="text-[1.375rem] leading-tight font-semibold sm:text-2xl">{review.studentName}</h1>
           </CardTitle>
           <CardAction>
-            <Badge variant={released ? "success" : "warning"} data-testid="review-status">
-              {released ? "Shown to the student" : "Being calculated"}
+            <Badge variant={status.variant} data-testid="review-status">
+              {status.label}
             </Badge>
           </CardAction>
         </CardHeader>
@@ -136,7 +138,7 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
               ) : null}
             </dl>
             <p className="text-xs text-muted-foreground">
-              Read only. The score is calculated automatically when the exam is submitted and cannot be changed.
+              Read only. The score is calculated automatically when the exam is submitted, shown to the student at once and cannot be changed.
             </p>
           </div>
 
@@ -145,7 +147,7 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
               <div className="flex flex-col gap-1">
                 <p className={factLabel}>Percent</p>
                 <p className="font-heading text-[2rem] leading-none font-semibold tabular-nums" data-testid="review-score">
-                  {scored ? review.percentLabel : "Scoring pending"}
+                  {scored ? review.percentLabel : "Being scored"}
                 </p>
                 {scored ? (
                   <p className="text-sm text-muted-foreground tabular-nums" data-testid="review-points">
@@ -155,7 +157,7 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
               </div>
               {scored ? (
                 <Badge variant={review.passed ? "success" : "destructive"} className="h-auto px-2.5 py-1 text-sm">
-                  {review.passed ? "Pass" : "Fail"}
+                  {review.passed ? "Passed" : "Not passed"}
                 </Badge>
               ) : null}
             </div>
@@ -225,7 +227,7 @@ export default function EvaluationPage(props: PageProps<"/staff/review/[attemptI
       <div>
         <Link href="/staff/review" className={`${linkClass} inline-flex items-center gap-1 text-sm`}>
           <ChevronLeftIcon aria-hidden="true" className="size-4" />
-          Back to review list
+          Back to attempts
         </Link>
       </div>
       <Suspense fallback={<EvaluationSkeleton />}>

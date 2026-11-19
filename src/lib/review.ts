@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAll, isUuid } from "./attempts";
+import { attemptFilterQuery, type AttemptRowStatus } from "./attempt-status";
 import { formatPercent } from "./percent";
 import type { QuestionOption } from "./types";
 
@@ -53,27 +54,53 @@ function toItem(a: AttemptRow): ReviewListItem {
   };
 }
 
-/** 'released' = scored (marks are released the moment they are scored); 'submitted' = still being scored. */
-export type ResultStatus = "submitted" | "released";
 export type ResultFilters = { batch?: string; curriculumId?: string; status?: string };
-export type ResultListItem = ReviewListItem & { status: ResultStatus; batch: string | null; releasedAt: string | null };
+export type ResultListItem = ReviewListItem & {
+  status: AttemptRowStatus;
+  batch: string | null;
+  startedAt: string;
+  releasedAt: string | null;
+};
 
 type ResultRow = Omit<AttemptRow, "student" | "exam_sets"> & {
+  started_at: string;
   student: { full_name: string | null; username: string; batch: string | null } | null;
   exam_sets: { name: string; curriculum_id: string; curriculums: { name: string } | null } | null;
 };
 
+const RESULT_FIELDS =
+  "id, status, started_at, deadline_at, submitted_at, released_at, points, max_points, passed, " +
+  "student:profiles!attempts_student_id_fkey!inner(full_name, username, batch), " +
+  "exam_sets!inner(name, curriculum_id, curriculums(name))";
+
+function toResult(a: ResultRow): ResultListItem {
+  return {
+    id: a.id,
+    studentName: nameOf(a.student),
+    curriculumName: a.exam_sets?.curriculums?.name ?? "",
+    examSetName: a.exam_sets?.name ?? "",
+    submittedAt: a.submitted_at,
+    points: a.points,
+    maxPoints: a.max_points,
+    passed: a.passed,
+    status: a.status,
+    batch: a.student?.batch ?? null,
+    startedAt: a.started_at,
+    releasedAt: a.released_at,
+  };
+}
+
 /**
- * Every finished attempt ('released' = scored, or 'submitted' = still being scored), newest
- * first, for the read-only staff attempts and results lists, with the filter options. Filters: batch (exact), curriculum id, status. An unknown status
- * is ignored; a curriculum id that is not a uuid matches nothing.
+ * Every attempt for the read-only staff Attempts list (in progress, being scored, or scored and
+ * shown to the student at once), newest first (running ones first), with the filter options.
+ * Filters: batch (exact), curriculum id, status (see attemptFilterQuery: in_progress, scoring,
+ * passed, not_passed; anything else means all). A curriculum id that is not a uuid matches nothing.
  */
 export async function listResults(
   filters: ResultFilters,
 ): Promise<{ rows: ResultListItem[]; batches: string[]; curriculums: { id: string; name: string }[] }> {
   const supabase = await createClient();
-  const status: ResultStatus[] =
-    filters.status === "submitted" || filters.status === "released" ? [filters.status] : ["submitted", "released"];
+  const query = attemptFilterQuery(filters.status ?? "");
   const curriculumId = filters.curriculumId || undefined;
   const batch = filters.batch || undefined;
 
@@ -81,22 +108,17 @@ export async function listResults(
     curriculumId && !isUuid(curriculumId)
       ? Promise.resolve([] as ResultRow[])
       : fetchAll((from, to) => {
-          let q = supabase
-            .from("attempts")
-            .select(
-              "id, status, deadline_at, submitted_at, released_at, points, max_points, passed, " +
-                "student:profiles!attempts_student_id_fkey!inner(full_name, username, batch), " +
-                "exam_sets!inner(name, curriculum_id, curriculums(name))",
-            )
-            .in("status", status);
+          let q = supabase.from("attempts").select(RESULT_FIELDS).in("status", query.statuses);
+          if (query.passed !== undefined) q = q.eq("passed", query.passed);
           if (batch) q = q.eq("student.batch", batch);
           if (curriculumId) q = q.eq("exam_sets.curriculum_id", curriculumId);
           return q
-            .order("submitted_at", { ascending: false })
+            .order("submitted_at", { ascending: false, nullsFirst: true })
+            .order("started_at", { ascending: false })
             .order("id")
             .range(from, to)
             .overrideTypes<ResultRow[], { merge: false }>();
-        }, "Could not read results"),
+        }, "Could not read attempts"),
     fetchAll(
       (from, to) => supabase.from("profiles").select("batch").eq("role", "student").not("batch", "is", null).order("id").range(from, to),
       "Could not read batches",
@@ -105,22 +127,25 @@ export async function listResults(
   ]);
 
   return {
-    rows: rows.map((a) => ({
-      id: a.id,
-      studentName: nameOf(a.student),
-      curriculumName: a.exam_sets?.curriculums?.name ?? "",
-      examSetName: a.exam_sets?.name ?? "",
-      submittedAt: a.submitted_at,
-      points: a.points,
-      maxPoints: a.max_points,
-      passed: a.passed,
-      status: a.status as ResultStatus,
-      batch: a.student?.batch ?? null,
-      releasedAt: a.released_at,
-    })),
+    rows: rows.map(toResult),
     batches: [...new Set(students.map((p) => p.batch as string))].sort(),
     curriculums: curriculums.map((c) => ({ id: c.id as string, name: c.name as string })),
   };
+}
+
+/** The most recently submitted attempts (being scored or scored), for the staff dashboard. */
+export async function listRecentAttempts(limit = 5): Promise<ResultListItem[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("attempts")
+    .select(RESULT_FIELDS)
+    .in("status", ["submitted", "released"])
+    .order("submitted_at", { ascending: false })
+    .order("id")
+    .limit(limit)
+    .overrideTypes<ResultRow[], { merge: false }>();
+  if (error) throw new Error(`Could not read attempts: ${error.message}`);
+  return (data ?? []).map(toResult);
 }
 
 /** Key, topic and points come from the scoring snapshot (null until the attempt is scored). */
