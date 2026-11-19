@@ -47,6 +47,8 @@ type ViewRow = {
 export type StudentResultListItem = {
   id: string;
   status: "submitted" | "released";
+  /** Null when the exam set is no longer readable (its curriculum is not assigned any more). */
+  curriculumId: string | null;
   curriculumName: string;
   examSetName: string;
   submittedAt: string | null;
@@ -79,9 +81,9 @@ export async function listStudentResults(studentId: string): Promise<StudentResu
   // Exam sets of curriculums no longer assigned are not readable; their rows keep blank names.
   const { data: sets, error: setsError } = await supabase
     .from("exam_sets")
-    .select("id, name, curriculums(name)")
+    .select("id, name, curriculum_id, curriculums(name)")
     .in("id", [...new Set(attempts.map((a) => a.exam_set_id))])
-    .returns<{ id: string; name: string; curriculums: { name: string } | null }[]>();
+    .returns<{ id: string; name: string; curriculum_id: string; curriculums: { name: string } | null }[]>();
   if (setsError) throw new Error(`Could not read exam sets: ${setsError.message}`);
 
   return attempts.map((a) => {
@@ -90,6 +92,7 @@ export async function listStudentResults(studentId: string): Promise<StudentResu
     return {
       id: a.id,
       status: released ? "released" : "submitted",
+      curriculumId: set?.curriculum_id ?? null,
       curriculumName: set?.curriculums?.name ?? "",
       examSetName: set?.name ?? "",
       submittedAt: a.submitted_at,

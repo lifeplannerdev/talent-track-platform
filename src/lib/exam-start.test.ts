@@ -331,6 +331,7 @@ describe("listStudentResults", () => {
       {
         id: newer,
         status: "released",
+        curriculumId: curA,
         curriculumName: `ES A ${run}`,
         examSetName: "A1",
         submittedAt: expect.any(String),
@@ -341,6 +342,7 @@ describe("listStudentResults", () => {
       {
         id: older,
         status: "released",
+        curriculumId: curB,
         curriculumName: `ES B ${run}`,
         examSetName: "B1",
         submittedAt: expect.any(String),
