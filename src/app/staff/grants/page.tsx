@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { CircleCheckIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
-import { listGrantable } from "@/lib/staff-overview";
+import { listExtraAttemptCandidates } from "@/lib/staff-overview";
 import { PageHeader } from "@/components/app/page-header";
 import { staffMain } from "@/components/app/styles";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -11,11 +11,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { GrantStatusProvider } from "./grant-status";
 import { GrantButton } from "./grant-button";
 
-export const metadata: Metadata = { title: "Give attempts | TalentTrack" };
+export const metadata: Metadata = { title: "Extra attempts | TalentTrack" };
 
-async function GrantableList() {
+async function CandidateList() {
   await requireRole("staff");
-  const rows = await listGrantable();
+  const rows = await listExtraAttemptCandidates();
 
   if (rows.length === 0) {
     return (
@@ -24,9 +24,9 @@ async function GrantableList() {
           <EmptyMedia variant="icon">
             <CircleCheckIcon aria-hidden="true" />
           </EmptyMedia>
-          <EmptyTitle>Nobody is waiting for an attempt</EmptyTitle>
+          <EmptyTitle>Nobody needs extra attempts</EmptyTitle>
           <EmptyDescription>
-            Students with an open curriculum and no attempt available, in progress or awaiting review appear here.
+            Blocked students, and students with attempts left but no exam set they have not had yet, appear here.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -38,32 +38,36 @@ async function GrantableList() {
       <TableHeader>
         <TableRow>
           <TableHead>Student</TableHead>
-          <TableHead>Curriculum and exam</TableHead>
+          <TableHead>Curriculum</TableHead>
           <TableHead className="text-right">Attempts used</TableHead>
           <TableHead>Action</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((r) => (
-          <TableRow key={`${r.studentId}:${r.examSetId}`} className="align-top">
+          <TableRow key={`${r.studentId}:${r.curriculumId}`} className="align-top">
             <TableCell>
               <span className="block font-semibold">{r.studentName}</span>
               <span className="block text-muted-foreground">{r.batch ? `Batch ${r.batch}` : "No batch"}</span>
             </TableCell>
             <TableCell>
               <span className="block">{r.curriculumName}</span>
-              <span className="block text-muted-foreground">{r.examSetName}</span>
+              <span className="block text-muted-foreground">
+                {r.reason === "blocked" ? "Blocked" : "No exam set left that the student has not had"}
+              </span>
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {r.attemptsUsed} of {r.maxAttempts}
+              {r.attemptsUsed} of {r.allowance}
             </TableCell>
             <TableCell>
               <GrantButton
                 studentId={r.studentId}
-                examSetId={r.examSetId}
+                curriculumId={r.curriculumId}
                 studentName={r.studentName}
-                examSetName={r.examSetName}
-                label="Give attempt"
+                curriculumName={r.curriculumName}
+                allowRepeats={r.reason === "no_exam_sets_left" || r.examSetsLeft === 0}
+                label={r.examSetsLeft === 0 ? "Give an extra attempt, allow repeats" : "Give an extra attempt"}
+                note={r.reason === "blocked" ? "This lifts the block." : undefined}
               />
             </TableCell>
           </TableRow>
@@ -87,12 +91,12 @@ export default function GrantsPage() {
   return (
     <main className={staffMain}>
       <PageHeader
-        title="Give attempts"
-        description="Attempts are never given automatically. Give a first attempt or a retake here; blocked students are on the Blocked page."
+        title="Extra attempts"
+        description="Every student has the curriculum's attempts without approval. Give extra attempts here to blocked students, or let a student repeat exam sets when none is left."
       />
       <GrantStatusProvider>
         <Suspense fallback={<ListSkeleton />}>
-          <GrantableList />
+          <CandidateList />
         </Suspense>
       </GrantStatusProvider>
     </main>
