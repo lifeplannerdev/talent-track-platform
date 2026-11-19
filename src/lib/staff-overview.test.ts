@@ -115,6 +115,7 @@ describe("blockedFrom", () => {
       attemptsUsed: 2,
       allowance: 2,
       examSetsLeft: 0,
+      allowRepeats: false,
       lastExamSetName: "Set e1b",
       lastPoints: 1,
       lastMaxPoints: 2,

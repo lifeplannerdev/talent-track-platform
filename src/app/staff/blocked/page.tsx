@@ -10,11 +10,10 @@ import { linkClass, staffMain } from "@/components/app/styles";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { GrantButton } from "../grants/grant-button";
-import { GrantStatusProvider } from "../grants/grant-status";
+import { ActionStatusProvider } from "../grants/action-status";
+import { ExtraAttemptsButton } from "../grants/extra-attempts-button";
 
 export const metadata: Metadata = { title: "Blocked students | TalentTrack" };
-
 
 async function BlockedList() {
   await requireRole("staff");
@@ -43,6 +42,7 @@ async function BlockedList() {
           <TableHead>Student</TableHead>
           <TableHead>Curriculum and last exam</TableHead>
           <TableHead className="text-right">Attempts used</TableHead>
+          <TableHead className="text-right">Exam sets left</TableHead>
           <TableHead className="text-right">Last score</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>
@@ -61,6 +61,7 @@ async function BlockedList() {
             <TableCell className="text-right tabular-nums">
               {r.attemptsUsed} of {r.allowance}
             </TableCell>
+            <TableCell className="text-right tabular-nums">{r.examSetsLeft}</TableCell>
             <TableCell className="text-right tabular-nums">
               {r.lastPoints === null || r.lastMaxPoints === null ? (
                 "No score"
@@ -76,18 +77,19 @@ async function BlockedList() {
             </TableCell>
             <TableCell>
               <div className="flex flex-col items-start gap-2">
-                <GrantButton
+                <ExtraAttemptsButton
                   studentId={r.studentId}
                   curriculumId={r.curriculumId}
                   studentName={r.studentName}
                   curriculumName={r.curriculumName}
-                  allowRepeats={r.examSetsLeft === 0}
-                  label={r.examSetsLeft === 0 ? "Give an extra attempt, allow repeats" : "Give an extra attempt"}
-                  note="This lifts the block."
+                  attemptsUsed={r.attemptsUsed}
+                  allowance={r.allowance}
+                  blocked
+                  allowRepeats={r.allowRepeats}
+                  suggestRepeats={r.examSetsLeft === 0}
                 />
-                {/* The student management page (/staff/students/[id]) is built in Task 8. */}
                 <Link href={`/staff/students/${r.studentId}`} className={linkClass}>
-                  Reassign curriculums
+                  Student page<span className="sr-only"> of {r.studentName}</span>
                 </Link>
               </div>
             </TableCell>
@@ -113,13 +115,13 @@ export default function BlockedPage() {
     <main className={staffMain}>
       <PageHeader
         title="Blocked students"
-        description="These students failed their last allowed attempt. Give an extra attempt (which lifts the block) or reassign their curriculums."
+        description="These students failed their last allowed attempt in a curriculum. Extra attempts lift the block; on the student page you can also change their curriculums."
       />
-      <GrantStatusProvider>
+      <ActionStatusProvider>
         <Suspense fallback={<ListSkeleton />}>
           <BlockedList />
         </Suspense>
-      </GrantStatusProvider>
+      </ActionStatusProvider>
     </main>
   );
 }

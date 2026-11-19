@@ -6,7 +6,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { getStudentDetail } from "@/lib/staff-manage";
 import { ChevronLeftIcon, ClipboardListIcon, LibraryIcon } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
-import { ReleaseStatus, ResultScore } from "@/components/app/result-score";
+import { AttemptStatusBadge, ResultScore } from "@/components/app/result-score";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
 import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +14,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { GrantButton } from "../../grants/grant-button";
-import { GrantStatusProvider } from "../../grants/grant-status";
+import { ActionStatusProvider } from "../../grants/action-status";
+import { ExtraAttemptsButton } from "../../grants/extra-attempts-button";
 import { linkClass, statusVariant, trackLabel } from "../ui";
 import { AddCurriculumForm, MoveButtons, RemoveCurriculumButton } from "./assignment-controls";
 import { DeleteStudentForm } from "./delete-student-form";
@@ -62,10 +62,11 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
       <section aria-labelledby="curriculums-heading" className="flex flex-col gap-3">
         <SectionHeading id="curriculums-heading">Curriculums</SectionHeading>
         <p className="text-sm text-muted-foreground">
-          Each curriculum is a separate exam the student can take in any order. Removing a curriculum keeps the
+          Each curriculum is a separate exam the student can take in any order, with its own attempts. Each attempt
+          uses a different exam set. Give extra attempts here at any time; removing a curriculum keeps the
           student&apos;s attempts and results.
         </p>
-        <GrantStatusProvider>
+        <ActionStatusProvider>
           {s.assignments.length === 0 ? (
             <Empty className="border" data-testid="assignments-empty">
               <EmptyHeader>
@@ -107,20 +108,30 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                         {a.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums" data-testid="assignment-attempts">
-                      {a.attemptsUsed} of {a.allowance}
+                    <TableCell className="text-right" data-testid="assignment-attempts">
+                      <span className="block tabular-nums">
+                        {a.attemptsUsed} of {a.allowance} used
+                      </span>
+                      <span className="block text-xs text-muted-foreground tabular-nums">
+                        {a.extraAttempts > 0 ? `${a.maxAttempts} + ${a.extraAttempts} extra` : `${a.maxAttempts} per student`}
+                      </span>
+                      <span className="block text-xs text-muted-foreground tabular-nums">
+                        {a.allowRepeats ? "Repeats allowed" : `${a.examSetsLeft} exam set${a.examSetsLeft === 1 ? "" : "s"} left`}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col items-start gap-2">
                         {a.status !== "passed" ? (
-                          <GrantButton
+                          <ExtraAttemptsButton
                             studentId={s.id}
                             curriculumId={a.curriculumId}
                             studentName={s.fullName}
                             curriculumName={a.name}
-                            allowRepeats={a.examSetsLeft === 0}
-                            label={a.examSetsLeft === 0 ? "Give an extra attempt, allow repeats" : "Give an extra attempt"}
-                            note={a.status === "blocked" ? "This lifts the block." : undefined}
+                            attemptsUsed={a.attemptsUsed}
+                            allowance={a.allowance}
+                            blocked={a.status === "blocked"}
+                            allowRepeats={a.allowRepeats}
+                            suggestRepeats={a.examSetsLeft === 0}
                           />
                         ) : null}
                         <RemoveCurriculumButton
@@ -137,7 +148,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
               </TableBody>
             </Table>
           )}
-        </GrantStatusProvider>
+        </ActionStatusProvider>
         <AddCurriculumForm studentId={s.id} options={s.unassigned} />
       </section>
 
@@ -150,7 +161,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                 <ClipboardListIcon aria-hidden="true" />
               </EmptyMedia>
               <EmptyTitle>No results yet</EmptyTitle>
-              <EmptyDescription>Submitted exams of this student appear here.</EmptyDescription>
+              <EmptyDescription>Submitted exams of this student appear here with their percentage.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -159,8 +170,8 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
               <TableRow>
                 <TableHead>Curriculum and exam</TableHead>
                 <TableHead>Submitted</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Score</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>
                   <span className="sr-only">Evaluation</span>
                 </TableHead>
@@ -174,15 +185,15 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                     <span className="block text-muted-foreground">{r.examSetName}</span>
                   </TableCell>
                   <TableCell>{formatDateTime(r.submittedAt)}</TableCell>
-                  <TableCell>
-                    <ReleaseStatus status={r.status} />
-                  </TableCell>
                   <TableCell className="text-right">
-                    <ResultScore points={r.points} maxPoints={r.maxPoints} passed={r.passed} />
+                    <ResultScore points={r.points} maxPoints={r.maxPoints} passed={r.passed} outcome={false} />
+                  </TableCell>
+                  <TableCell>
+                    <AttemptStatusBadge attempt={r} />
                   </TableCell>
                   <TableCell>
                     <Link href={`/staff/review/${r.id}`} className={linkClass}>
-                      Open<span className="sr-only"> evaluation of {r.examSetName}</span>
+                      Evaluation<span className="sr-only"> of {r.examSetName}, {formatDateTime(r.submittedAt)}</span>
                     </Link>
                   </TableCell>
                 </TableRow>

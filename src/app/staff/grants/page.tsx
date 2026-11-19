@@ -1,73 +1,60 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { CircleCheckIcon } from "lucide-react";
+import Link from "next/link";
+import { CircleCheckIcon, LayersIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
 import { listExtraAttemptCandidates } from "@/lib/staff-overview";
-import { PageHeader } from "@/components/app/page-header";
-import { staffMain } from "@/components/app/styles";
+import type { ExtraAttemptRow } from "@/lib/staff-overview-core";
+import { PageHeader, SectionHeading } from "@/components/app/page-header";
+import { linkClass, staffMain } from "@/components/app/styles";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { GrantStatusProvider } from "./grant-status";
-import { GrantButton } from "./grant-button";
+import { ActionStatusProvider } from "./action-status";
+import { ExtraAttemptsButton } from "./extra-attempts-button";
 
 export const metadata: Metadata = { title: "Extra attempts | TalentTrack" };
 
-async function CandidateList() {
-  await requireRole("staff");
-  const rows = await listExtraAttemptCandidates();
-
-  if (rows.length === 0) {
-    return (
-      <Empty className="border" data-testid="grants-empty">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <CircleCheckIcon aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle>Nobody needs extra attempts</EmptyTitle>
-          <EmptyDescription>
-            Blocked students, and students with attempts left but no exam set they have not had yet, appear here.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
-
+function CandidateTable({ rows, testId }: { rows: ExtraAttemptRow[]; testId: string }) {
   return (
-    <Table data-testid="grants-table" className="min-w-[40rem]">
+    <Table data-testid={testId} className="min-w-[44rem] table-fixed">
       <TableHeader>
         <TableRow>
-          <TableHead>Student</TableHead>
-          <TableHead>Curriculum</TableHead>
-          <TableHead className="text-right">Attempts used</TableHead>
-          <TableHead>Action</TableHead>
+          <TableHead className="w-[26%]">Student</TableHead>
+          <TableHead className="w-[30%]">Curriculum</TableHead>
+          <TableHead className="w-[12%] text-right">Attempts used</TableHead>
+          <TableHead className="w-[12%] text-right">Exam sets left</TableHead>
+          <TableHead className="w-[20%]">Action</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((r) => (
-          <TableRow key={`${r.studentId}:${r.curriculumId}`} className="align-top">
+          <TableRow key={`${r.studentId}:${r.curriculumId}`} className="align-top" data-testid="extra-attempts-row">
             <TableCell>
-              <span className="block font-semibold">{r.studentName}</span>
+              <Link href={`/staff/students/${r.studentId}`} className={`${linkClass} block w-fit`}>
+                {r.studentName}
+              </Link>
               <span className="block text-muted-foreground">{r.batch ? `Batch ${r.batch}` : "No batch"}</span>
             </TableCell>
             <TableCell>
               <span className="block">{r.curriculumName}</span>
-              <span className="block text-muted-foreground">
-                {r.reason === "blocked" ? "Blocked" : "No exam set left that the student has not had"}
-              </span>
+              {r.allowRepeats ? <span className="block text-muted-foreground">Repeats allowed</span> : null}
             </TableCell>
             <TableCell className="text-right tabular-nums">
               {r.attemptsUsed} of {r.allowance}
             </TableCell>
+            <TableCell className="text-right tabular-nums">{r.examSetsLeft}</TableCell>
             <TableCell>
-              <GrantButton
+              <ExtraAttemptsButton
                 studentId={r.studentId}
                 curriculumId={r.curriculumId}
                 studentName={r.studentName}
                 curriculumName={r.curriculumName}
-                allowRepeats={r.reason === "no_exam_sets_left" || r.examSetsLeft === 0}
-                label={r.examSetsLeft === 0 ? "Give an extra attempt, allow repeats" : "Give an extra attempt"}
-                note={r.reason === "blocked" ? "This lifts the block." : undefined}
+                attemptsUsed={r.attemptsUsed}
+                allowance={r.allowance}
+                blocked={r.reason === "blocked"}
+                allowRepeats={r.allowRepeats}
+                suggestRepeats={r.examSetsLeft === 0}
               />
             </TableCell>
           </TableRow>
@@ -77,28 +64,91 @@ async function CandidateList() {
   );
 }
 
+async function CandidateLists() {
+  await requireRole("staff");
+  const rows = await listExtraAttemptCandidates();
+  const blocked = rows.filter((r) => r.reason === "blocked");
+  const short = rows.filter((r) => r.reason === "no_exam_sets_left");
+
+  return (
+    <>
+      <section aria-labelledby="blocked-heading" className="flex flex-col gap-3">
+        <SectionHeading id="blocked-heading">
+          Blocked students <span className="font-normal text-muted-foreground tabular-nums">({blocked.length})</span>
+        </SectionHeading>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          They failed their last allowed attempt. Extra attempts lift the block. If no exam set is left that they have
+          not had, also allow repeating exam sets.
+        </p>
+        {blocked.length === 0 ? (
+          <Empty className="border" data-testid="grants-empty">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <CircleCheckIcon aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>No blocked students</EmptyTitle>
+              <EmptyDescription>A student who fails their last allowed attempt in a curriculum appears here.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <CandidateTable rows={blocked} testId="grants-table" />
+        )}
+      </section>
+
+      <section aria-labelledby="short-heading" className="flex flex-col gap-3">
+        <SectionHeading id="short-heading">
+          No exam set left <span className="font-normal text-muted-foreground tabular-nums">({short.length})</span>
+        </SectionHeading>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          These students still have attempts but have had every exam set of the curriculum, so they are told to contact
+          their trainer. Allow repeating exam sets here, or add exam sets on the{" "}
+          <Link href="/staff/curriculums" className={linkClass}>
+            Curriculums
+          </Link>{" "}
+          page.
+        </p>
+        {short.length === 0 ? (
+          <Empty className="border" data-testid="short-empty">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <LayersIcon aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>Every student has an exam set left</EmptyTitle>
+              <EmptyDescription>Students with attempts left but no exam set they have not had appear here.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <CandidateTable rows={short} testId="short-table" />
+        )}
+      </section>
+    </>
+  );
+}
+
 function ListSkeleton() {
   return (
     <div role="status" aria-label="Loading students" className="flex flex-col gap-2">
+      <Skeleton className="h-7 w-48" />
       <Skeleton className="h-10 w-full" />
       <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-7 w-48" />
       <Skeleton className="h-10 w-full" />
     </div>
   );
 }
 
-export default function GrantsPage() {
+export default function ExtraAttemptsPage() {
   return (
     <main className={staffMain}>
       <PageHeader
         title="Extra attempts"
-        description="Every student has the curriculum's attempts without approval. Give extra attempts here to blocked students, or let a student repeat exam sets when none is left."
+        description="Students get the curriculum's attempts without approval. Give extra attempts (1 to 10) to blocked students, or let a student repeat exam sets. You can also give extra attempts any time from a student's page."
       />
-      <GrantStatusProvider>
+      <ActionStatusProvider>
         <Suspense fallback={<ListSkeleton />}>
-          <CandidateList />
+          <CandidateLists />
         </Suspense>
-      </GrantStatusProvider>
+      </ActionStatusProvider>
     </main>
   );
 }

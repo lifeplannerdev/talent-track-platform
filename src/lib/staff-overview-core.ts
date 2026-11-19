@@ -57,6 +57,8 @@ export type BlockedStudent = {
   allowance: number;
   /** Exam sets of the curriculum the student has not had yet that can fill a paper. */
   examSetsLeft: number;
+  /** Staff already allowed repeating exam sets for this student here. */
+  allowRepeats: boolean;
   /** The exam set of the student's latest scored attempt in the curriculum ("" if none). */
   lastExamSetName: string;
   lastPoints: number | null;
@@ -132,6 +134,7 @@ export function blockedFrom(input: OverviewInput): BlockedStudent[] {
       attemptsUsed: f.used,
       allowance: f.allowance,
       examSetsLeft: f.examSetsLeft,
+      allowRepeats: a.allow_repeats,
       lastExamSetName: f.sets.find((s) => s.id === f.last?.exam_set_id)?.name ?? "",
       lastPoints: f.last?.points ?? null,
       lastMaxPoints: f.last?.max_points ?? null,

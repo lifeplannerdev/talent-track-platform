@@ -3,27 +3,28 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// Page-level confirmation for grants: a granted row disappears from the list after the server
-// re-renders it, so the success message lives here, outside the table.
+// Page-level confirmation for extra attempts: a row may disappear from the list once the server
+// re-renders it (a blocked student is no longer blocked), so the success message lives here,
+// outside the table, in a polite live region.
 
-const GrantStatusContext = createContext<(message: string) => void>(() => {});
+const ActionStatusContext = createContext<(message: string) => void>(() => {});
 
-export function useGrantStatus() {
-  return useContext(GrantStatusContext);
+export function useActionStatus() {
+  return useContext(ActionStatusContext);
 }
 
-export function GrantStatusProvider({ children }: { children: ReactNode }) {
+export function ActionStatusProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState<string | null>(null);
   return (
-    <GrantStatusContext.Provider value={setMessage}>
-      <div aria-live="polite">
+    <ActionStatusContext.Provider value={setMessage}>
+      <div aria-live="polite" role="status">
         {message ? (
-          <Alert variant="success" className="mb-1">
+          <Alert variant="success">
             <AlertDescription data-testid="grant-success">{message}</AlertDescription>
           </Alert>
         ) : null}
       </div>
       {children}
-    </GrantStatusContext.Provider>
+    </ActionStatusContext.Provider>
   );
 }

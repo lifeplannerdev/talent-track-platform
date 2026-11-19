@@ -162,8 +162,8 @@ export async function assignCurriculum(studentId: string, curriculumId: string):
 
 /**
  * Removes a curriculum from a student. Refused while an attempt in it is in progress. When the
- * student has attempts in it, `confirm` must be true: then only the assignment (and unused grants
- * for its exam sets) are deleted; attempts and results stay for the record. The check and the
+ * student has attempts in it, `confirm` must be true: then only the assignment (with its extra
+ * attempts) is deleted; attempts and results stay for the record. The check and the
  * deletes run in one transaction in public.remove_curriculum (0016), which locks the assignment.
  */
 export async function removeCurriculum(
@@ -243,7 +243,7 @@ export async function reorderCurriculums(studentId: string, curriculumIds: strin
 
 /**
  * Deletes a student and everything stored about them: the auth user (Auth admin API, service
- * role), and through the foreign-key cascades the profile, assignments, grants, attempts,
+ * role), and through the foreign-key cascades the profile, assignments, attempts,
  * answers and scoring snapshot. This is the DPDP erasure path. Staff must type the student's
  * username to confirm. Refused while the student has an attempt in progress (expired ones are
  * closed first). Staff accounts are not deleted here.
