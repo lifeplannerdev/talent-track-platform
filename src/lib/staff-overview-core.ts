@@ -1,8 +1,9 @@
-// Pure logic of the staff overview (dashboard, Blocked page, Give attempts page). No database
+// Pure logic of the staff overview (dashboard, Blocked page, Extra attempts page). No database
 // access here, so it is unit-tested on fixed input; src/lib/staff-overview.ts loads the rows.
 //
-// "Attempts used" matches release_attempt (migration 0008): the student's attempts for the
-// exam set with status 'submitted' or 'released'.
+// Spec change 1: the allowance is per curriculum and student (curriculums.max_attempts +
+// assignments.extra_attempts); "attempts used" matches record_score (migration 0020): the
+// student's attempts over all exam sets of the curriculum with status 'submitted' or 'released'.
 
 type Person = { full_name: string | null; username: string; batch: string | null } | null;
 const nameOf = (p: Person) => p?.full_name || p?.username || "Unknown";
@@ -11,10 +12,12 @@ export type AssignmentRow = {
   student_id: string;
   curriculum_id: string;
   status: "open" | "passed" | "blocked";
+  extra_attempts: number;
+  allow_repeats: boolean;
   student: Person;
-  curriculums: { name: string } | null;
+  curriculums: { name: string; max_attempts: number } | null;
 };
-export type ExamSetRow = { id: string; name: string; curriculum_id: string; max_attempts: number; created_at: string };
+export type ExamSetRow = { id: string; name: string; curriculum_id: string; created_at: string };
 export type AttemptRow = {
   id: string;
   student_id: string;
@@ -24,14 +27,11 @@ export type AttemptRow = {
   max_points: number | null;
   submitted_at: string | null;
 };
-/** Unused grants only. */
-export type GrantRow = { student_id: string; exam_set_id: string };
 
 export type OverviewInput = {
   assignments: AssignmentRow[];
   examSets: ExamSetRow[];
   attempts: AttemptRow[];
-  grants: GrantRow[];
 };
 
 export type BlockedStudent = {
@@ -40,80 +40,85 @@ export type BlockedStudent = {
   batch: string | null;
   curriculumId: string;
   curriculumName: string;
-  /** The exam set of the student's latest scored attempt in the curriculum (else its first set). */
-  examSetId: string | null;
-  examSetName: string;
   attemptsUsed: number;
-  maxAttempts: number | null;
+  /** curriculums.max_attempts + extra_attempts. */
+  allowance: number;
+  /** Exam sets of the curriculum the student has not had yet. */
+  examSetsLeft: number;
+  /** The exam set of the student's latest scored attempt in the curriculum ("" if none). */
+  lastExamSetName: string;
   lastPoints: number | null;
   lastMaxPoints: number | null;
   lastAttemptAt: string | null;
 };
 
-export type GrantableRow = {
+export type ExtraAttemptRow = {
   studentId: string;
   studentName: string;
   batch: string | null;
+  curriculumId: string;
   curriculumName: string;
-  examSetId: string;
-  examSetName: string;
+  /** blocked: needs extra attempts; no_exam_sets_left: has attempts but every exam set was used. */
+  reason: "blocked" | "no_exam_sets_left";
   attemptsUsed: number;
-  maxAttempts: number;
+  allowance: number;
+  examSetsLeft: number;
+  allowRepeats: boolean;
 };
 
 export type Dashboard = {
   /** Every student profile. */
   studentTotal: number;
-  /** Distinct students with at least one assignment in that status. */
+  /** Distinct students with at least one curriculum in that (effective) status. */
   byStatus: { open: number; passed: number; blocked: number };
-  /** Submitted attempts not released yet (the review list). */
-  awaitingReview: number;
   /** Distinct blocked students (same as byStatus.blocked). */
   blockedTotal: number;
   /** Up to five blocked students, once each (their most recently failed blocked curriculum). */
   blockedPreview: BlockedStudent[];
+  /** Distinct students with attempts left in a curriculum but no unused exam set. */
+  examSetsShort: number;
 };
 
-const key = (a: string, b: string) => `${a}:${b}`;
-
-function attemptsUsedBy(attempts: AttemptRow[]) {
-  const used = new Map<string, number>();
-  for (const a of attempts) {
-    if (a.status === "submitted" || a.status === "released") {
-      const k = key(a.student_id, a.exam_set_id);
-      used.set(k, (used.get(k) ?? 0) + 1);
-    }
-  }
-  return used;
+/** Per assignment: allowance, attempts used, unused exam sets, busy, effective status, last score. */
+function facts({ examSets, attempts }: OverviewInput, a: AssignmentRow) {
+  const sets = examSets.filter((s) => s.curriculum_id === a.curriculum_id);
+  const setIds = new Set(sets.map((s) => s.id));
+  const mine = attempts.filter((t) => t.student_id === a.student_id && setIds.has(t.exam_set_id));
+  const used = mine.filter((t) => t.status === "submitted" || t.status === "released").length;
+  const allowance = (a.curriculums?.max_attempts ?? 0) + a.extra_attempts;
+  const usedSets = new Set(mine.map((t) => t.exam_set_id));
+  const examSetsLeft = sets.filter((s) => !usedSets.has(s.id)).length;
+  // In progress, or submitted and still being scored: the outcome is not known yet.
+  const busy = mine.some((t) => t.status === "in_progress" || (t.status === "submitted" && t.points === null));
+  const status: AssignmentRow["status"] =
+    a.status === "open" && used >= allowance && !busy ? "blocked" : a.status;
+  const last = mine
+    .filter((t) => t.points !== null)
+    .sort((x, y) => (y.submitted_at ?? "").localeCompare(x.submitted_at ?? ""))[0];
+  return { used, allowance, examSetsLeft, busy, status, last, sets };
 }
 
-/** Every blocked assignment, most recently failed first, then by name. */
-export function blockedFrom({ assignments, examSets, attempts }: OverviewInput): BlockedStudent[] {
-  const used = attemptsUsedBy(attempts);
-  const rows = assignments
-    .filter((a) => a.status === "blocked")
-    .map((a): BlockedStudent => {
-      const sets = examSets.filter((s) => s.curriculum_id === a.curriculum_id);
-      const setIds = new Set(sets.map((s) => s.id));
-      const last = attempts
-        .filter((t) => t.student_id === a.student_id && setIds.has(t.exam_set_id) && t.points !== null)
-        .sort((x, y) => (y.submitted_at ?? "").localeCompare(x.submitted_at ?? ""))[0];
-      const set = sets.find((s) => s.id === last?.exam_set_id) ?? sets[0];
-      return {
-        studentId: a.student_id,
-        studentName: nameOf(a.student),
-        batch: a.student?.batch ?? null,
-        curriculumId: a.curriculum_id,
-        curriculumName: a.curriculums?.name ?? "",
-        examSetId: set?.id ?? null,
-        examSetName: set?.name ?? "",
-        attemptsUsed: set ? (used.get(key(a.student_id, set.id)) ?? 0) : 0,
-        maxAttempts: set?.max_attempts ?? null,
-        lastPoints: last?.points ?? null,
-        lastMaxPoints: last?.max_points ?? null,
-        lastAttemptAt: last?.submitted_at ?? null,
-      };
+/** Blocked assignments (status 'blocked', or open with no attempts left), latest failure first, then by name. */
+export function blockedFrom(input: OverviewInput): BlockedStudent[] {
+  const rows: BlockedStudent[] = [];
+  for (const a of input.assignments) {
+    const f = facts(input, a);
+    if (f.status !== "blocked") continue;
+    rows.push({
+      studentId: a.student_id,
+      studentName: nameOf(a.student),
+      batch: a.student?.batch ?? null,
+      curriculumId: a.curriculum_id,
+      curriculumName: a.curriculums?.name ?? "",
+      attemptsUsed: f.used,
+      allowance: f.allowance,
+      examSetsLeft: f.examSetsLeft,
+      lastExamSetName: f.sets.find((s) => s.id === f.last?.exam_set_id)?.name ?? "",
+      lastPoints: f.last?.points ?? null,
+      lastMaxPoints: f.last?.max_points ?? null,
+      lastAttemptAt: f.last?.submitted_at ?? null,
     });
+  }
   return rows.sort(
     (x, y) =>
       (y.lastAttemptAt ?? "").localeCompare(x.lastAttemptAt ?? "") || x.studentName.localeCompare(y.studentName),
@@ -121,46 +126,41 @@ export function blockedFrom({ assignments, examSets, attempts }: OverviewInput):
 }
 
 /**
- * Students who can be given an attempt now, one row per open assignment and exam set. A whole
- * curriculum is hidden while the student has any attempt in it in progress or held (submitted,
- * not released), matching grant_attempt's per-curriculum guards; a set with an unused grant is
- * hidden too.
+ * Students who need staff for their next attempt, one row per curriculum: blocked (see
+ * blockedFrom), or open with attempts left but no unused exam set and repeats not allowed (they
+ * see "contact your trainer"). Ordered by student name, then curriculum name.
  */
-export function grantableFrom({ assignments, examSets, attempts, grants }: OverviewInput): GrantableRow[] {
-  const used = attemptsUsedBy(attempts);
-  const curriculumOf = new Map(examSets.map((s) => [s.id, s.curriculum_id]));
-  const granted = new Set(grants.map((g) => key(g.student_id, g.exam_set_id)));
-  const busy = new Set(
-    attempts
-      .filter((a) => a.status === "in_progress" || a.status === "submitted")
-      .map((a) => key(a.student_id, curriculumOf.get(a.exam_set_id) ?? "")),
-  );
-  const rows: GrantableRow[] = [];
-  for (const a of assignments) {
-    if (a.status !== "open" || busy.has(key(a.student_id, a.curriculum_id))) continue;
-    for (const s of examSets) {
-      if (s.curriculum_id !== a.curriculum_id) continue;
-      const k = key(a.student_id, s.id);
-      if (granted.has(k)) continue;
-      rows.push({
-        studentId: a.student_id,
-        studentName: nameOf(a.student),
-        batch: a.student?.batch ?? null,
-        curriculumName: a.curriculums?.name ?? "",
-        examSetId: s.id,
-        examSetName: s.name,
-        attemptsUsed: used.get(k) ?? 0,
-        maxAttempts: s.max_attempts,
-      });
+export function extraAttemptCandidatesFrom(input: OverviewInput): ExtraAttemptRow[] {
+  const rows: ExtraAttemptRow[] = [];
+  for (const a of input.assignments) {
+    const f = facts(input, a);
+    let reason: ExtraAttemptRow["reason"] | null = null;
+    if (f.status === "blocked") reason = "blocked";
+    else if (f.status === "open" && !f.busy && f.used < f.allowance && f.examSetsLeft === 0 && !a.allow_repeats) {
+      reason = "no_exam_sets_left";
     }
+    if (!reason) continue;
+    rows.push({
+      studentId: a.student_id,
+      studentName: nameOf(a.student),
+      batch: a.student?.batch ?? null,
+      curriculumId: a.curriculum_id,
+      curriculumName: a.curriculums?.name ?? "",
+      reason,
+      attemptsUsed: f.used,
+      allowance: f.allowance,
+      examSetsLeft: f.examSetsLeft,
+      allowRepeats: a.allow_repeats,
+    });
   }
-  return rows.sort((x, y) => x.studentName.localeCompare(y.studentName) || x.examSetName.localeCompare(y.examSetName));
+  return rows.sort((x, y) => x.studentName.localeCompare(y.studentName) || x.curriculumName.localeCompare(y.curriculumName));
 }
 
 export function summarizeDashboard(input: OverviewInput & { studentTotal: number }): Dashboard {
   const byStatus = { open: 0, passed: 0, blocked: 0 };
+  const effective = input.assignments.map((a) => ({ student: a.student_id, status: facts(input, a).status }));
   for (const status of ["open", "passed", "blocked"] as const) {
-    byStatus[status] = new Set(input.assignments.filter((a) => a.status === status).map((a) => a.student_id)).size;
+    byStatus[status] = new Set(effective.filter((a) => a.status === status).map((a) => a.student)).size;
   }
   const seen = new Set<string>();
   const preview: BlockedStudent[] = [];
@@ -170,11 +170,12 @@ export function summarizeDashboard(input: OverviewInput & { studentTotal: number
     preview.push(b);
     if (preview.length === 5) break;
   }
+  const short = extraAttemptCandidatesFrom(input).filter((r) => r.reason === "no_exam_sets_left");
   return {
     studentTotal: input.studentTotal,
     byStatus,
-    awaitingReview: input.attempts.filter((a) => a.status === "submitted").length,
     blockedTotal: byStatus.blocked,
     blockedPreview: preview,
+    examSetsShort: new Set(short.map((r) => r.studentId)).size,
   };
 }

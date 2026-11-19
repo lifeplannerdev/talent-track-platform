@@ -35,11 +35,11 @@ function plural(n: number, one: string, many: string) {
 }
 
 /** One orientation sentence from the counts on this page. */
-function todaySummary(awaiting: number, blocked: number): string {
-  if (awaiting === 0 && blocked === 0) return "Nothing is waiting for you right now.";
+function todaySummary(short: number, blocked: number): string {
+  if (short === 0 && blocked === 0) return "Nothing is waiting for you right now.";
   const parts: string[] = [];
-  if (awaiting > 0) parts.push(`${plural(awaiting, "result is", "results are")} waiting for release`);
   if (blocked > 0) parts.push(`${plural(blocked, "student is", "students are")} blocked`);
+  if (short > 0) parts.push(`${plural(short, "student has", "students have")} no exam set left`);
   return `${parts.join(" and ")}.`;
 }
 
@@ -57,7 +57,7 @@ async function DashboardContent() {
             <span className="font-semibold text-foreground" data-testid="greeting">
               {hello}.
             </span>{" "}
-            {todaySummary(d.awaitingReview, d.blockedTotal)}
+            {todaySummary(d.examSetsShort, d.blockedTotal)}
           </>
         }
       />
@@ -65,22 +65,22 @@ async function DashboardContent() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardDescription>Awaiting review</CardDescription>
-            <CardTitle className={bigNumber} data-testid="awaiting-review">
-              {d.awaitingReview}
+            <CardDescription>No exam set left</CardDescription>
+            <CardTitle className={bigNumber} data-testid="exam-sets-short">
+              {d.examSetsShort}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            {d.awaitingReview === 0
-              ? "No submitted exams are waiting for release."
-              : "Submitted exams with held results wait for you to check and release them."}
+            {d.examSetsShort === 0
+              ? "Every student with attempts left has an exam set they have not had yet."
+              : "These students have attempts left but have had every exam set of a curriculum. Allow repeats or add exam sets."}
           </CardContent>
           <CardFooter>
             <Link
-              href="/staff/review"
-              className={buttonVariants({ variant: d.awaitingReview > 0 ? "default" : "outline" })}
+              href="/staff/grants"
+              className={buttonVariants({ variant: d.examSetsShort > 0 ? "default" : "outline" })}
             >
-              Review and release results
+              Extra attempts
             </Link>
           </CardFooter>
         </Card>
@@ -134,14 +134,14 @@ async function DashboardContent() {
 
         <Card className="md:col-span-2 xl:col-span-1">
           <CardHeader>
-            <CardTitle>Give attempts</CardTitle>
+            <CardTitle>Attempts</CardTitle>
             <CardDescription>
-              Students only get an exam attempt when you give one: a first attempt, a retake or after a block.
+              Every submitted exam with its score, shown to the student at once. Read only.
             </CardDescription>
           </CardHeader>
           <CardFooter>
-            <Link href="/staff/grants" className={buttonVariants({ variant: "outline" })}>
-              Give attempts
+            <Link href="/staff/review" className={buttonVariants({ variant: "outline" })}>
+              View attempts
             </Link>
           </CardFooter>
         </Card>

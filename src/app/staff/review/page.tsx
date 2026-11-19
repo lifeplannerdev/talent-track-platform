@@ -4,7 +4,7 @@ import { InboxIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDateTime } from "@/lib/format";
-import { listSubmittedAttempts } from "@/lib/review";
+import { listResults } from "@/lib/review";
 import { PageHeader } from "@/components/app/page-header";
 import { ResultScore } from "@/components/app/result-score";
 import { linkClass, staffMain } from "@/components/app/styles";
@@ -12,11 +12,11 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export const metadata: Metadata = { title: "Review | TalentTrack" };
+export const metadata: Metadata = { title: "Attempts | TalentTrack" };
 
 async function ReviewList() {
   await requireRole("staff");
-  const attempts = await listSubmittedAttempts();
+  const { rows: attempts } = await listResults({});
 
   if (attempts.length === 0) {
     return (
@@ -25,8 +25,8 @@ async function ReviewList() {
           <EmptyMedia variant="icon">
             <InboxIcon aria-hidden="true" />
           </EmptyMedia>
-          <EmptyTitle>Nothing to review</EmptyTitle>
-          <EmptyDescription>Submitted exams with held results appear here until you release them.</EmptyDescription>
+          <EmptyTitle>No attempts yet</EmptyTitle>
+          <EmptyDescription>Submitted exams appear here with their score.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -67,7 +67,7 @@ async function ReviewList() {
 
 function ListSkeleton() {
   return (
-    <div role="status" aria-label="Loading submitted exams" className="flex flex-col gap-2">
+    <div role="status" aria-label="Loading attempts" className="flex flex-col gap-2">
       <Skeleton className="h-10 w-full" />
       <Skeleton className="h-10 w-full" />
       <Skeleton className="h-10 w-full" />
@@ -79,8 +79,8 @@ export default function ReviewPage() {
   return (
     <main className={staffMain}>
       <PageHeader
-        title="Results awaiting release"
-        description="Scores are calculated automatically and cannot be changed. Open an exam to check it, then release the result to the student."
+        title="Attempts"
+        description="Every submitted exam, read only. Scores are calculated automatically, shown to the student at once and cannot be changed. Open an exam to see the evaluation."
       />
       <Suspense fallback={<ListSkeleton />}>
         <ReviewList />

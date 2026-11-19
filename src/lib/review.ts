@@ -33,7 +33,6 @@ type AttemptRow = {
   passed: boolean | null;
   pass_mark_percent: number | null;
   student: Person;
-  releaser?: Person;
   exam_sets: { name: string; curriculums: { name: string } | null } | null;
 };
 
@@ -54,24 +53,7 @@ function toItem(a: AttemptRow): ReviewListItem {
   };
 }
 
-/** Submitted attempts that are not released yet, newest first. */
-export async function listSubmittedAttempts(): Promise<ReviewListItem[]> {
-  const supabase = await createClient();
-  const rows = await fetchAll(
-    (from, to) =>
-      supabase
-        .from("attempts")
-        .select(ATTEMPT_FIELDS)
-        .eq("status", "submitted")
-        .order("submitted_at", { ascending: false })
-        .order("id")
-        .range(from, to)
-        .overrideTypes<AttemptRow[], { merge: false }>(),
-    "Could not read submitted attempts",
-  );
-  return rows.map(toItem);
-}
-
+/** 'released' = scored (marks are released the moment they are scored); 'submitted' = still being scored. */
 export type ResultStatus = "submitted" | "released";
 export type ResultFilters = { batch?: string; curriculumId?: string; status?: string };
 export type ResultListItem = ReviewListItem & { status: ResultStatus; batch: string | null; releasedAt: string | null };
@@ -82,8 +64,8 @@ type ResultRow = Omit<AttemptRow, "student" | "exam_sets"> & {
 };
 
 /**
- * Every scored attempt (held = 'submitted', or 'released'), newest first, for the staff results
- * list, with the filter options. Filters: batch (exact), curriculum id, status. An unknown status
+ * Every finished attempt ('released' = scored, or 'submitted' = still being scored), newest
+ * first, for the read-only staff attempts and results lists, with the filter options. Filters: batch (exact), curriculum id, status. An unknown status
  * is ignored; a curriculum id that is not a uuid matches nothing.
  */
 export async function listResults(
@@ -159,7 +141,6 @@ export type ReviewQuestion = {
 export type AttemptReview = ReviewListItem & {
   status: AttemptRow["status"];
   releasedAt: string | null;
-  releasedBy: string | null;
   /** The headline result ("92%"), or null when not scored yet. */
   percentLabel: string | null;
   /** The pass mark snapshot taken when the attempt started (null only for legacy attempts). */
@@ -173,7 +154,7 @@ export async function getAttemptReview(attemptId: string): Promise<AttemptReview
   const supabase = await createClient();
   const { data: attempt, error } = await supabase
     .from("attempts")
-    .select(`${ATTEMPT_FIELDS}, releaser:profiles!attempts_released_by_fkey(full_name, username)`)
+    .select(ATTEMPT_FIELDS)
     .eq("id", attemptId)
     .maybeSingle<AttemptRow>();
   if (error) throw new Error(`Could not read attempt: ${error.message}`);
@@ -215,7 +196,6 @@ export async function getAttemptReview(attemptId: string): Promise<AttemptReview
     ...toItem(attempt),
     status: attempt.status,
     releasedAt: attempt.released_at,
-    releasedBy: attempt.releaser ? nameOf(attempt.releaser) : null,
     percentLabel: attempt.points === null || attempt.max_points === null ? null : formatPercent(attempt.points, attempt.max_points),
     passMarkPercent: attempt.pass_mark_percent,
     questions: paper.map((r) => {

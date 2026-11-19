@@ -41,7 +41,7 @@ async function BlockedList() {
       <TableHeader>
         <TableRow>
           <TableHead>Student</TableHead>
-          <TableHead>Curriculum and exam</TableHead>
+          <TableHead>Curriculum and last exam</TableHead>
           <TableHead className="text-right">Attempts used</TableHead>
           <TableHead className="text-right">Last score</TableHead>
           <TableHead>Actions</TableHead>
@@ -56,10 +56,10 @@ async function BlockedList() {
             </TableCell>
             <TableCell>
               <span className="block">{r.curriculumName}</span>
-              <span className="block text-muted-foreground">{r.examSetName || "No exam set"}</span>
+              <span className="block text-muted-foreground">{r.lastExamSetName || "No attempt scored"}</span>
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {r.maxAttempts === null ? r.attemptsUsed : `${r.attemptsUsed} of ${r.maxAttempts}`}
+              {r.attemptsUsed} of {r.allowance}
             </TableCell>
             <TableCell className="text-right tabular-nums">
               {r.lastPoints === null || r.lastMaxPoints === null ? (
@@ -76,16 +76,15 @@ async function BlockedList() {
             </TableCell>
             <TableCell>
               <div className="flex flex-col items-start gap-2">
-                {r.examSetId ? (
-                  <GrantButton
-                    studentId={r.studentId}
-                    examSetId={r.examSetId}
-                    studentName={r.studentName}
-                    examSetName={r.examSetName}
-                    label="Grant another attempt"
-                    note="This lifts the block."
-                  />
-                ) : null}
+                <GrantButton
+                  studentId={r.studentId}
+                  curriculumId={r.curriculumId}
+                  studentName={r.studentName}
+                  curriculumName={r.curriculumName}
+                  allowRepeats={r.examSetsLeft === 0}
+                  label={r.examSetsLeft === 0 ? "Give an extra attempt, allow repeats" : "Give an extra attempt"}
+                  note="This lifts the block."
+                />
                 {/* The student management page (/staff/students/[id]) is built in Task 8. */}
                 <Link href={`/staff/students/${r.studentId}`} className={linkClass}>
                   Reassign curriculums
@@ -114,7 +113,7 @@ export default function BlockedPage() {
     <main className={staffMain}>
       <PageHeader
         title="Blocked students"
-        description="These students failed their last allowed attempt. Give another attempt (only with questions they have not seen) or reassign their curriculums."
+        description="These students failed their last allowed attempt. Give an extra attempt (which lifts the block) or reassign their curriculums."
       />
       <GrantStatusProvider>
         <Suspense fallback={<ListSkeleton />}>

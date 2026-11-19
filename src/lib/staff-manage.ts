@@ -71,10 +71,17 @@ export type StudentDetail = {
     attemptsUsed: number;
     /** Every attempt in this curriculum, including one in progress. */
     attemptsTotal: number;
-    examSets: { id: string; name: string; maxAttempts: number }[];
+    /** Allowance: the curriculum's attempts per student plus this student's extra attempts. */
+    maxAttempts: number;
+    extraAttempts: number;
+    allowance: number;
+    allowRepeats: boolean;
+    /** Exam sets of the curriculum the student has not had yet. */
+    examSetsLeft: number;
+    examSets: { id: string; name: string }[];
   }[];
   unassigned: { id: string; name: string }[];
-  /** Every scored attempt (held or released), newest first, with the stored score. */
+  /** Every finished attempt (released = scored, submitted = still being scored), newest first, with the stored score. */
   results: {
     id: string;
     status: "submitted" | "released";
@@ -100,8 +107,8 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
   if (!profile) return null;
 
   const [{ data: assignments, error: aError }, { data: curriculums, error: cError }, { data: attempts, error: tError }] = await Promise.all([
-    db.from("assignments").select("curriculum_id, position, status").eq("student_id", id).order("position"),
-    db.from("curriculums").select("id, name, exam_sets(id, name, max_attempts, created_at)").order("name"),
+    db.from("assignments").select("curriculum_id, position, status, extra_attempts, allow_repeats").eq("student_id", id).order("position"),
+    db.from("curriculums").select("id, name, max_attempts, exam_sets(id, name, created_at)").order("name"),
     db
       .from("attempts")
       .select("id, exam_set_id, status, submitted_at, points, max_points, passed")
@@ -111,7 +118,7 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
   ]);
   if (aError || cError || tError) throw new Error("Could not read the student");
 
-  type C = { id: string; name: string; exam_sets: { id: string; name: string; max_attempts: number; created_at: string }[] };
+  type C = { id: string; name: string; max_attempts: number; exam_sets: { id: string; name: string; created_at: string }[] };
   const all = (curriculums ?? []) as C[];
   const curriculumOfSet = new Map<string, string>();
   const setInfo = new Map<string, { name: string; curriculumName: string }>();
@@ -131,6 +138,9 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
     assignments: (assignments ?? []).map((a) => {
       const c = all.find((x) => x.id === a.curriculum_id);
       const mine = (attempts ?? []).filter((t) => curriculumOfSet.get(t.exam_set_id) === a.curriculum_id);
+      const usedSets = new Set(mine.map((t) => t.exam_set_id as string));
+      const maxAttempts = c?.max_attempts ?? 0;
+      const extraAttempts = (a.extra_attempts as number) ?? 0;
       return {
         curriculumId: a.curriculum_id,
         name: c?.name ?? "",
@@ -138,9 +148,14 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
         status: a.status as AssignmentStatus,
         attemptsUsed: mine.filter((t) => t.status === "submitted" || t.status === "released").length,
         attemptsTotal: mine.length,
+        maxAttempts,
+        extraAttempts,
+        allowance: maxAttempts + extraAttempts,
+        allowRepeats: a.allow_repeats === true,
+        examSetsLeft: (c?.exam_sets ?? []).filter((s) => !usedSets.has(s.id)).length,
         examSets: [...(c?.exam_sets ?? [])]
           .sort((x, y) => x.created_at.localeCompare(y.created_at))
-          .map((s) => ({ id: s.id, name: s.name, maxAttempts: s.max_attempts })),
+          .map((s) => ({ id: s.id, name: s.name })),
       };
     }),
     unassigned: all.filter((c) => !assigned.has(c.id)).map((c) => ({ id: c.id, name: c.name })),
@@ -167,8 +182,6 @@ export type ExamSetSummary = {
   questionCount: number;
   timeLimitMin: number;
   passMarkPercent: number;
-  maxAttempts: number;
-  holdResult: boolean;
   topicMix: TopicMix;
   reminderIntervalMin: number;
   approvedCount: number;
@@ -176,13 +189,13 @@ export type ExamSetSummary = {
   approvedTopics: { topic: string }[];
 };
 
-/** Every curriculum with its exam sets and their question pool sizes. */
-export async function listCurriculumsWithSets(): Promise<{ id: string; name: string; examSets: ExamSetSummary[] }[]> {
+/** Every curriculum (with its attempts per student) with its exam sets and their question pool sizes. */
+export async function listCurriculumsWithSets(): Promise<{ id: string; name: string; maxAttempts: number; examSets: ExamSetSummary[] }[]> {
   const db = await createClient();
   const [{ data: curriculums, error }, questions] = await Promise.all([
     db
       .from("curriculums")
-      .select("id, name, exam_sets(id, name, question_count, time_limit_min, pass_mark_percent, max_attempts, hold_result, topic_mix, reminder_interval_min, created_at)")
+      .select("id, name, max_attempts, exam_sets(id, name, question_count, time_limit_min, pass_mark_percent, topic_mix, reminder_interval_min, created_at)")
       .order("name"),
     fetchAll(
       (from, to) => db.from("questions").select("exam_set_id, status, topic").order("id").range(from, to),
@@ -193,14 +206,13 @@ export async function listCurriculumsWithSets(): Promise<{ id: string; name: str
   type Row = {
     id: string;
     name: string;
+    max_attempts: number;
     exam_sets: {
       id: string;
       name: string;
       question_count: number;
       time_limit_min: number;
       pass_mark_percent: number;
-      max_attempts: number;
-      hold_result: boolean;
       topic_mix: TopicMix | null;
       reminder_interval_min: number;
       created_at: string;
@@ -209,6 +221,7 @@ export async function listCurriculumsWithSets(): Promise<{ id: string; name: str
   return ((curriculums ?? []) as Row[]).map((c) => ({
     id: c.id,
     name: c.name,
+    maxAttempts: c.max_attempts,
     examSets: [...c.exam_sets]
       .sort((x, y) => x.created_at.localeCompare(y.created_at))
       .map((s) => {
@@ -222,8 +235,6 @@ export async function listCurriculumsWithSets(): Promise<{ id: string; name: str
           questionCount: s.question_count,
           timeLimitMin: s.time_limit_min,
           passMarkPercent: s.pass_mark_percent,
-          maxAttempts: s.max_attempts,
-          holdResult: s.hold_result,
           topicMix: s.topic_mix ?? {},
           reminderIntervalMin: s.reminder_interval_min,
           approvedCount: approved.length,

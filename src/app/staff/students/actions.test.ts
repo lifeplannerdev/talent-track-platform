@@ -157,7 +157,7 @@ beforeAll(async () => {
   const set = await must(
     db
       .from("exam_sets")
-      .insert({ curriculum_id: tempCurriculum, name: "T8 set", question_count: 1, time_limit_min: 10, pass_mark_percent: 50, max_attempts: 2 })
+      .insert({ curriculum_id: tempCurriculum, name: "T8 set", question_count: 1, time_limit_min: 10, pass_mark_percent: 50 })
       .select("id")
       .single(),
   );
@@ -448,9 +448,7 @@ describe("curriculum assignments", () => {
     asStaff();
     const s = await makeUser("student");
     expect(await assignCurriculum(s.id, tempCurriculum)).toEqual({ ok: true });
-    const { error } = await db.from("attempt_grants").insert({ student_id: s.id, exam_set_id: tempSetId });
-    if (error) throw error;
-    const { attemptId } = await startAttempt(s.id, tempSetId);
+    const { attemptId } = await startAttempt(s.id, tempCurriculum);
     await db.rpc("close_attempt", { p_attempt_id: attemptId, p_only_if_expired: false });
 
     expect(await removeCurriculum(s.id, tempCurriculum)).toEqual({
@@ -471,31 +469,31 @@ describe("curriculum assignments", () => {
     expect(attempts).toHaveLength(1);
   });
 
-  it("refuses while an attempt is in progress, even with confirm; without attempts removes at once and drops unused grants", async () => {
+  it("refuses while an attempt is in progress, even with confirm; without attempts removes at once with its extra attempts", async () => {
     asStaff();
     const s = await makeUser("student");
     await assignCurriculum(s.id, tempCurriculum);
-    await db.from("attempt_grants").insert({ student_id: s.id, exam_set_id: tempSetId });
-    await startAttempt(s.id, tempSetId);
+    await startAttempt(s.id, tempCurriculum);
     expect(await removeCurriculum(s.id, tempCurriculum, { confirm: true })).toMatchObject({ ok: false, code: "in_progress" });
 
     const t = await makeUser("student");
     await assignCurriculum(t.id, tempCurriculum);
-    await db.from("attempt_grants").insert({ student_id: t.id, exam_set_id: tempSetId });
+    await db.from("assignments").update({ extra_attempts: 2 }).eq("student_id", t.id).eq("curriculum_id", tempCurriculum);
     expect(await removeCurriculum(t.id, tempCurriculum)).toEqual({ ok: true });
     expect(await assignmentsOf(t.id)).toEqual([]);
-    const grants = await must(db.from("attempt_grants").select("id").eq("student_id", t.id));
-    expect(grants).toEqual([]);
+    // The extra attempts lived on the assignment row: assigning again starts from the default.
+    await assignCurriculum(t.id, tempCurriculum);
+    const again = await must(db.from("assignments").select("extra_attempts").eq("student_id", t.id).single());
+    expect(again).toEqual({ extra_attempts: 0 });
   });
 });
 
 describe("deleteStudent (DPDP delete path)", () => {
-  it("needs the username typed exactly, then removes the account, profile, assignments, grants and attempts", async () => {
+  it("needs the username typed exactly, then removes the account, profile, assignments and attempts", async () => {
     asStaff();
     const s = await makeUser("student");
     await assignCurriculum(s.id, tempCurriculum);
-    await db.from("attempt_grants").insert({ student_id: s.id, exam_set_id: tempSetId });
-    const { attemptId } = await startAttempt(s.id, tempSetId);
+    const { attemptId } = await startAttempt(s.id, tempCurriculum);
     await db.rpc("close_attempt", { p_attempt_id: attemptId, p_only_if_expired: false });
 
     expect(await deleteStudent(s.id, { confirmUsername: "" })).toMatchObject({ ok: false, code: "confirm" });
@@ -515,8 +513,7 @@ describe("deleteStudent (DPDP delete path)", () => {
     asStaff();
     const s = await makeUser("student");
     await assignCurriculum(s.id, tempCurriculum);
-    await db.from("attempt_grants").insert({ student_id: s.id, exam_set_id: tempSetId });
-    await startAttempt(s.id, tempSetId);
+    await startAttempt(s.id, tempCurriculum);
     expect(await deleteStudent(s.id, { confirmUsername: s.username })).toMatchObject({ ok: false, code: "in_progress" });
     expect(await profileId(s.username)).toBe(s.id);
   });

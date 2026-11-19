@@ -62,7 +62,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
       <section aria-labelledby="curriculums-heading" className="flex flex-col gap-3">
         <SectionHeading id="curriculums-heading">Curriculums</SectionHeading>
         <p className="text-sm text-muted-foreground">
-          The student takes curriculums in this order: the first open one is next. Removing a curriculum keeps the
+          Each curriculum is a separate exam the student can take in any order. Removing a curriculum keeps the
           student&apos;s attempts and results.
         </p>
         <GrantStatusProvider>
@@ -107,22 +107,22 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                         {a.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{a.attemptsUsed}</TableCell>
+                    <TableCell className="text-right tabular-nums" data-testid="assignment-attempts">
+                      {a.attemptsUsed} of {a.allowance}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col items-start gap-2">
-                        {a.status !== "passed"
-                          ? a.examSets.map((e) => (
-                              <GrantButton
-                                key={e.id}
-                                studentId={s.id}
-                                examSetId={e.id}
-                                studentName={s.fullName}
-                                examSetName={e.name}
-                                label={a.examSets.length === 1 ? "Give attempt" : `Give attempt: ${e.name}`}
-                                note={a.status === "blocked" ? "This lifts the block." : undefined}
-                              />
-                            ))
-                          : null}
+                        {a.status !== "passed" ? (
+                          <GrantButton
+                            studentId={s.id}
+                            curriculumId={a.curriculumId}
+                            studentName={s.fullName}
+                            curriculumName={a.name}
+                            allowRepeats={a.examSetsLeft === 0}
+                            label={a.examSetsLeft === 0 ? "Give an extra attempt, allow repeats" : "Give an extra attempt"}
+                            note={a.status === "blocked" ? "This lifts the block." : undefined}
+                          />
+                        ) : null}
                         <RemoveCurriculumButton
                           studentId={s.id}
                           studentName={s.fullName}

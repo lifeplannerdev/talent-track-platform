@@ -14,7 +14,6 @@ import { factLabel, linkClass, staffMain } from "@/components/app/styles";
 import { ChevronLeftIcon } from "lucide-react";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ReleaseButton } from "./release-button";
 
 export const metadata: Metadata = { title: "Evaluation | TalentTrack" };
 
@@ -98,7 +97,6 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
   if (!review || review.status === "in_progress") notFound();
 
   const scored = review.points !== null && review.maxPoints !== null;
-  const summary = scored ? `${review.percentLabel} (${review.points} of ${review.maxPoints} points)` : "not scored yet";
   const released = review.status === "released";
   const percent = scored ? percentValue(review.points!, review.maxPoints!) : null;
   const topics = topicTotals(review.questions);
@@ -117,7 +115,7 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
           </CardTitle>
           <CardAction>
             <Badge variant={released ? "success" : "warning"} data-testid="review-status">
-              {released ? "Released" : "Awaiting release"}
+              {released ? "Shown to the student" : "Being calculated"}
             </Badge>
           </CardAction>
         </CardHeader>
@@ -132,25 +130,14 @@ async function Evaluation({ params }: { params: Promise<{ attemptId: string }> }
               </Fact>
               {released ? (
                 <div className="col-span-2 flex flex-col gap-0.5">
-                  <dt className={factLabel}>Released</dt>
-                  <dd className="text-sm">
-                    {formatDateTime(review.releasedAt)}
-                    {review.releasedBy ? ` by ${review.releasedBy}` : " automatically"}
-                  </dd>
+                  <dt className={factLabel}>Result shown to the student</dt>
+                  <dd className="text-sm">{formatDateTime(review.releasedAt)}</dd>
                 </div>
               ) : null}
             </dl>
-            <div className="flex flex-col items-start gap-2">
-              <ReleaseButton
-                attemptId={review.id}
-                canRelease={!released && scored}
-                disabledLabel={released ? "Released" : "Scoring pending"}
-                summary={summary}
-              />
-              {!released && scored ? (
-                <p className="text-xs text-muted-foreground">The student sees no score until you release it.</p>
-              ) : null}
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Read only. The score is calculated automatically when the exam is submitted and cannot be changed.
+            </p>
           </div>
 
           <section aria-label="Score" className="flex flex-col gap-3 rounded-lg bg-muted/60 p-4 ring-1 ring-border ring-inset">
