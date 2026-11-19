@@ -147,14 +147,21 @@ animation and transitions off (global rule in `globals.css`).
   tick at the pass mark) and "Bestehensgrenze / Pass mark 90%" (`result-pass-mark`), then the
   topic table: Thema / Topic, Prozent / Percent (semibold), Punkte / Points (muted), bar. The
   pass mark is the attempt's own snapshot (`attempts.pass_mark_percent`, taken at start), so it
-  always agrees with the stored outcome. Before release: no numbers at all (no percentage, no
-  points, no pass mark on that page). The staff evaluation view uses the same summary panel
+  always agrees with the stored outcome. Until the score exists (`result-status`, "being
+  calculated"): no numbers at all (no percentage, no points, no pass mark on that page). The staff evaluation view uses the same summary panel
   (`review-score` percent, `review-points`) plus per-topic totals from the scoring snapshot
   (`topicTotals`).
-- **Exam start card:** before the start it lists Questions, Time limit and Pass mark (target
-  icon, `pass-mark`); the rules list says "You pass with 90% of the points or more." Once an attempt
-  exists the pass mark fact is hidden (the attempt's snapshot applies). "Your results" rows show
-  the percentage large, "2 / 3 points" muted and the Passed / Not passed badge.
+- **Exam start cards** (spec change 1): one card per assigned curriculum (`curriculum-card`,
+  `data-kind`), a grid of one column on phones and two from 640 px when there are several, any
+  order. Header: curriculum name (h2) and a status badge (Ready outline, In progress outline,
+  Being calculated warning, Passed success, Blocked destructive, Not available warning). Ready shows
+  the attempts left as a Lexend figure (`attempts-left`, "2 attempts left") and "Each attempt uses a
+  different exam. Your result is shown as soon as you submit."; the card cannot show exam facts
+  because the server picks the exam set at Start. The action sits full width in the card footer
+  (`start-exam`, `resume-exam`, Check again, View result). Blocked and Not available say "contact
+  your trainer" (`contact-trainer`) and never promise a number; calculating shows `calculating`.
+  "Your results" is grouped per curriculum (`results-group`), percentage first, "2 / 3 points"
+  muted and the Passed / Not passed badge; running or uncalculated attempts show no numbers.
 - **No template chrome:** no eyebrow labels above headings, no "A · B · C" meta strings (use
   commas or separate facts), sentence case everywhere.
 - **Button links:** `buttonVariants()` returns merged classes (variant classes win over the base),

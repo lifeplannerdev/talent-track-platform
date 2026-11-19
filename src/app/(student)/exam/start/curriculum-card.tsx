@@ -19,7 +19,7 @@ const BADGE: Record<CurriculumCardKind, { label: string; variant: "outline" | "s
   unavailable: { label: "Not available", variant: "warning" },
 };
 
-const actionClass = "w-full sm:w-auto sm:min-w-44";
+const actionClass = "w-full";
 
 /** A line of state text with its icon (the icon is decoration; the words carry the meaning). */
 function Note({ icon: Icon, testId, children }: { icon: typeof LockIcon; testId?: string; children: React.ReactNode }) {
@@ -48,7 +48,7 @@ export function CurriculumCardView({ card, passedResult }: { card: CurriculumCar
     <Card className="h-full" data-testid="curriculum-card" data-kind={card.kind} aria-labelledby={headingId}>
       <CardHeader>
         <CardTitle className="min-w-0">
-          <h2 id={headingId} className="text-[1.25rem] leading-tight font-semibold break-words sm:text-[1.375rem]">
+          <h2 id={headingId} className="text-[1.25rem] leading-tight font-semibold text-balance break-words sm:text-[1.375rem]">
             {card.name}
           </h2>
         </CardTitle>

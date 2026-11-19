@@ -47,9 +47,7 @@ async function StartContent({ searchParams }: { searchParams: Promise<{ error?: 
           {greeting({ fullName: profile.full_name, username: profile.username }, new Date())}
         </h1>
         {cards.length ? (
-          <p className="text-base text-muted-foreground">
-            Each exam is separate, so take them in any order. Your result is shown as soon as you submit.
-          </p>
+          <p className="text-base text-muted-foreground">Each exam is separate, so take them in any order.</p>
         ) : null}
       </div>
       {errorText ? (
