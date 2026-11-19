@@ -455,6 +455,19 @@ describe("submitAttempt", () => {
     expect(await assignmentStatus(student, main)).toBe("open");
   });
 
+  it("never scores an attempt with no attempt questions: it stays submitted (being calculated), with no points", async () => {
+    const student = await makeStudent(main);
+    const { attemptId } = await startAttempt(student, main);
+    // A paper that lost its questions (data damage): scoring it would record 0 of 0 as a pass.
+    await ok(db.from("attempt_questions").delete().eq("attempt_id", attemptId));
+
+    const result = await submitAttempt(attemptId);
+    expect(result).toEqual({ status: "submitted", points: null, maxPoints: null, passed: null });
+    await sweepExpired();
+    expect(await attemptRow(attemptId)).toMatchObject({ status: "submitted", points: null, max_points: null, passed: null });
+    expect(await assignmentStatus(student, main)).toBe("open");
+  });
+
   it("a submit after the deadline scores only answers saved before the deadline", async () => {
     const student = await makeStudent(main);
     const { attemptId } = await startAttempt(student, main);

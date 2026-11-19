@@ -90,6 +90,13 @@ describe("ResultsByCurriculum", () => {
     expect(html).toContain('href="/results/33333333-3333-4333-8333-333333333333"');
   });
 
+  it("gives every row link (Resume, View result, View status) a 44 px touch target", () => {
+    const html = renderToStaticMarkup(<ResultsByCurriculum groups={groups} />);
+    const links = html.match(/<a [^>]*>/g) ?? [];
+    expect(links.length).toBe(4);
+    for (const a of links) expect(a).toMatch(/pointer-coarse:min-h-11/);
+  });
+
   it("shows running and uncalculated attempts without numbers", () => {
     const html = renderToStaticMarkup(<ResultsByCurriculum groups={[{ ...groups[0], rows: groups[0].rows.slice(0, 2) }]} />);
     const t = text(html);

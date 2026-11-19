@@ -96,6 +96,7 @@ describe("CurriculumCardView", () => {
   it("calculating: being calculated, check again link, no numbers", () => {
     const html = render({ kind: "calculating", attemptsLeft: 1, attemptId: "77777777-7777-4777-8777-777777777777" });
     expect(testIds(html)).toContain("calculating");
+    expect(html).toMatch(/<p[^>]*data-testid="calculating"[^>]*role="status"|<p[^>]*role="status"[^>]*data-testid="calculating"/);
     expect(text(html)).toContain("Your result is being calculated, please check again in a moment.");
     expect(html).toContain('href="/exam/start"');
     expect(text(html)).not.toMatch(/\d+(\.\d)?%|points/);

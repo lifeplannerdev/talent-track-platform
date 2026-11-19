@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { formatDateTime } from "@/lib/format";
 import { formatPercent } from "@/lib/percent";
-import { linkClass } from "@/components/app/styles";
+import { touchLinkClass } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
 import type { ResultGroup, ResultRow } from "./view";
 
@@ -12,7 +12,7 @@ function Row({ row, curriculum }: { row: ResultRow; curriculum: string }) {
         <span className="text-base text-muted-foreground">Exam running now</span>
         <span className="flex items-center gap-3">
           <Badge variant="outline">In progress</Badge>
-          <Link href={`/exam/${row.attemptId}`} className={linkClass}>
+          <Link href={`/exam/${row.attemptId}`} className={touchLinkClass}>
             Resume<span className="sr-only"> {curriculum}</span>
           </Link>
         </span>
@@ -43,7 +43,7 @@ function Row({ row, curriculum }: { row: ResultRow; curriculum: string }) {
         ) : (
           <Badge variant="warning">Being calculated</Badge>
         )}
-        <Link href={`/results/${r.id}`} className={linkClass}>
+        <Link href={`/results/${r.id}`} className={touchLinkClass}>
           {scored ? "View result" : "View status"}
           <span className="sr-only">
             {" "}

@@ -22,9 +22,20 @@ const BADGE: Record<CurriculumCardKind, { label: string; variant: "outline" | "s
 const actionClass = "w-full";
 
 /** A line of state text with its icon (the icon is decoration; the words carry the meaning). */
-function Note({ icon: Icon, testId, children }: { icon: typeof LockIcon; testId?: string; children: React.ReactNode }) {
+function Note({
+  icon: Icon,
+  testId,
+  live,
+  children,
+}: {
+  icon: typeof LockIcon;
+  testId?: string;
+  /** A polite live region (role="status") for a state that changes by itself. */
+  live?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <p data-testid={testId} className="flex items-start gap-2.5 text-base">
+    <p data-testid={testId} role={live ? "status" : undefined} className="flex items-start gap-2.5 text-base">
       <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
       <span>{children}</span>
     </p>
@@ -78,7 +89,7 @@ export function CurriculumCardView({ card, passedResult }: { card: CurriculumCar
         ) : null}
 
         {card.kind === "calculating" ? (
-          <Note icon={HourglassIcon} testId="calculating">
+          <Note icon={HourglassIcon} testId="calculating" live>
             Your result is being calculated, please check again in a moment.
           </Note>
         ) : null}

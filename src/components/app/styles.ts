@@ -10,5 +10,8 @@ export const studentMain = "mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 
 export const linkClass =
   "font-semibold text-primary underline decoration-primary/35 underline-offset-4 transition-colors hover:decoration-primary focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
+/** An inline link that stands alone in a row (Resume, View result): grows to 44 px on touch screens. */
+export const touchLinkClass = `${linkClass} items-center pointer-coarse:inline-flex pointer-coarse:min-h-11`;
+
 /** Small grey label above a value (facts on reports and summaries). Sentence case, never caps. */
 export const factLabel = "text-xs font-semibold text-muted-foreground print:text-black";

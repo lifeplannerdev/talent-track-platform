@@ -542,21 +542,25 @@ async function finalizeAttempt(attemptId: string): Promise<void> {
       status: Question["status"];
     };
   }[];
-
-  const chosen: Record<string, string | null> = {};
-  if (paper.length) {
-    const { data: saved, error: aError } = await db
-      .from("answers")
-      .select("attempt_question_id, option_id")
-      .in(
-        "attempt_question_id",
-        paper.map((r) => r.id),
-      )
-      .lte("saved_at", attempt.deadline_at);
-    if (aError) throw toError(aError, "Could not read answers");
-    const byAq = new Map((saved ?? []).map((a) => [a.attempt_question_id as string, a.option_id as string]));
-    for (const r of paper) chosen[r.questions.id] = byAq.get(r.id) ?? null;
+  // A paper without questions would score 0 of 0 (a "pass"): never score it. It stays submitted
+  // (shown as being calculated everywhere) until someone repairs the data.
+  if (paper.length === 0) {
+    console.error(`finalizeAttempt: attempt ${attemptId} has no questions; not scored`);
+    return;
   }
+
+  const { data: saved, error: aError } = await db
+    .from("answers")
+    .select("attempt_question_id, option_id")
+    .in(
+      "attempt_question_id",
+      paper.map((r) => r.id),
+    )
+    .lte("saved_at", attempt.deadline_at);
+  if (aError) throw toError(aError, "Could not read answers");
+  const byAq = new Map((saved ?? []).map((a) => [a.attempt_question_id as string, a.option_id as string]));
+  const chosen: Record<string, string | null> = {};
+  for (const r of paper) chosen[r.questions.id] = byAq.get(r.id) ?? null;
 
   const questions: Question[] = paper.map(({ questions: q }) => ({
     id: q.id,
