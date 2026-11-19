@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
 import { isUuid } from "@/lib/attempts";
-import { examSetSummary, examSetWarnings, formatTopicMix } from "@/lib/exam-set-fields";
+import { curriculumWarnings, examSetSummary, examSetWarnings, formatTopicMix } from "@/lib/exam-set-fields";
 import { listCurriculumsWithSets } from "@/lib/staff-manage";
 import { ChevronLeftIcon, FileStackIcon } from "lucide-react";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
@@ -15,7 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { linkClass } from "../../students/ui";
-import { CurriculumNameForm } from "../curriculum-name-form";
+import { CurriculumSettingsForm } from "./curriculum-settings-form";
 import { ExamSetForm, NEW_EXAM_SET } from "./exam-set-form";
 
 export const metadata: Metadata = { title: "Curriculum | TalentTrack" };
@@ -26,6 +26,10 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
   if (!isUuid(id)) notFound();
   const curriculum = (await listCurriculumsWithSets()).find((c) => c.id === id);
   if (!curriculum) notFound();
+  const setWarnings = curriculumWarnings({
+    maxAttempts: curriculum.maxAttempts,
+    examSets: curriculum.examSets.map((s) => ({ ...s, approvedTopics: s.approvedTopics.map((q) => q.topic) })),
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -33,11 +37,20 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
         <h2 className="text-2xl font-semibold" data-testid="curriculum-name">
           {curriculum.name}
         </h2>
-        <CurriculumNameForm id={curriculum.id} name={curriculum.name} />
+        <CurriculumSettingsForm id={curriculum.id} name={curriculum.name} maxAttempts={curriculum.maxAttempts} />
       </div>
 
       <section aria-labelledby="sets-heading" className="flex flex-col gap-4">
         <SectionHeading id="sets-heading">Exam sets</SectionHeading>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Each attempt gets a different exam set of this curriculum, chosen at random among the ones the student has not
+          had. An exam set can be given only when it has at least its questions per paper approved.
+        </p>
+        {setWarnings.length > 0 ? (
+          <Alert variant="warning" data-testid="curriculum-warning">
+            <AlertDescription>{setWarnings[0]}</AlertDescription>
+          </Alert>
+        ) : null}
         {curriculum.examSets.length === 0 ? (
           <Empty className="border" data-testid="exam-sets-empty">
             <EmptyHeader>
@@ -100,7 +113,7 @@ async function CurriculumDetail({ params }: { params: Promise<{ id: string }> })
       <Card>
         <CardHeader>
           <CardTitle>New exam set</CardTitle>
-          <CardDescription>Students get questions they have not seen before on every attempt.</CardDescription>
+          <CardDescription>Add as many exam sets as students have attempts, so every attempt gets a different one.</CardDescription>
         </CardHeader>
         <CardContent>
           <ExamSetForm curriculumId={curriculum.id} initial={NEW_EXAM_SET} />
@@ -127,7 +140,7 @@ export default function CurriculumPage(props: PageProps<"/staff/curriculums/[id]
           <ChevronLeftIcon aria-hidden="true" className="size-4" />
           All curriculums
         </Link>
-        <PageHeader title="Curriculum" description="Rename the curriculum, add exam sets and change their settings." />
+        <PageHeader title="Curriculum" description="Name and attempts per student, then the exam sets and their settings." />
       </div>
       <Suspense fallback={<DetailSkeleton />}>
         <CurriculumDetail params={props.params} />

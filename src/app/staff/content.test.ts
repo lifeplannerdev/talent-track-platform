@@ -142,6 +142,42 @@ describe("saveCurriculum", () => {
   });
 });
 
+describe("saveCurriculum attempts per student", () => {
+  it("creates with the default of 2, saves 1..20 on edit, refuses anything else, and a rename keeps it", async () => {
+    const created = await saveCurriculum({ name: `T8c attempts ${run}` });
+    if (!created.ok) throw new Error(created.message);
+    const maxOf = async () => (await must(db.from("curriculums").select("max_attempts").eq("id", created.id).single())).max_attempts;
+    expect(await maxOf()).toBe(2);
+
+    expect(await saveCurriculum({ id: created.id, name: `T8c attempts ${run}`, maxAttempts: 5 })).toEqual({ ok: true, id: created.id });
+    expect(await maxOf()).toBe(5);
+    expect(await saveCurriculum({ id: created.id, name: `T8c attempts ${run}`, maxAttempts: "20" })).toEqual({ ok: true, id: created.id });
+    expect(await maxOf()).toBe(20);
+
+    for (const bad of [0, 21, 2.5, "x"]) {
+      expect(await saveCurriculum({ id: created.id, name: `T8c attempts ${run}`, maxAttempts: bad })).toEqual({
+        ok: false,
+        message: "Enter a whole number from 1 to 20",
+        errors: { maxAttempts: "Enter a whole number from 1 to 20" },
+      });
+    }
+    expect(await maxOf()).toBe(20);
+
+    expect(await saveCurriculum({ id: created.id, name: `T8c attempts renamed ${run}` })).toEqual({ ok: true, id: created.id });
+    expect(await maxOf()).toBe(20);
+
+    const withThree = await saveCurriculum({ name: `T8c three ${run}`, maxAttempts: 3 });
+    if (!withThree.ok) throw new Error(withThree.message);
+    expect((await must(db.from("curriculums").select("max_attempts").eq("id", withThree.id).single())).max_attempts).toBe(3);
+  });
+
+  it("a student session cannot change attempts per student", async () => {
+    session.client = studentClient;
+    await expect(saveCurriculum({ id: curriculumId, name: "x", maxAttempts: 9 })).rejects.toThrow(/REDIRECT/);
+    expect((await must(db.from("curriculums").select("max_attempts").eq("id", curriculumId).single())).max_attempts).toBe(2);
+  });
+});
+
 describe("saveExamSet", () => {
   it("rejects a topic mix that does not add up to the question count and saves nothing", async () => {
     const name = `T8c bad mix ${run}`;
@@ -166,7 +202,7 @@ describe("saveExamSet", () => {
     expect(r.warnings).toEqual([
       'Topic "Pflege" has no approved questions in this exam set.',
       'Topic "Recht" has no approved questions in this exam set.',
-      "Only 0 approved questions; at least 9 (3 x 3) are recommended so retakes get unseen questions.",
+      "Only 0 approved questions, but each paper needs 3. Students cannot get this exam set until more are approved.",
     ]);
     const row = await must(db.from("exam_sets").select("*").eq("id", r.id).single());
     expect(row).toMatchObject({

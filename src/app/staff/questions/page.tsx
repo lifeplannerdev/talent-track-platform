@@ -129,7 +129,7 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
       <section aria-labelledby="pool-heading" className="flex flex-col gap-2">
         <SectionHeading id="pool-heading">Question pools</SectionHeading>
         <p className="text-sm text-muted-foreground">
-          Retakes only get questions the student has not seen, so keep at least 3 times the questions per paper approved.
+          Each attempt uses a different exam set, so an exam set needs at least its questions per paper approved before students can get it.
         </p>
         <Table data-testid="pool-table" className="min-w-[36rem]">
           <TableHeader>
@@ -156,7 +156,7 @@ async function QuestionsContent({ searchParams }: { searchParams: SearchParams }
                   <TableCell className="whitespace-normal">
                     {warning ? (
                       <span className="flex flex-col gap-1">
-                        <Badge variant="warning">Below {3 * s.questionCount}</Badge>
+                        <Badge variant="warning">Too few</Badge>
                         <span className="text-xs text-muted-foreground">{warning}</span>
                       </span>
                     ) : (

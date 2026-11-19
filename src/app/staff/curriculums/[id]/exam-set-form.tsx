@@ -249,7 +249,7 @@ export function ExamSetForm({ curriculumId, initial, onSaved }: { curriculumId: 
         <NumberField
           id={`${prefix}-count`}
           label="Questions per paper"
-          hint="Every attempt draws this many approved questions the student has not seen."
+          hint="Each paper draws this many approved questions of this exam set."
           value={values.questionCount}
           error={errors.questionCount}
           onChange={set("questionCount")}

@@ -3,27 +3,46 @@
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/require-role";
 import { fetchAll, isUuid } from "@/lib/attempts";
-import { examSetWarnings, validateExamSetFields, type ExamSetField, type ExamSetFields } from "@/lib/exam-set-fields";
+import {
+  examSetWarnings,
+  validateCurriculumFields,
+  validateExamSetFields,
+  type ExamSetField,
+  type ExamSetFields,
+} from "@/lib/exam-set-fields";
 import { createClient } from "@/lib/supabase/server";
 
 // Staff curriculum and exam set management. Each action authenticates itself with
 // requireRole('staff'); writes run under the staff session (RLS).
 
-export type SaveCurriculumResult = { ok: true; id: string } | { ok: false; message: string };
+export type SaveCurriculumResult =
+  | { ok: true; id: string }
+  | { ok: false; message: string; errors?: { maxAttempts?: string } };
 export type SaveExamSetResult =
   | { ok: true; id: string; warnings: string[] }
   | { ok: false; message?: string; errors?: Partial<Record<ExamSetField, string>> };
 
-export async function saveCurriculum(input: { id?: string; name: string }): Promise<SaveCurriculumResult> {
+/**
+ * Creates a curriculum or renames it; `maxAttempts` (attempts per student without approval,
+ * 1..20) is saved when given. A new curriculum without it gets the default (2); an edit without
+ * it keeps the current value.
+ */
+export async function saveCurriculum(input: { id?: string; name: string; maxAttempts?: number | string }): Promise<SaveCurriculumResult> {
   await requireRole("staff");
-  const name = typeof input?.name === "string" ? input.name.trim() : "";
-  if (!name) return { ok: false, message: "Enter a name" };
-  if (name.length > 120) return { ok: false, message: "Use at most 120 characters" };
+  if (typeof input !== "object" || input === null) return { ok: false, message: "Invalid request" };
+  const checked = validateCurriculumFields({ name: input.name, maxAttempts: input.maxAttempts });
+  if (!checked.ok) {
+    if (checked.errors.name) return { ok: false, message: checked.errors.name };
+    return { ok: false, message: checked.errors.maxAttempts!, errors: { maxAttempts: checked.errors.maxAttempts } };
+  }
+  const { name, maxAttempts } = checked.value;
+  const row: { name: string; max_attempts?: number } = { name };
+  if (input.maxAttempts !== undefined) row.max_attempts = maxAttempts;
   const client = await createClient();
 
   if (input.id !== undefined) {
     if (!isUuid(input.id)) return { ok: false, message: "Curriculum not found" };
-    const { data, error } = await client.from("curriculums").update({ name }).eq("id", input.id).select("id");
+    const { data, error } = await client.from("curriculums").update(row).eq("id", input.id).select("id");
     if (error) {
       if (error.code === "23505") return { ok: false, message: "A curriculum with this name already exists" };
       console.error("saveCurriculum failed", error.code);
@@ -34,7 +53,7 @@ export async function saveCurriculum(input: { id?: string; name: string }): Prom
     return { ok: true, id: input.id };
   }
 
-  const { data, error } = await client.from("curriculums").insert({ name }).select("id").single();
+  const { data, error } = await client.from("curriculums").insert(row).select("id").single();
   if (error) {
     if (error.code === "23505") return { ok: false, message: "A curriculum with this name already exists" };
     console.error("saveCurriculum failed", error.code);
@@ -49,12 +68,15 @@ function revalidateCurriculums(curriculumId?: string) {
   if (curriculumId) revalidatePath(`/staff/curriculums/${curriculumId}`);
   revalidatePath("/staff/questions");
   revalidatePath("/staff/students");
+  revalidatePath("/staff/grants");
+  revalidatePath("/staff/blocked");
+  revalidatePath("/staff");
 }
 
 /**
  * Creates an exam set in a curriculum, or updates the settings of an existing one (`id`; its
  * curriculum does not change). Returns field errors, or the id and warnings about the question
- * pool (topics of the mix without enough approved questions, pool below 3 x question count).
+ * pool (topics of the mix without enough approved questions, fewer approved questions than one paper).
  */
 export async function saveExamSet(input: ExamSetFields & { id?: string; curriculumId: string }): Promise<SaveExamSetResult> {
   await requireRole("staff");

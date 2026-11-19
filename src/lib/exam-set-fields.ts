@@ -1,6 +1,7 @@
 // Exam set settings: validation shared by the staff form and saveExamSet, plus the topic mix
 // text format used by the form ("topic: count", one per line) and the pool warnings.
 import { formatDuration, MAX_DURATION_MIN } from './duration'
+import { canFillPaper } from './exam-set-choice'
 
 export type TopicMix = Record<string, number>
 
@@ -162,11 +163,30 @@ export function formatTopicMix(mix: TopicMix | null | undefined): string {
     .join('\n')
 }
 
-/** Retakes draw only unseen questions, so the pool should hold at least three papers. */
+/**
+ * Each attempt uses a different exam set (spec change 1), so an exam set only needs enough
+ * approved questions for one paper; below that, start leaves it out (canFillPaper).
+ */
 export function poolWarning(approvedCount: number, questionCount: number): string | null {
-  const recommended = 3 * questionCount
-  if (approvedCount >= recommended) return null
-  return `Only ${approvedCount} approved question${approvedCount === 1 ? '' : 's'}; at least ${recommended} (3 x ${questionCount}) are recommended so retakes get unseen questions.`
+  if (approvedCount >= questionCount) return null
+  return `Only ${approvedCount} approved question${approvedCount === 1 ? '' : 's'}, but each paper needs ${questionCount}. Students cannot get this exam set until more are approved.`
+}
+
+/**
+ * Curriculum-level warning: every attempt uses a different exam set, so a curriculum with fewer
+ * exam sets that can fill a paper than its attempts per student runs students out of exam sets.
+ */
+export function curriculumWarnings(c: {
+  maxAttempts: number
+  examSets: readonly { questionCount: number; topicMix: TopicMix | null; approvedTopics: readonly string[] }[]
+}): string[] {
+  const usable = c.examSets.filter((s) => canFillPaper({ questionCount: s.questionCount, topicMix: s.topicMix }, s.approvedTopics)).length
+  if (usable >= c.maxAttempts) return []
+  const attempts = `${c.maxAttempts} attempt${c.maxAttempts === 1 ? '' : 's'}`
+  if (usable === 0) return [`No exam set can be given yet, but students get ${attempts}. Add an exam set with enough approved questions.`]
+  return [
+    `Only ${usable} exam set${usable === 1 ? '' : 's'} can be given, but students get ${attempts}. Each attempt uses a different exam set, so students run out after ${usable}. Add exam sets, or allow repeating exam sets for a student on the Extra attempts page.`,
+  ]
 }
 
 /** Warnings (not errors) for an exam set against its approved questions. */

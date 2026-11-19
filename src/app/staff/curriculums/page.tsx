@@ -4,12 +4,12 @@ import { LibraryIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
 import { formatDuration } from "@/lib/duration";
-import { poolWarning } from "@/lib/exam-set-fields";
+import { curriculumWarnings, poolWarning } from "@/lib/exam-set-fields";
 import { listCurriculumsWithSets } from "@/lib/staff-manage";
 import { PageHeader } from "@/components/app/page-header";
 import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { linkClass } from "../students/ui";
@@ -47,6 +47,17 @@ async function CurriculumList() {
                       {c.name}
                     </Link>
                   </CardTitle>
+                  <CardDescription className="flex flex-wrap items-center gap-2">
+                    <span data-testid="curriculum-attempts">
+                      {c.maxAttempts} attempt{c.maxAttempts === 1 ? "" : "s"} per student
+                    </span>
+                    {curriculumWarnings({
+                      maxAttempts: c.maxAttempts,
+                      examSets: c.examSets.map((s) => ({ ...s, approvedTopics: s.approvedTopics.map((q) => q.topic) })),
+                    }).length > 0 ? (
+                      <Badge variant="warning">Too few exam sets</Badge>
+                    ) : null}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {c.examSets.length === 0 ? (
@@ -58,7 +69,7 @@ async function CurriculumList() {
                           <span className="font-semibold">{s.name}</span>
                           <span className="flex items-center gap-2 text-muted-foreground tabular-nums">
                             {s.approvedCount} approved / {s.questionCount} per paper, {formatDuration(s.timeLimitMin)}
-                            {poolWarning(s.approvedCount, s.questionCount) ? <Badge variant="warning">Small pool</Badge> : null}
+                            {poolWarning(s.approvedCount, s.questionCount) ? <Badge variant="warning">Too few questions</Badge> : null}
                           </span>
                         </li>
                       ))}
@@ -88,7 +99,7 @@ export default function CurriculumsPage() {
     <main className={staffMain}>
       <PageHeader
         title="Curriculums"
-        description="A curriculum holds exam sets. Open one to add exam sets and change their settings."
+        description="A curriculum is one exam with its own attempts per student and several exam sets (each attempt uses a different one). Open one to change its settings and exam sets."
       />
       <Suspense fallback={<ListSkeleton />}>
         <CurriculumList />

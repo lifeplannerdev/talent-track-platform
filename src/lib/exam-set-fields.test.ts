@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  curriculumWarnings,
   DEFAULT_MAX_ATTEMPTS,
   examSetSummary,
   examSetWarnings,
@@ -198,16 +199,24 @@ describe('warnings', () => {
     ...Array.from({ length: 2 }, () => ({ topic: 'Recht' })),
   ]
 
-  it('warns when the pool is smaller than 3 x question count', () => {
-    expect(poolWarning(7, 3)).toBe('Only 7 approved questions; at least 9 (3 x 3) are recommended so retakes get unseen questions.')
-    expect(poolWarning(9, 3)).toBeNull()
+  it('warns only when there are fewer approved questions than one paper needs', () => {
+    expect(poolWarning(4, 5)).toBe('Only 4 approved questions, but each paper needs 5. Students cannot get this exam set until more are approved.')
+    expect(poolWarning(1, 2)).toBe('Only 1 approved question, but each paper needs 2. Students cannot get this exam set until more are approved.')
+    expect(poolWarning(5, 5)).toBeNull()
+    expect(poolWarning(7, 3)).toBeNull()
   })
 
   it('warns for topic mix topics with no approved question or too few', () => {
     const w = examSetWarnings({ questionCount: 3, topicMix: { Pflege: 1, Recht: 1, Ethik: 1 } }, approved)
     expect(w).toContain('Topic "Ethik" has no approved questions in this exam set.')
     expect(w).not.toContain(expect.stringContaining('"Pflege"'))
-    expect(w).toContain('Only 7 approved questions; at least 9 (3 x 3) are recommended so retakes get unseen questions.')
+    expect(w.join(' ')).not.toMatch(/3 x|retake/i)
+  })
+
+  it('warns about the pool when the exam set cannot fill a paper', () => {
+    expect(examSetWarnings({ questionCount: 8, topicMix: {} }, approved)).toEqual([
+      'Only 7 approved questions, but each paper needs 8. Students cannot get this exam set until more are approved.',
+    ])
   })
 
   it('warns when a topic has fewer approved questions than one paper needs', () => {
@@ -217,5 +226,31 @@ describe('warnings', () => {
 
   it('no warnings for a big enough pool without a mix', () => {
     expect(examSetWarnings({ questionCount: 2, topicMix: {} }, approved)).toEqual([])
+  })
+})
+
+describe('curriculumWarnings', () => {
+  const set = (approved: number, questionCount = 2, topicMix: Record<string, number> = {}) => ({
+    questionCount,
+    topicMix,
+    approvedTopics: Array.from({ length: approved }, () => 'Pflege'),
+  })
+
+  it('warns when fewer exam sets can fill a paper than students have attempts', () => {
+    expect(curriculumWarnings({ maxAttempts: 2, examSets: [set(5)] })).toEqual([
+      'Only 1 exam set can be given, but students get 2 attempts. Each attempt uses a different exam set, so students run out after 1. Add exam sets, or allow repeating exam sets for a student on the Extra attempts page.',
+    ])
+  })
+
+  it('does not count exam sets without enough approved questions (count or topic mix)', () => {
+    expect(curriculumWarnings({ maxAttempts: 2, examSets: [set(5), set(1), set(5, 2, { Recht: 2 })] })[0]).toMatch(/^Only 1 exam set can be given, but students get 2 attempts/)
+    expect(curriculumWarnings({ maxAttempts: 1, examSets: [] })).toEqual([
+      'No exam set can be given yet, but students get 1 attempt. Add an exam set with enough approved questions.',
+    ])
+  })
+
+  it('no warning when there are enough exam sets', () => {
+    expect(curriculumWarnings({ maxAttempts: 2, examSets: [set(5), set(2)] })).toEqual([])
+    expect(curriculumWarnings({ maxAttempts: 1, examSets: [set(5)] })).toEqual([])
   })
 })
