@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { drawPaper, InsufficientPoolError } from "./draw";
+import { canFillPaper, chooseExamSet } from "./exam-set-choice";
 import { scoreAttempt } from "./scoring";
 import type { Question, QuestionOption } from "./types";
 
@@ -9,33 +10,10 @@ import type { Question, QuestionOption } from "./types";
 // session's user id. The atomic writes live in SQL functions (migration 0004); the deadline
 // is always checked with database time.
 
-export type AttemptErrorCode =
-  | "no_grant"
-  | "in_progress"
-  | "not_found"
-  | "closed"
-  | "deadline_passed"
-  | "invalid_option"
-  | "question_already_seen"
-  | "exam_set_not_found"
-  | "invalid_draw"
-  | "not_open"
-  | "result_pending"
-  | "insufficient_pool";
+/** Refusals of saving and submitting (raised by save_answer / close_attempt). */
+export type AttemptErrorCode = "not_found" | "closed" | "deadline_passed" | "invalid_option";
 
-const SQL_CODES = new Set<string>([
-  "no_grant",
-  "in_progress",
-  "not_found",
-  "closed",
-  "deadline_passed",
-  "invalid_option",
-  "question_already_seen",
-  "exam_set_not_found",
-  "invalid_draw",
-  "not_open",
-  "result_pending",
-]);
+const SQL_CODES = new Set<string>(["not_found", "closed", "deadline_passed", "invalid_option"]);
 
 export class AttemptError extends Error {
   code: AttemptErrorCode;
@@ -45,6 +23,52 @@ export class AttemptError extends Error {
     this.code = code;
   }
 }
+
+/**
+ * Why a new attempt cannot start (startAttempt):
+ *   not_open          the curriculum is not assigned to the student
+ *   blocked / passed  the assignment status
+ *   in_progress       another start won a race (one exam at a time per curriculum)
+ *   calculating       an earlier attempt is submitted but not scored yet (start_attempt's
+ *                     scoring_pending; scoring it is retried on the next read or sweep)
+ *   no_attempts_left  attempts used >= curriculum max_attempts + extra_attempts
+ *   exam_set_used     the chosen exam set was taken meanwhile (repeats not allowed)
+ *   unavailable       no exam set can be given (all used without allow_repeats, none with
+ *                     enough approved questions, or too few unseen questions in the chosen one)
+ */
+export type StartErrorCode =
+  | "not_open"
+  | "blocked"
+  | "passed"
+  | "in_progress"
+  | "calculating"
+  | "no_attempts_left"
+  | "exam_set_used"
+  | "unavailable";
+
+export class StartError extends Error {
+  code: StartErrorCode;
+  constructor(code: StartErrorCode) {
+    super(code);
+    this.name = "StartError";
+    this.code = code;
+  }
+}
+
+/** start_attempt's refusals (migration 0020) as StartError codes. */
+const START_CODES: Record<string, StartErrorCode> = {
+  not_open: "not_open",
+  blocked: "blocked",
+  passed: "passed",
+  in_progress: "in_progress",
+  scoring_pending: "calculating",
+  no_attempts_left: "no_attempts_left",
+  exam_set_used: "exam_set_used",
+  // Staff changed the exam set or its questions between our read and the start.
+  exam_set_not_found: "unavailable",
+  invalid_draw: "unavailable",
+  question_already_seen: "unavailable",
+};
 
 type DbError = { message: string; code?: string };
 
@@ -133,116 +157,208 @@ async function expireIfDue(attemptId: string): Promise<boolean> {
   return data === true;
 }
 
-/**
- * Lazy expiry across the curriculum: closes every expired in-progress attempt of the student on
- * the other exam sets of this exam set's curriculum (start_attempt allows one exam at a time per
- * curriculum, migration 0015).
- */
-async function expireOthersInCurriculum(studentId: string, examSetId: string): Promise<void> {
+/** One of the student's attempts with its curriculum, as read after settleAttempts. */
+export type SettledAttempt = {
+  id: string;
+  examSetId: string;
+  curriculumId: string;
+  status: AttemptStatus;
+  startedAt: string;
+  submittedAt: string | null;
+  points: number | null;
+  maxPoints: number | null;
+  passed: boolean | null;
+};
+
+type AttemptListRow = {
+  id: string;
+  exam_set_id: string;
+  status: AttemptStatus;
+  started_at: string;
+  submitted_at: string | null;
+  points: number | null;
+  max_points: number | null;
+  passed: boolean | null;
+  exam_sets: { curriculum_id: string };
+};
+
+async function readAttempts(studentId: string, curriculumId?: string): Promise<SettledAttempt[]> {
   const db = createAdminClient();
-  const { data: set, error: setError } = await db.from("exam_sets").select("curriculum_id").eq("id", examSetId).maybeSingle();
-  if (setError) throw toError(setError, "Could not read exam set");
-  if (!set) return;
-  const { data: open, error } = await db
-    .from("attempts")
-    .select("exam_set_id, exam_sets!inner(curriculum_id)")
-    .eq("student_id", studentId)
-    .eq("status", "in_progress")
-    .neq("exam_set_id", examSetId)
-    .eq("exam_sets.curriculum_id", set.curriculum_id);
-  if (error) throw toError(error, "Could not read attempts");
-  for (const a of open ?? []) await findOpenAttemptId(studentId, a.exam_set_id as string);
+  const rows = await fetchAll((from, to) => {
+    let q = db
+      .from("attempts")
+      .select("id, exam_set_id, status, started_at, submitted_at, points, max_points, passed, exam_sets!inner(curriculum_id)")
+      .eq("student_id", studentId);
+    if (curriculumId) q = q.eq("exam_sets.curriculum_id", curriculumId);
+    return q.order("started_at").order("id").range(from, to).overrideTypes<AttemptListRow[], { merge: false }>();
+  }, "Could not read attempts");
+  return rows.map((a) => ({
+    id: a.id,
+    examSetId: a.exam_set_id,
+    curriculumId: a.exam_sets.curriculum_id,
+    status: a.status,
+    startedAt: a.started_at,
+    submittedAt: a.submitted_at,
+    points: a.points,
+    maxPoints: a.max_points,
+    passed: a.passed,
+  }));
 }
 
-export async function startAttempt(studentId: string, examSetId: string): Promise<{ attemptId: string }> {
-  const existing = await findOpenAttemptId(studentId, examSetId);
-  if (existing) return { attemptId: existing };
-  await expireOthersInCurriculum(studentId, examSetId);
+/**
+ * The student's attempts (in one curriculum, or all), oldest first, after healing them: an
+ * expired in-progress attempt is submitted and scored (lazy expiry), and a submitted attempt
+ * without a score (a submit interrupted between close and score) is scored now. A failure to
+ * score is logged and leaves the attempt 'submitted' (shown as "being calculated"); the next
+ * read or the daily sweep retries it. studentId must come from the session (or be staff-chosen).
+ */
+export async function settleAttempts(studentId: string, curriculumId?: string): Promise<SettledAttempt[]> {
+  const before = await readAttempts(studentId, curriculumId);
+  let changed = false;
+  for (const a of before) {
+    try {
+      if (a.status === "in_progress") changed = (await expireIfDue(a.id)) || changed;
+      else if (a.status === "submitted") {
+        await finalizeAttempt(a.id);
+        changed = true;
+      }
+    } catch (e) {
+      console.error(`settleAttempts: could not settle attempt ${a.id}`, e);
+    }
+  }
+  return changed ? readAttempts(studentId, curriculumId) : before;
+}
+
+/**
+ * Starts the student's next attempt in the curriculum, or returns the one in progress. The
+ * exam set is chosen here (chooseExamSet: a random set the student has not used, or with
+ * allow_repeats the least recently used one) among the sets whose approved questions can fill a
+ * paper; the paper is drawn with drawPaper (unseen questions first; seen ones only with
+ * allow_repeats). start_attempt (migration 0020) re-checks everything under the assignment lock.
+ * Throws StartError (see StartErrorCode). studentId must be the session user.
+ */
+export async function startAttempt(studentId: string, curriculumId: string): Promise<{ attemptId: string }> {
+  if (!isUuid(studentId) || !isUuid(curriculumId)) throw new StartError("not_open");
+  const attempts = await settleAttempts(studentId, curriculumId);
+  const open = attempts.find((a) => a.status === "in_progress");
+  if (open) return { attemptId: open.id };
 
   const db = createAdminClient();
-  const { data: set, error: setError } = await db
-    .from("exam_sets")
-    .select("question_count, topic_mix")
-    .eq("id", examSetId)
-    .maybeSingle<{ question_count: number; topic_mix: Record<string, number> | null }>();
-  if (setError) throw toError(setError, "Could not read exam set");
-  if (!set) throw new AttemptError("exam_set_not_found");
-
-  const { data: grant, error: grantError } = await db
-    .from("attempt_grants")
-    .select("id")
+  const { data: assignment, error: aError } = await db
+    .from("assignments")
+    .select("status, extra_attempts, allow_repeats, curriculums(max_attempts)")
     .eq("student_id", studentId)
-    .eq("exam_set_id", examSetId)
-    .is("used_attempt_id", null)
-    .limit(1);
-  if (grantError) throw toError(grantError, "Could not read grants");
-  if (!grant?.length) throw new AttemptError("no_grant");
+    .eq("curriculum_id", curriculumId)
+    .maybeSingle<{
+      status: "open" | "passed" | "blocked";
+      extra_attempts: number;
+      allow_repeats: boolean;
+      curriculums: { max_attempts: number };
+    }>();
+  if (aError) throw toError(aError, "Could not read the assignment");
+  if (!assignment) throw new StartError("not_open");
+  if (assignment.status === "blocked") throw new StartError("blocked");
+  if (assignment.status === "passed") throw new StartError("passed");
+  if (attempts.some((a) => a.status === "submitted")) throw new StartError("calculating");
+  const used = attempts.filter((a) => a.status === "released").length;
+  if (used >= assignment.curriculums.max_attempts + assignment.extra_attempts) throw new StartError("no_attempts_left");
 
-  const pool = await fetchAll(
-    (from, to) =>
-      db
-        .from("questions")
-        .select("id, topic, difficulty, options, status, points")
-        .eq("exam_set_id", examSetId)
-        .eq("status", "approved")
-        .order("id")
-        .range(from, to),
-    "Could not read questions",
+  const { data: sets, error: setsError } = await db
+    .from("exam_sets")
+    .select("id, question_count, topic_mix")
+    .eq("curriculum_id", curriculumId)
+    .order("created_at")
+    .order("id")
+    .returns<{ id: string; question_count: number; topic_mix: Record<string, number> | null }[]>();
+  if (setsError) throw toError(setsError, "Could not read exam sets");
+  const setIds = (sets ?? []).map((s) => s.id);
+  const pool = setIds.length
+    ? await fetchAll(
+        (from, to) =>
+          db
+            .from("questions")
+            .select("id, exam_set_id, topic, difficulty, options, status, points")
+            .in("exam_set_id", setIds)
+            .eq("status", "approved")
+            .order("id")
+            .range(from, to),
+        "Could not read questions",
+      )
+    : [];
+
+  const lastUsed = new Map<string, string>();
+  for (const a of attempts) {
+    const prev = lastUsed.get(a.examSetId);
+    if (!prev || a.startedAt > prev) lastUsed.set(a.examSetId, a.startedAt);
+  }
+  const usable = (sets ?? []).filter((s) =>
+    canFillPaper(
+      { questionCount: s.question_count, topicMix: s.topic_mix },
+      pool.filter((q) => q.exam_set_id === s.id).map((q) => q.topic as string),
+    ),
   );
+  const chosenId = chooseExamSet(
+    usable.map((s) => ({ id: s.id, lastUsedAt: lastUsed.get(s.id) ?? null })),
+    new Set(lastUsed.keys()),
+    assignment.allow_repeats,
+    secureRandom,
+  );
+  const chosen = usable.find((s) => s.id === chosenId);
+  if (!chosen) throw new StartError("unavailable");
 
-  // Seen = every question of this exam set in any earlier attempt of this student.
+  // Seen = every question of the chosen exam set in any earlier attempt of this student.
   const seen = await fetchAll(
     (from, to) =>
       db
         .from("attempt_questions")
         .select("id, question_id, attempts!inner(student_id), questions!inner(exam_set_id)")
         .eq("attempts.student_id", studentId)
-        .eq("questions.exam_set_id", examSetId)
+        .eq("questions.exam_set_id", chosen.id)
         .order("id")
         .range(from, to),
     "Could not read seen questions",
   );
 
-  const questions: Question[] = pool.map((q) => ({
-    id: q.id,
-    examSetId,
-    topic: q.topic,
-    difficulty: q.difficulty,
-    stemDe: "",
-    stemEn: "",
-    options: q.options as QuestionOption[],
-    correctOptionId: "",
-    points: q.points,
-    status: q.status,
-  }));
-  const topicMix = set.topic_mix && Object.keys(set.topic_mix).length > 0 ? set.topic_mix : undefined;
+  const questions: Question[] = pool
+    .filter((q) => q.exam_set_id === chosen.id)
+    .map((q) => ({
+      id: q.id,
+      examSetId: chosen.id,
+      topic: q.topic,
+      difficulty: q.difficulty,
+      stemDe: "",
+      stemEn: "",
+      options: q.options as QuestionOption[],
+      correctOptionId: "",
+      points: q.points,
+      status: q.status,
+    }));
+  const topicMix = chosen.topic_mix && Object.keys(chosen.topic_mix).length > 0 ? chosen.topic_mix : undefined;
 
   let draw;
   try {
     draw = drawPaper({
       pool: questions,
       seenIds: new Set(seen.map((s) => s.question_id as string)),
-      count: set.question_count,
+      count: chosen.question_count,
       topicMix,
+      allowSeen: assignment.allow_repeats,
       rng: secureRandom,
     });
   } catch (e) {
-    if (e instanceof InsufficientPoolError) throw new AttemptError("insufficient_pool");
+    if (e instanceof InsufficientPoolError) throw new StartError("unavailable");
     throw e;
   }
 
   const { data: attemptId, error } = await db.rpc("start_attempt", {
     p_student_id: studentId,
-    p_exam_set_id: examSetId,
+    p_exam_set_id: chosen.id,
     p_draw: draw.map((d) => ({ question_id: d.questionId, option_order: d.optionOrder })),
   });
   if (error) {
-    // A concurrent start (double click, second tab) may have won; hand back its attempt.
-    if (error.message === "no_grant" || error.message === "in_progress") {
-      const winner = await findOpenAttemptId(studentId, examSetId);
-      if (winner) return { attemptId: winner };
-    }
-    throw toError(error, "Could not start attempt");
+    const code = START_CODES[error.message];
+    if (code) throw new StartError(code);
+    throw new Error(`Could not start attempt: ${error.message}`);
   }
   return { attemptId: attemptId as string };
 }
@@ -271,7 +387,15 @@ export async function getAttemptForStudent(studentId: string, attemptId: string)
   let { data: attempt, error } = await read();
   if (error) throw toError(error, "Could not read attempt");
   if (!attempt) return null;
-  if (attempt.status === "in_progress" && (await expireIfDue(attempt.id))) {
+  // Lazy expiry, and scoring of an interrupted submit, so the result shows at once.
+  if (attempt.status === "submitted") {
+    try {
+      await finalizeAttempt(attempt.id);
+    } catch (e) {
+      console.error(`getAttemptForStudent: could not score attempt ${attempt.id}`, e);
+    }
+  }
+  if (attempt.status === "submitted" || (attempt.status === "in_progress" && (await expireIfDue(attempt.id)))) {
     ({ data: attempt, error } = await read());
     if (error) throw toError(error, "Could not read attempt");
     if (!attempt) return null;
@@ -327,6 +451,21 @@ export async function getAttemptForStudent(studentId: string, attemptId: string)
     questions,
     answers,
   };
+}
+
+/**
+ * Scores the student's own attempt if it is submitted without a score (an interrupted submit),
+ * so the result can be shown. A failure is logged and the attempt stays "being calculated".
+ */
+export async function scorePendingAttempt(studentId: string, attemptId: string): Promise<void> {
+  if (!isUuid(studentId) || !isUuid(attemptId)) return;
+  const status = await getAttemptStatus(studentId, attemptId);
+  if (status !== "submitted") return;
+  try {
+    await finalizeAttempt(attemptId);
+  } catch (e) {
+    console.error(`scorePendingAttempt: could not score attempt ${attemptId}`, e);
+  }
 }
 
 /** Status of the student's own attempt, or null if it is not theirs. Lightweight ownership check. */
@@ -450,19 +589,41 @@ async function finalizeAttempt(attemptId: string): Promise<void> {
     })),
   });
   if (scoreError) throw toError(scoreError, "Could not record score");
-  // For sets without held results record_score has already released the attempt and set the
-  // assignment outcome in the same transaction (release_attempt, migration 0005).
+  // record_score has released the attempt and set the assignment outcome (passed, or blocked
+  // after the last allowed failed attempt) in the same transaction (migration 0020).
 }
 
-/** Submits the attempt (idempotent) and scores it once. Releases at once only for non-held sets. */
-export async function submitAttempt(attemptId: string): Promise<void> {
+/** What submitAttempt hands back: the stored result (released the moment it is scored). */
+export type SubmitResult = {
+  status: AttemptStatus;
+  points: number | null;
+  maxPoints: number | null;
+  passed: boolean | null;
+};
+
+/**
+ * Submits the attempt (idempotent) and scores it once; record_score releases it and decides
+ * the assignment (passed, or blocked after the last allowed failed attempt) in the same
+ * transaction. Returns the stored result. The caller checks ownership first.
+ */
+export async function submitAttempt(attemptId: string): Promise<SubmitResult> {
   const db = createAdminClient();
   const { error } = await db.rpc("close_attempt", { p_attempt_id: attemptId, p_only_if_expired: false });
   if (error) throw toError(error, "Could not submit attempt");
   await finalizeAttempt(attemptId);
+  const { data, error: readError } = await db
+    .from("attempts")
+    .select("status, points, max_points, passed")
+    .eq("id", attemptId)
+    .single<{ status: AttemptStatus; points: number | null; max_points: number | null; passed: boolean | null }>();
+  if (readError) throw toError(readError, "Could not read attempt");
+  return { status: data.status, points: data.points, maxPoints: data.max_points, passed: data.passed };
 }
 
-/** Submits every in-progress attempt past its deadline. Returns how many it submitted. */
+/**
+ * Submits every in-progress attempt past its deadline and scores (so releases) it, plus any
+ * submitted attempt left unscored by an interrupted submit. Returns how many it submitted.
+ */
 export async function sweepExpired(): Promise<number> {
   const db = createAdminClient();
   const { data: closed, error } = await db.rpc("close_expired_attempts");

@@ -19,6 +19,11 @@ export type DrawInput = {
   seenIds: Set<string>
   count: number
   topicMix?: Record<string, number>
+  /**
+   * Staff allowed repeats: unseen questions still come first, and only the shortfall is filled
+   * with questions in seenIds (per topic with a topic mix). Without it seen questions never appear.
+   */
+  allowSeen?: boolean
   rng: () => number
 }
 
@@ -34,8 +39,20 @@ function shuffle<T>(items: readonly T[], rng: () => number): T[] {
   return a
 }
 
-export function drawPaper({ pool, seenIds, count, topicMix, rng }: DrawInput): DrawnQuestion[] {
-  const eligible = pool.filter((x) => x.status === 'approved' && !seenIds.has(x.id))
+export function drawPaper({ pool, seenIds, count, topicMix, allowSeen = false, rng }: DrawInput): DrawnQuestion[] {
+  const approved = pool.filter((x) => x.status === 'approved')
+
+  // need questions from candidates: unseen first (shuffled), then seen ones if allowed.
+  const take = (candidates: Question[], need: number, topic?: string): Question[] => {
+    const unseen = shuffle(
+      candidates.filter((x) => !seenIds.has(x.id)),
+      rng,
+    )
+    const seen = allowSeen ? shuffle(candidates.filter((x) => seenIds.has(x.id)), rng) : []
+    const ordered = [...unseen, ...seen]
+    if (ordered.length < need) throw new InsufficientPoolError(ordered.length, need, topic)
+    return ordered.slice(0, need)
+  }
 
   let picked: Question[]
   if (topicMix) {
@@ -45,13 +62,10 @@ export function drawPaper({ pool, seenIds, count, topicMix, rng }: DrawInput): D
     }
     picked = []
     for (const [topic, need] of Object.entries(topicMix)) {
-      const ofTopic = eligible.filter((x) => x.topic === topic)
-      if (ofTopic.length < need) throw new InsufficientPoolError(ofTopic.length, need, topic)
-      picked.push(...shuffle(ofTopic, rng).slice(0, need))
+      picked.push(...take(approved.filter((x) => x.topic === topic), need, topic))
     }
   } else {
-    if (eligible.length < count) throw new InsufficientPoolError(eligible.length, count)
-    picked = shuffle(eligible, rng).slice(0, count)
+    picked = take(approved, count)
   }
 
   return shuffle(picked, rng).map((x) => ({

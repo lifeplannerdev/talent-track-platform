@@ -123,6 +123,42 @@ describe('drawPaper', () => {
     ).toThrow(/topicMix/)
   })
 
+  describe('allowSeen (staff allowed repeats)', () => {
+    it('prefers unseen questions and fills only the shortfall with seen ones', () => {
+      const seen = new Set(['anatomy-0', 'anatomy-1', 'anatomy-2', 'anatomy-3'])
+      for (let seed = 1; seed <= 20; seed++) {
+        const out = drawPaper({ pool: pool(6), seenIds: seen, count: 4, allowSeen: true, rng: mulberry32(seed) })
+        const ids = out.map((d) => d.questionId)
+        expect(new Set(ids).size).toBe(4)
+        // Both unseen questions are always in, plus exactly two seen ones.
+        expect(ids).toEqual(expect.arrayContaining(['anatomy-4', 'anatomy-5']))
+        expect(ids.filter((id) => seen.has(id))).toHaveLength(2)
+      }
+    })
+
+    it('takes only unseen questions when there are enough', () => {
+      const seen = new Set(['anatomy-0', 'anatomy-1'])
+      const out = drawPaper({ pool: pool(8), seenIds: seen, count: 5, allowSeen: true, rng: mulberry32(11) })
+      for (const d of out) expect(seen.has(d.questionId)).toBe(false)
+    })
+
+    it('fills per topic in a topic mix', () => {
+      const p = [...pool(3, 'anatomy'), ...pool(3, 'care')]
+      const seen = new Set(['anatomy-0', 'anatomy-1', 'care-0'])
+      const out = drawPaper({ pool: p, seenIds: seen, count: 5, topicMix: { anatomy: 2, care: 3 }, allowSeen: true, rng: mulberry32(12) })
+      const ids = out.map((d) => d.questionId)
+      expect(ids).toEqual(expect.arrayContaining(['anatomy-2', 'care-0', 'care-1', 'care-2']))
+      expect(ids.filter((id) => id.startsWith('anatomy'))).toHaveLength(2)
+    })
+
+    it('still throws when even seen and unseen together are too few (drafts never count)', () => {
+      const p = [...pool(3), q('draft-1', 'anatomy', 'draft')]
+      expect(() =>
+        drawPaper({ pool: p, seenIds: new Set(['anatomy-0']), count: 4, allowSeen: true, rng: mulberry32(13) }),
+      ).toThrow(InsufficientPoolError)
+    })
+  })
+
   it('does not mutate its inputs', () => {
     const p = pool(10)
     const snapshot = JSON.stringify(p)
