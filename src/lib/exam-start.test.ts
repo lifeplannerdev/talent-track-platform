@@ -32,7 +32,7 @@ vi.mock("@/lib/supabase/admin", async (importOriginal) => {
   };
 });
 
-import { startAttempt, submitAttempt } from "./attempts";
+import { saveAnswer, startAttempt, submitAttempt } from "./attempts";
 import { getExamStartState } from "./exam-start";
 import { listStudentResults } from "./results";
 
@@ -108,6 +108,28 @@ async function attempt(studentId: string, examSetId: string, status: "submitted"
       .single(),
   );
   return row.id as string;
+}
+
+/** Moves the attempt's deadline into the past, keeping its saved answers before the deadline. */
+async function expireWithAnswers(attemptId: string) {
+  const deadline = new Date(Date.now() - 60_000).toISOString();
+  await must(
+    db
+      .from("attempts")
+      .update({ started_at: new Date(Date.now() - 30 * 60_000).toISOString(), deadline_at: deadline })
+      .eq("id", attemptId)
+      .select("id"),
+  );
+  const paper = await must(db.from("attempt_questions").select("id").eq("attempt_id", attemptId));
+  if (paper.length) {
+    await db
+      .from("answers")
+      .update({ saved_at: new Date(Date.now() - 2 * 60_000).toISOString() })
+      .in(
+        "attempt_question_id",
+        paper.map((q) => q.id),
+      );
+  }
 }
 
 async function makeSet(curriculumId: string, name: string, approved: number) {
@@ -240,6 +262,32 @@ describe("getExamStartState", () => {
     }
     // The next read heals it.
     expect(await getExamStartState(s.id)).toMatchObject([{ kind: "ready" }, { curriculumId: curB, kind: "ready", attemptsLeft: 1 }]);
+  });
+
+  it("an expired attempt with all answers correct heals to passed on read: the card is passed, not ready", async () => {
+    const s = await makeStudent();
+    await assign(s.id, curA, 1);
+    const { attemptId } = await startAttempt(s.id, curA);
+    const paper = await must(db.from("attempt_questions").select("id").eq("attempt_id", attemptId));
+    for (const q of paper) await saveAnswer(s.id, attemptId, q.id, "b");
+    await expireWithAnswers(attemptId);
+    session.client = s.client;
+    expect(await getExamStartState(s.id)).toMatchObject([{ curriculumId: curA, kind: "passed" }]);
+    expect(await must(db.from("attempts").select("status, passed").eq("id", attemptId).single())).toEqual({
+      status: "released",
+      passed: true,
+    });
+  });
+
+  it("an expired attempt that heals to the last allowed fail shows blocked", async () => {
+    const s = await makeStudent();
+    await assign(s.id, curA, 1);
+    await attempt(s.id, setA1, "released", 0);
+    const { attemptId } = await startAttempt(s.id, curA);
+    await expireWithAnswers(attemptId);
+    session.client = s.client;
+    expect(await getExamStartState(s.id)).toMatchObject([{ curriculumId: curA, kind: "blocked", attemptsLeft: 0 }]);
+    expect(await must(db.from("assignments").select("status").eq("student_id", s.id).single())).toEqual({ status: "blocked" });
   });
 
   it("unavailable: no exam set with enough questions, or every exam set used without allow_repeats", async () => {

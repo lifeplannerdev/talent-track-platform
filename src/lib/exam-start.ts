@@ -44,6 +44,9 @@ type AssignmentDetail = {
  * attempts (lazy expiry, scoring an interrupted submit). studentId must be the session user.
  */
 export async function getExamStartState(studentId: string): Promise<ExamStartState> {
+  // Settle first: scoring an expired or interrupted attempt can move the assignment to passed or
+  // blocked (record_score), so statuses are read only afterwards.
+  const attempts = await settleAttempts(studentId);
   const supabase = await createClient();
   const { data: mine, error } = await supabase
     .from("student_assignments")
@@ -56,7 +59,7 @@ export async function getExamStartState(studentId: string): Promise<ExamStartSta
   const curriculumIds = assignments.map((a) => a.curriculum_id);
 
   const admin = createAdminClient();
-  const [{ data: details, error: dError }, { data: sets, error: sError }, attempts] = await Promise.all([
+  const [{ data: details, error: dError }, { data: sets, error: sError }] = await Promise.all([
     admin
       .from("assignments")
       .select("curriculum_id, extra_attempts, allow_repeats, curriculums(name, max_attempts)")
@@ -68,7 +71,6 @@ export async function getExamStartState(studentId: string): Promise<ExamStartSta
       .select("id, curriculum_id, question_count, topic_mix")
       .in("curriculum_id", curriculumIds)
       .returns<{ id: string; curriculum_id: string; question_count: number; topic_mix: Record<string, number> | null }[]>(),
-    settleAttempts(studentId),
   ]);
   if (dError) throw new Error(`Could not read assignments: ${dError.message}`);
   if (sError) throw new Error(`Could not read exam sets: ${sError.message}`);
