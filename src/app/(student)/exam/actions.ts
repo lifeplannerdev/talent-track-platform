@@ -75,11 +75,13 @@ export async function submitExam(attemptId: string): Promise<void> {
     try {
       await submitAttempt(attemptId);
     } catch (e) {
-      // Closed but not scored (scoring crashed): the exam IS submitted, so the student goes to the
-      // result page, which shows "being calculated" and scores it on the next read. If it was not
-      // even closed, the client keeps the exam and says it could not be submitted.
-      if ((await getAttemptStatus(profile.id, attemptId)) !== "submitted") throw e;
-      console.error(`submitExam: attempt ${attemptId} submitted but not scored yet`);
+      // The exam IS submitted when the attempt is now 'submitted' (closed, scoring crashed: the
+      // result page shows "being calculated" and scores it on the next read) or 'released' (scored,
+      // only the reply was lost). Only when it is still in progress (or unreadable) does the client
+      // keep the exam and say it could not be submitted.
+      const after = await getAttemptStatus(profile.id, attemptId);
+      if (after !== "submitted" && after !== "released") throw e;
+      console.error(`submitExam: attempt ${attemptId} submitted, but the submit step reported an error`);
     }
   }
   redirect(`/results/${attemptId}`);

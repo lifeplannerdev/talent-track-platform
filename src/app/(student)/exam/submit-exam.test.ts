@@ -6,7 +6,13 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ studentId: "", poisoned: new Set<string>(), closeFails: new Set<string>() }));
+const state = vi.hoisted(() => ({
+  studentId: "",
+  poisoned: new Set<string>(),
+  closeFails: new Set<string>(),
+  // record_score succeeds, then the call reports an error anyway (a lost response after commit).
+  lostReply: new Set<string>(),
+}));
 
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => {
@@ -27,6 +33,8 @@ vi.mock("@/lib/supabase/admin", async (importOriginal) => {
             return (fn: string, args: Record<string, unknown>) => {
               if (fn === "record_score" && state.poisoned.has(args.p_attempt_id as string))
                 return Promise.resolve({ data: null, error: { message: "simulated crash" } });
+              if (fn === "record_score" && state.lostReply.has(args.p_attempt_id as string))
+                return target.rpc(fn, args).then(() => ({ data: null, error: { message: "simulated lost reply" } }));
               if (fn === "close_attempt" && state.closeFails.has(args.p_attempt_id as string))
                 return Promise.resolve({ data: null, error: { message: "simulated close failure" } });
               return target.rpc(fn, args);
@@ -70,7 +78,7 @@ beforeAll(async () => {
   state.studentId = userId;
   const c = await must(db.from("curriculums").insert({ name: `SE ${run}`, max_attempts: 3 }).select("id").single());
   curriculumId = c.id;
-  for (const n of [1, 2]) {
+  for (const n of [1, 2, 3]) {
     const set = await must(
       db.from("exam_sets").insert({ curriculum_id: c.id, name: `SE set ${n}`, question_count: 1, time_limit_min: 10 }).select("id").single(),
     );
@@ -121,6 +129,19 @@ describe("submitExam", () => {
     state.poisoned.delete(attemptId);
     await expect(submitExam(attemptId)).rejects.toThrow(`REDIRECT /results/${attemptId}`);
     expect((await must(db.from("attempts").select("status").eq("id", attemptId).single())).status).toBe("released");
+  });
+
+  it("goes to the result page when the attempt was scored although the call reported an error", async () => {
+    const { attemptId } = await startAttempt(userId, curriculumId);
+    state.lostReply.add(attemptId);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(submitExam(attemptId)).rejects.toThrow(`REDIRECT /results/${attemptId}`);
+      expect((await must(db.from("attempts").select("status").eq("id", attemptId).single())).status).toBe("released");
+    } finally {
+      state.lostReply.delete(attemptId);
+      logged.mockRestore();
+    }
   });
 
   it("still reports the error when the attempt could not be closed (nothing was submitted)", async () => {
