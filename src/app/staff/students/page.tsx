@@ -18,7 +18,7 @@ import { AddStudentForm } from "./add-student-form";
 import { ImportStudents } from "./import-students";
 import { linkClass, statusVariant, trackLabel } from "./ui";
 
-export const metadata: Metadata = { title: "Students | TalentTrack" };
+export const metadata: Metadata = { title: "Students | KVP" };
 
 type Search = { q?: string; batch?: string; track?: string };
 

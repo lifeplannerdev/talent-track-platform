@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { StudentHeader } from "@/components/app/student-header";
+import { StudentFooter, StudentHeader } from "@/components/app/student-header";
 import { studentMain } from "@/components/app/styles";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,7 +9,7 @@ import { firstName } from "@/lib/greeting";
 import { logout } from "@/app/login/actions";
 import { acceptConsent } from "./actions";
 
-export const metadata: Metadata = { title: "Consent | TalentTrack" };
+export const metadata: Metadata = { title: "Consent | KVP" };
 
 async function ConsentContent() {
   const profile = await requireRole("student");
@@ -25,7 +25,7 @@ async function ConsentContent() {
       </div>
       <div className="flex max-w-[62ch] flex-col gap-3 text-[1.0625rem] leading-relaxed">
         <p>
-          TalentTrack stores your exam answers and results so that your instructors can assess your progress. Your
+          KVP stores your exam answers and results so that your instructors can assess your progress. Your
           answers are timed and saved automatically while you work.
         </p>
         <p>
@@ -68,6 +68,7 @@ export default function ConsentPage() {
           <ConsentContent />
         </Suspense>
       </main>
+      <StudentFooter />
     </>
   );
 }

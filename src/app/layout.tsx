@@ -23,8 +23,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TalentTrack | Life Planner",
-  description: "Exams and results for Life Planner students.",
+  title: { default: "Knowledge Validation Platform | KVP", template: "%s" },
+  description: "KVP, the Knowledge Validation Platform, powered by F.L.A.G: exams and results for students and trainers.",
 };
 
 export const viewport: Viewport = {

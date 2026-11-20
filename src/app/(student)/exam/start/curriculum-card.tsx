@@ -56,7 +56,7 @@ export function CurriculumCardView({ card, passedResult }: { card: CurriculumCar
       : null;
 
   return (
-    <Card className="h-full" data-testid="curriculum-card" data-kind={card.kind} aria-labelledby={headingId}>
+    <Card className="lift h-full" data-testid="curriculum-card" data-kind={card.kind} aria-labelledby={headingId}>
       <CardHeader>
         <CardTitle className="min-w-0">
           <h2 id={headingId} className="text-[1.25rem] leading-tight font-semibold text-balance break-words sm:text-[1.375rem]">
@@ -76,6 +76,12 @@ export function CurriculumCardView({ card, passedResult }: { card: CurriculumCar
                 {card.attemptsLeft}
               </span>{" "}
               {attemptsLeftLabel(card.attemptsLeft).replace(/^\d+ /, "")}
+              {/* One answer bubble per attempt left (decoration; the number and words say it). */}
+              <span aria-hidden="true" className="ml-1 flex gap-1.5 self-center">
+                {Array.from({ length: Math.min(card.attemptsLeft, 6) }, (_, i) => (
+                  <span key={i} className="size-3.5 rounded-full bg-primary ring-2 ring-primary ring-inset" />
+                ))}
+              </span>
             </p>
             <p className="text-base">
               {card.attemptsLeft === 1 ? "This is your last attempt. " : ""}

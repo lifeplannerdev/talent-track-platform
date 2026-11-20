@@ -18,7 +18,7 @@ import { linkClass } from "../../students/ui";
 import { CurriculumSettingsForm } from "./curriculum-settings-form";
 import { ExamSetForm, NEW_EXAM_SET } from "./exam-set-form";
 
-export const metadata: Metadata = { title: "Curriculum | TalentTrack" };
+export const metadata: Metadata = { title: "Curriculum | KVP" };
 
 async function CurriculumDetail({ params }: { params: Promise<{ id: string }> }) {
   await requireRole("staff");

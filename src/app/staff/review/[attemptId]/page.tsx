@@ -16,7 +16,7 @@ import { ChevronLeftIcon } from "lucide-react";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const metadata: Metadata = { title: "Evaluation | TalentTrack" };
+export const metadata: Metadata = { title: "Evaluation | KVP" };
 
 function QuestionCard({ q }: { q: ReviewQuestion }) {
   const answered = q.chosenOptionId !== null;

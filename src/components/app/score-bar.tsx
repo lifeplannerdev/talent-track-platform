@@ -29,7 +29,7 @@ export function ScoreBar({
     >
       <div
         className={cn(
-          "h-full rounded-full [print-color-adjust:exact]",
+          "bar-grow h-full rounded-full [print-color-adjust:exact]",
           passed === false ? "bg-destructive" : "bg-primary",
         )}
         style={{ width: `${value}%` }}

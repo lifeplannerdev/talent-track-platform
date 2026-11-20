@@ -14,7 +14,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const metadata: Metadata = { title: "Dashboard | TalentTrack" };
+export const metadata: Metadata = { title: "Dashboard | KVP" };
 
 const bigNumber = "font-heading text-[2rem] leading-none font-semibold tabular-nums";
 

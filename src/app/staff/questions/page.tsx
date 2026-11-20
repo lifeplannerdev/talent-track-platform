@@ -20,7 +20,7 @@ import { QuestionForm, type ExamSetChoice } from "./question-form";
 import { QuestionImport } from "./question-import";
 import { StatusToggle } from "./status-toggle";
 
-export const metadata: Metadata = { title: "Questions | TalentTrack" };
+export const metadata: Metadata = { title: "Questions | KVP" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

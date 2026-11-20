@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { logout } from "@/app/login/actions";
-import { Wordmark } from "@/components/app/wordmark";
+import { PoweredBy, Wordmark } from "@/components/app/wordmark";
 import { Button } from "@/components/ui/button";
 import { StaffNav } from "./staff-nav";
 
@@ -31,6 +31,12 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
       </header>
       <span id="main-content" tabIndex={-1} className="outline-none" />
       {children}
+      <footer className="mt-auto border-t bg-card print:hidden">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+          <Wordmark compact />
+          <PoweredBy className="text-xs" />
+        </div>
+      </footer>
     </>
   );
 }

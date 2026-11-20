@@ -7,7 +7,9 @@ import { formatDateTime } from "@/lib/format";
 import { formatPercent, percentValue } from "@/lib/percent";
 import { getStudentResult, type StudentResult } from "@/lib/results";
 import { ChevronLeftIcon, CircleCheckIcon, CircleXIcon } from "lucide-react";
-import { StudentHeader } from "@/components/app/student-header";
+import { Seal } from "@/components/landing/seal";
+import { Reveal } from "@/components/landing/reveal";
+import { StudentFooter, StudentHeader } from "@/components/app/student-header";
 import { ScoreBar } from "@/components/app/score-bar";
 import { factLabel, studentMain } from "@/components/app/styles";
 import { Wordmark } from "@/components/app/wordmark";
@@ -19,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CalculatingResult } from "./calculating";
 import { PrintButton } from "./print-button";
 
-export const metadata: Metadata = { title: "Result | TalentTrack" };
+export const metadata: Metadata = { title: "Result | KVP" };
 
 // English interface; the report itself is bilingual (German / English) and prints as a clean
 // report. It shows as soon as the attempt is scored (spec change 1: scoring releases at once).
@@ -81,6 +83,12 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
                 {result.points} von {result.maxPoints} Punkten / {result.points} of {result.maxPoints} points
               </p>
             </div>
+            <div className="flex items-center gap-3">
+            {result.passed ? (
+              <Reveal>
+                <Seal className="size-14 print:size-12" />
+              </Reveal>
+            ) : null}
             <Badge
               variant={result.passed ? "success" : "destructive"}
               className="h-auto gap-1.5 rounded-md px-3 py-1.5 text-base print:border-black print:bg-transparent print:text-black"
@@ -89,6 +97,7 @@ function Report({ result, studentName }: { result: Extract<StudentResult, { stat
               <Outcome aria-hidden="true" />
               {result.passed ? "Bestanden / Passed" : "Nicht bestanden / Not passed"}
             </Badge>
+            </div>
           </div>
           <ScoreBar percent={result.percent} passMarkPercent={result.passMarkPercent} passed={result.passed} />
           {result.passMarkPercent !== null ? (
@@ -189,6 +198,7 @@ export default function ResultPage(props: PageProps<"/results/[attemptId]">) {
           <Result params={props.params} />
         </Suspense>
       </main>
+      <StudentFooter />
     </>
   );
 }

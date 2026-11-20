@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* TalentTrack design tokens. See DESIGN.md for the direction and the rules. Light only:
+/* KVP (Knowledge Validation Platform) design tokens. See DESIGN.md for the direction and the rules. Light only:
    the exam and the printed report are designed for paper-like contrast. */
 
 @theme inline {
@@ -20,6 +20,12 @@
   --color-scrim: var(--scrim);
   --shadow-overlay: var(--overlay-shadow);
   --shadow-panel: var(--panel-shadow);
+  --color-seal: var(--seal);
+  --color-seal-muted: var(--seal-muted);
+  --color-seal-ring: var(--seal-ring);
+  --color-rule: var(--rule);
+  --shadow-card: var(--card-shadow);
+  --shadow-lift: var(--lift-shadow);
   --color-success: var(--success);
   --color-success-muted: var(--success-muted);
   --color-warning: var(--warning);
@@ -70,12 +76,12 @@
 
 :root {
   /* Canvas and paper */
-  --background: #f4f6f9;
-  --foreground: #172033;
+  --background: #f2f4f8;
+  --foreground: #111a30;
   --card: #ffffff;
-  --card-foreground: #172033;
+  --card-foreground: #111a30;
   --popover: #ffffff;
-  --popover-foreground: #172033;
+  --popover-foreground: #111a30;
   /* Königsblau: the school-ink blue. Primary actions, the chosen answer, focus. */
   --primary: #2346a0;
   --primary-foreground: #ffffff;
@@ -93,13 +99,28 @@
   --warning: #8a4b00;
   --warning-muted: #fdf0d5;
   /* Lines: borders separate, inputs are outlined strongly enough to find (3:1 on white). */
-  --border: #d5dbe4;
+  --border: #d3d9e4;
+  /* Ruled-paper lines (landing hero, specimens) and the one warm accent: the gold of a certificate
+     seal. Seal gold is for the validation mark and one emphasis per screen, never for actions. */
+  --rule: #c4cddc;
+  --rule-faint: rgb(35 70 160 / 0.07);
+  --seal: #7d5a00;
+  --seal-muted: #f6ecce;
+  --seal-ring: #b8860b;
   --input: #8a94a6;
   --ring: #2346a0;
   /* Overlays: ink-coloured scrim and shadows (only overlays carry a shadow). */
   --scrim: rgb(23 32 51 / 0.45);
   --overlay-shadow: 0 24px 48px -12px rgb(23 32 51 / 0.35);
   --panel-shadow: 0 12px 32px -16px rgb(23 32 51 / 0.25);
+  /* Resting depth for framed panels and a lifted state for linked cards (offset plus soft blur). */
+  --card-shadow: 0 1px 2px rgb(17 26 48 / 0.05), 0 6px 14px -8px rgb(17 26 48 / 0.12);
+  --lift-shadow: 0 2px 4px rgb(17 26 48 / 0.06), 0 14px 26px -12px rgb(17 26 48 / 0.22);
+  /* Motion: one ease and three durations, used everywhere. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 640ms;
   --chart-1: #2346a0;
   --chart-2: #5b7bc9;
   --chart-3: #1d6b3f;
@@ -135,7 +156,7 @@
     letter-spacing: -0.012em;
   }
   ::selection {
-    background: #c9d6f2;
+    background: #cbd7f3;
     color: var(--foreground);
   }
   /* One visible keyboard focus style everywhere (components add their own ring as well). */
@@ -145,6 +166,125 @@
   }
   a {
     text-underline-offset: 0.2em;
+  }
+}
+
+/* Motion layer. Everything here is transform and opacity only, plays once, never blocks input,
+   and is switched off below for prefers-reduced-motion. */
+@keyframes kvp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes kvp-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes kvp-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes kvp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.82) rotate(-8deg);
+  }
+}
+@keyframes kvp-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes kvp-bar {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@layer utilities {
+  /* Hero entrance: staggered by --enter-i. CSS only, so it also plays without JS. */
+  .enter {
+    animation: kvp-rise var(--dur-slow) var(--ease-out) both;
+    animation-delay: calc(var(--enter-i, 0) * 90ms);
+  }
+  .enter-fade {
+    animation: kvp-fade var(--dur-slow) var(--ease-out) both;
+    animation-delay: calc(var(--enter-i, 0) * 90ms);
+  }
+  /* Route change: a short fade (opacity only, so nothing shifts). */
+  .page-in {
+    animation: kvp-fade var(--dur-base) var(--ease-out) both;
+  }
+  /* Scroll reveal. Hidden only when scripting is on and motion is allowed, so the page is fully
+     readable without JS and with reduced motion. <Reveal> sets data-in once. */
+  .reveal {
+    transition:
+      opacity var(--dur-slow) var(--ease-out),
+      transform var(--dur-slow) var(--ease-out);
+    transition-delay: calc(var(--reveal-i, 0) * 80ms);
+  }
+  /* The seal and the score bar draw or grow once their section is in view. */
+  .seal-draw {
+    stroke-dasharray: var(--len, 300);
+  }
+  .bar-grow {
+    transform-origin: left;
+  }
+  /* Link underline that draws in from the left. */
+  .link-draw {
+    background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat;
+    transition: background-size var(--dur-base) var(--ease-out);
+  }
+  .link-draw:hover,
+  .link-draw:focus-visible {
+    background-size: 100% 1.5px;
+  }
+  .lift {
+    transition:
+      transform var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out);
+  }
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--lift-shadow);
+  }
+  /* Ruled exam paper: faint lines at a fixed pitch (landing hero and specimens only). */
+  .ruled {
+    background-image: repeating-linear-gradient(to bottom, transparent 0 calc(2rem - 1px), var(--rule-faint) calc(2rem - 1px) 2rem);
+  }
+}
+
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  .reveal:not([data-in]) {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  .seal-draw {
+    transition: stroke-dashoffset 900ms var(--ease-out);
+    transition-delay: var(--draw-delay, 0ms);
+  }
+  .reveal:not([data-in]) .seal-draw {
+    stroke-dashoffset: var(--len, 300);
+  }
+  .bar-grow {
+    transition: transform 900ms var(--ease-out) 150ms;
+  }
+  .reveal:not([data-in]) .bar-grow {
+    transform: scaleX(0);
+  }
+  .seal-pop {
+    transform-origin: center;
+    transform-box: fill-box;
+    transition:
+      opacity var(--dur-base) var(--ease-out),
+      transform var(--dur-slow) var(--ease-out);
+  }
+  .reveal:not([data-in]) .seal-pop {
+    opacity: 0;
+    transform: scale(0.85);
   }
 }
 

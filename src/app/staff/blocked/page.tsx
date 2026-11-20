@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ActionStatusProvider } from "../grants/action-status";
 import { ExtraAttemptsButton } from "../grants/extra-attempts-button";
 
-export const metadata: Metadata = { title: "Blocked students | TalentTrack" };
+export const metadata: Metadata = { title: "Blocked students | KVP" };
 
 async function BlockedList() {
   await requireRole("staff");

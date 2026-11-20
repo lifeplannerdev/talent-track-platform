@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { InboxIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
 import { greeting } from "@/lib/greeting";
-import { StudentHeader } from "@/components/app/student-header";
+import { StudentFooter, StudentHeader } from "@/components/app/student-header";
 import { studentMain } from "@/components/app/styles";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -15,7 +15,7 @@ import { loadStartPage } from "./load";
 import { ResultsByCurriculum } from "./results-by-curriculum";
 import { groupResultsByCurriculum, latestPass } from "./view";
 
-export const metadata: Metadata = { title: "Exam | TalentTrack" };
+export const metadata: Metadata = { title: "Exam | KVP" };
 
 const START_ERRORS: Record<string, string> = {
   unavailable: "This exam cannot be started right now. Please contact your trainer.",
@@ -102,6 +102,7 @@ export default function ExamStartPage(props: PageProps<"/exam/start">) {
           <StartContent searchParams={props.searchParams as Promise<{ error?: string }>} />
         </Suspense>
       </main>
+      <StudentFooter />
     </>
   );
 }

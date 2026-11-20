@@ -1,20 +1,32 @@
 import { cn } from "cn";
 
 /**
- * Text wordmark (no logo assets exist): "TalentTrack" with "Life Planner" as the secondary line.
- * The small mark is two stacked bars, like ruled lines on an exam sheet.
+ * Wordmark: "KVP" set heavy in Lexend with "Knowledge Validation Platform" beneath. The mark is a
+ * Königsblau square with a check drawn as one stroke, the same check the validation seal uses.
+ * `compact` drops the full name (tight headers); "Powered by F.L.A.G" lives in <PoweredBy />.
+ * No logo files exist; do not invent one.
  */
 export function Wordmark({ className, compact = false }: { className?: string; compact?: boolean }) {
   return (
     <span translate="no" className={cn("inline-flex items-center gap-2.5", className)}>
-      <span aria-hidden="true" className="flex h-7 w-6 shrink-0 flex-col justify-center gap-1 rounded-[5px] bg-primary px-1.5">
-        <span className="h-[3px] rounded-full bg-primary-foreground" />
-        <span className="h-[3px] w-2/3 rounded-full bg-primary-foreground/70" />
+      <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-[7px] bg-primary [print-color-adjust:exact]">
+        <svg viewBox="0 0 24 24" className="size-[1.15rem]" fill="none" stroke="var(--primary-foreground)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 12.5 L10 17.5 L19 7" />
+        </svg>
       </span>
       <span className="flex flex-col leading-none">
-        <span className="font-heading text-[1.0625rem] font-semibold tracking-[-0.02em] text-foreground">TalentTrack</span>
-        {compact ? null : <span className="mt-1 text-xs font-medium text-muted-foreground">Life Planner</span>}
+        <span className="font-heading text-[1.1875rem] font-bold tracking-[-0.025em] text-foreground">KVP</span>
+        {compact ? null : <span className="mt-1 text-xs font-medium text-muted-foreground">Knowledge Validation Platform</span>}
       </span>
+    </span>
+  );
+}
+
+/** "Powered by F.L.A.G": the letters exactly as given. */
+export function PoweredBy({ className }: { className?: string }) {
+  return (
+    <span translate="no" className={cn("text-sm text-muted-foreground", className)}>
+      Powered by <span className="font-heading font-semibold tracking-[0.02em] text-foreground">F.L.A.G</span>
     </span>
   );
 }
