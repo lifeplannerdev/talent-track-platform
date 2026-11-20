@@ -430,7 +430,9 @@ describe("submitAttempt", () => {
     const twice = await attemptRow(attemptId);
 
     const max = questions.reduce((s, q) => s + q.questions.points, 0);
-    expect(result).toEqual({ status: "released", points: questions[0].questions.points, maxPoints: max, passed: false });
+    // Question points are 1 to 3 and drawn at random, so one right answer can meet the 60% pass mark.
+    const points = questions[0].questions.points;
+    expect(result).toEqual({ status: "released", points, maxPoints: max, passed: points * 100 >= 60 * max });
     expect(again).toEqual(result);
     expect(once.status).toBe("released");
     expect(once.released_at).not.toBeNull();
