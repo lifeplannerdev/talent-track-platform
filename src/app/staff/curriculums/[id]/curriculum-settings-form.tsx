@@ -69,7 +69,7 @@ export function CurriculumSettingsForm({ id, name, maxAttempts }: { id: string; 
           />
           <p id={`curriculum-attempts-${id}-hint`} className={cn("text-xs", errors.maxAttempts ? "text-destructive" : "text-muted-foreground")}>
             {errors.maxAttempts ??
-              `Students get this many attempts at this curriculum without approval (1 to ${MAX_CURRICULUM_ATTEMPTS}, standard 2). Staff can give extra attempts.`}
+              `Students get this many attempts at this curriculum without approval (1 to ${MAX_CURRICULUM_ATTEMPTS}, standard 2). Staff can give extra attempts. Students who are already blocked stay blocked until you give them extra attempts.`}
           </p>
         </div>
       </div>

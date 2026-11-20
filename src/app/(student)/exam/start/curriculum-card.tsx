@@ -79,7 +79,7 @@ export function CurriculumCardView({ card, passedResult }: { card: CurriculumCar
             </p>
             <p className="text-base">
               {card.attemptsLeft === 1 ? "This is your last attempt. " : ""}
-              Each attempt uses a different exam. Your result is shown as soon as you submit.
+              Each attempt uses a different exam where possible. Your result is shown as soon as you submit.
             </p>
           </>
         ) : null}

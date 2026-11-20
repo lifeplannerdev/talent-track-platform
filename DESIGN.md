@@ -160,7 +160,8 @@ animation and transitions off (global rule in `globals.css`).
   order. Header: curriculum name (h2) and a status badge (Ready outline, In progress outline,
   Being calculated warning, Passed success, Blocked destructive, Not available warning). Ready shows
   the attempts left as a Lexend figure (`attempts-left`, "2 attempts left") and "Each attempt uses a
-  different exam. Your result is shown as soon as you submit."; the card cannot show exam facts
+  different exam where possible. Your result is shown as soon as you submit." (the card does not
+  know whether staff allowed repeats); the card cannot show exam facts
   because the server picks the exam set at Start. The action sits full width in the card footer
   (`start-exam`, `resume-exam`, Check again, View result). Blocked and Not available say "contact
   your trainer" (`contact-trainer`) and never promise a number; calculating shows `calculating`.

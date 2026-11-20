@@ -23,6 +23,8 @@ const FORBIDDEN = [
   /AwaitingReview/,
   /awaiting-review/,
   /waiting for (your )?(trainer|review)/i,
+  // With repeats allowed by staff an exam set can come again: never promise a different one outright.
+  /uses a different exam\./i,
 ];
 
 describe("student area copy", () => {
@@ -31,7 +33,7 @@ describe("student area copy", () => {
   });
 
   for (const file of sources(ROOT)) {
-    it(`${file.slice(ROOT.length + 1)} has no review or release promise`, () => {
+    it(`${file.slice(ROOT.length + 1)} has no review or release promise, and no absolute promise of a new exam set`, () => {
       const src = readFileSync(file, "utf8");
       for (const pattern of FORBIDDEN) expect(src, String(pattern)).not.toMatch(pattern);
     });

@@ -31,7 +31,8 @@ describe("CurriculumCardView", () => {
     expect(testIds(html)).toEqual(expect.arrayContaining(["curriculum-card", "attempts-left", "start-exam"]));
     expect(text(html)).toContain("Pflege Ausbildung");
     expect(text(html)).toContain("2 attempts left");
-    expect(text(html)).toMatch(/different exam/i);
+    // The card does not know whether staff allowed repeats, so it never promises a new exam set.
+    expect(text(html)).toContain("Each attempt uses a different exam where possible.");
     expect(text(html)).toMatch(/result is shown as soon as you submit/i);
     expect(text(html)).toContain("Start exam");
   });
