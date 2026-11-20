@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAll, isUuid } from "@/lib/attempts";
 import type { QuestionOption, QuestionStatus } from "@/lib/types";
 import type { TopicMix } from "@/lib/exam-set-fields";
+import { canFillPaper } from "@/lib/exam-set-choice";
+import { effectiveStatus } from "@/lib/staff-overview-core";
 
 // Readers for the staff management pages (students, curriculums, exam sets, questions). They use
 // the staff session (RLS: staff read everything); callers authenticate with requireRole('staff').
@@ -66,7 +68,10 @@ export type StudentDetail = {
     curriculumId: string;
     name: string;
     position: number;
+    /** The stored assignment status. */
     status: AssignmentStatus;
+    /** What staff see (same rule as the Blocked page): open with every attempt used and nothing running = blocked. */
+    effectiveStatus: AssignmentStatus;
     /** Attempts in this curriculum that count (submitted or released). */
     attemptsUsed: number;
     /** Every attempt in this curriculum, including one in progress. */
@@ -76,7 +81,7 @@ export type StudentDetail = {
     extraAttempts: number;
     allowance: number;
     allowRepeats: boolean;
-    /** Exam sets of the curriculum the student has not had yet. */
+    /** Exam sets of the curriculum the student has not had yet that can fill a paper (canFillPaper). */
     examSetsLeft: number;
     examSets: { id: string; name: string }[];
   }[];
@@ -108,7 +113,7 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
 
   const [{ data: assignments, error: aError }, { data: curriculums, error: cError }, { data: attempts, error: tError }] = await Promise.all([
     db.from("assignments").select("curriculum_id, position, status, extra_attempts, allow_repeats").eq("student_id", id).order("position"),
-    db.from("curriculums").select("id, name, max_attempts, exam_sets(id, name, created_at)").order("name"),
+    db.from("curriculums").select("id, name, max_attempts, exam_sets(id, name, created_at, question_count, topic_mix)").order("name"),
     db
       .from("attempts")
       .select("id, exam_set_id, status, submitted_at, points, max_points, passed")
@@ -118,7 +123,12 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
   ]);
   if (aError || cError || tError) throw new Error("Could not read the student");
 
-  type C = { id: string; name: string; max_attempts: number; exam_sets: { id: string; name: string; created_at: string }[] };
+  type C = {
+    id: string;
+    name: string;
+    max_attempts: number;
+    exam_sets: { id: string; name: string; created_at: string; question_count: number; topic_mix: TopicMix | null }[];
+  };
   const all = (curriculums ?? []) as C[];
   const curriculumOfSet = new Map<string, string>();
   const setInfo = new Map<string, { name: string; curriculumName: string }>();
@@ -128,6 +138,16 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
       setInfo.set(s.id, { name: s.name, curriculumName: c.name });
     }
   const assigned = new Set((assignments ?? []).map((a) => a.curriculum_id as string));
+  // Approved questions of the assigned curriculums' exam sets, for the canFillPaper rule (as on the Blocked page).
+  const assignedSetIds = all.filter((c) => assigned.has(c.id)).flatMap((c) => c.exam_sets.map((s) => s.id));
+  const approved = assignedSetIds.length
+    ? await fetchAll(
+        (from, to) =>
+          db.from("questions").select("id, exam_set_id, topic").eq("status", "approved").in("exam_set_id", assignedSetIds).order("id").range(from, to),
+        "Could not read questions",
+      )
+    : [];
+  const topicsOf = (setId: string) => approved.filter((q) => q.exam_set_id === setId).map((q) => q.topic as string);
 
   return {
     id: profile.id,
@@ -141,18 +161,24 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
       const usedSets = new Set(mine.map((t) => t.exam_set_id as string));
       const maxAttempts = c?.max_attempts ?? 0;
       const extraAttempts = (a.extra_attempts as number) ?? 0;
+      const attemptsUsed = mine.filter((t) => t.status === "submitted" || t.status === "released").length;
+      // In progress, or submitted and still being scored: the outcome is not known yet.
+      const busy = mine.some((t) => t.status === "in_progress" || (t.status === "submitted" && t.points === null));
       return {
         curriculumId: a.curriculum_id,
         name: c?.name ?? "",
         position: a.position,
         status: a.status as AssignmentStatus,
-        attemptsUsed: mine.filter((t) => t.status === "submitted" || t.status === "released").length,
+        effectiveStatus: effectiveStatus(a.status as AssignmentStatus, attemptsUsed, maxAttempts + extraAttempts, busy),
+        attemptsUsed,
         attemptsTotal: mine.length,
         maxAttempts,
         extraAttempts,
         allowance: maxAttempts + extraAttempts,
         allowRepeats: a.allow_repeats === true,
-        examSetsLeft: (c?.exam_sets ?? []).filter((s) => !usedSets.has(s.id)).length,
+        examSetsLeft: (c?.exam_sets ?? []).filter(
+          (s) => !usedSets.has(s.id) && canFillPaper({ questionCount: s.question_count, topicMix: s.topic_mix }, topicsOf(s.id)),
+        ).length,
         examSets: [...(c?.exam_sets ?? [])]
           .sort((x, y) => x.created_at.localeCompare(y.created_at))
           .map((s) => ({ id: s.id, name: s.name })),

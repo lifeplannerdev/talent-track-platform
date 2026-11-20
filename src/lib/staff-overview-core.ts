@@ -93,6 +93,19 @@ export type Dashboard = {
   examSetsShort: number;
 };
 
+/**
+ * The status staff should see: an open assignment with every allowed attempt used and nothing in
+ * progress or still being scored is blocked (start_attempt refuses it). Shared with the student page.
+ */
+export function effectiveStatus(
+  stored: AssignmentRow["status"],
+  used: number,
+  allowance: number,
+  busy: boolean,
+): AssignmentRow["status"] {
+  return stored === "open" && used >= allowance && !busy ? "blocked" : stored;
+}
+
 /** Per assignment: allowance, attempts used, unused exam sets, busy, effective status, last score. */
 function facts({ examSets, attempts, questions }: OverviewInput, a: AssignmentRow) {
   const sets = examSets.filter((s) => s.curriculum_id === a.curriculum_id);
@@ -111,8 +124,7 @@ function facts({ examSets, attempts, questions }: OverviewInput, a: AssignmentRo
   const examSetsLeft = usable.filter((s) => !usedSets.has(s.id)).length;
   // In progress, or submitted and still being scored: the outcome is not known yet.
   const busy = mine.some((t) => t.status === "in_progress" || (t.status === "submitted" && t.points === null));
-  const status: AssignmentRow["status"] =
-    a.status === "open" && used >= allowance && !busy ? "blocked" : a.status;
+  const status = effectiveStatus(a.status, used, allowance, busy);
   const last = mine
     .filter((t) => t.points !== null)
     .sort((x, y) => (y.submitted_at ?? "").localeCompare(x.submitted_at ?? ""))[0];

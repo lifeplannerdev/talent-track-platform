@@ -70,7 +70,8 @@ export function ExtraAttemptsFields({
           <p id={`${repeatsId}-hint`} className="text-xs text-muted-foreground">
             {repeatsLocked ? "Already allowed for this student. " : null}
             When every exam set has been used, exam sets this student already had are given again (the one used
-            longest ago first, with questions they have not seen first).
+            longest ago first, with questions they have not seen first). Repeats are saved together with at least one
+            extra attempt.
           </p>
         </div>
       </div>

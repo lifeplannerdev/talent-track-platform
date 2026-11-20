@@ -104,8 +104,8 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant(a.status)} data-testid="assignment-status">
-                        {a.status}
+                      <Badge variant={statusVariant(a.effectiveStatus)} data-testid="assignment-status">
+                        {a.effectiveStatus}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right" data-testid="assignment-attempts">
@@ -121,7 +121,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col items-start gap-2">
-                        {a.status !== "passed" ? (
+                        {a.effectiveStatus !== "passed" ? (
                           <ExtraAttemptsButton
                             studentId={s.id}
                             curriculumId={a.curriculumId}
@@ -129,7 +129,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
                             curriculumName={a.name}
                             attemptsUsed={a.attemptsUsed}
                             allowance={a.allowance}
-                            blocked={a.status === "blocked"}
+                            blocked={a.effectiveStatus === "blocked"}
                             allowRepeats={a.allowRepeats}
                             suggestRepeats={a.examSetsLeft === 0}
                           />

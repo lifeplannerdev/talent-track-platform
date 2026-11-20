@@ -24,6 +24,8 @@ describe("ExtraAttemptsFields", () => {
     const t = text(html);
     expect(t).toContain("Allow repeating exam sets");
     expect(t).toContain("exam sets this student already had");
+    // Repeats are only saved by giving attempts (n is 1..10): the hint says so.
+    expect(t).toContain("Repeats are saved together with at least one extra attempt.");
   });
 
   it("shows repeats as on and fixed when they are already allowed for this student", () => {
