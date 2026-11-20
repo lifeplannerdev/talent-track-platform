@@ -43,7 +43,7 @@ for paper contrast, and a second theme would double the contrast checks for litt
 | `--border` | `#d5dbe4` | Dividers and panel frames |
 | `--input` | `#8a94a6` | Form control outline (3:1 on white, so fields are findable) |
 | `--success` / `--success-muted` | `#1d6b3f` / `#e3f2e8` | Passed, approved, correct answer, saved |
-| `--warning` / `--warning-muted` | `#8a4b00` / `#fdf0d5` | Small pool, awaiting release, offline |
+| `--warning` / `--warning-muted` | `#8a4b00` / `#fdf0d5` | Small pool, being calculated or scored, offline |
 | `--destructive` / `--destructive-muted` | `#b42318` / `#fdf0ee` | Failed, blocked, errors, low time |
 
 Status colour never stands alone: every status also has a word ("Passed", "blocked", "Correct
@@ -97,7 +97,10 @@ animation and transitions off (global rule in `globals.css`).
   `size="lg"` (44 px); staff pages use the default (36 px) and `sm` in tables.
 - **Badges:** `success`, `warning`, `destructive`, `outline`. Map statuses with
   `statusVariant()` (`src/app/staff/students/ui.ts`): passed = success, blocked = destructive,
-  open = outline.
+  open = outline (the student page shows the effective status: open with every attempt used and
+  nothing running reads blocked, as on the Blocked page). Attempt stages use `ATTEMPT_STATUS`
+  (`src/lib/attempt-status.ts`) through `AttemptStatusBadge`: In progress outline, Being scored
+  warning, Passed success, Not passed destructive. There is no release or awaiting state.
 - **Alerts:** `default` (blue tint) for information, `success` after a completed action,
   `warning` for things to check, `destructive` for errors. Errors say what failed and what to do.
 - **Tables** come in a framed, keyboard-scrollable container; on phones they scroll inside the
@@ -112,7 +115,8 @@ animation and transitions off (global rule in `globals.css`).
 - **Links** in text use `linkClass` (`src/components/app/styles.ts`): Königsblau and always
   underlined.
 - **Chrome:** staff pages get the header from `src/app/staff/layout.tsx` (wordmark, `StaffNav`,
-  sign out; sticky from `lg`). Below `lg` the nav is one row under the wordmark that scrolls
+  sign out; sticky from `lg`). Sections: Dashboard, Attempts (read-only list and evaluation),
+  Blocked, Extra attempts, Students, Curriculums, Questions. Below `lg` the nav is one row under the wordmark that scrolls
   sideways inside itself and keeps the current section in view; the current section has a 2 px
   Königsblau underline and `aria-current="page"`. Student pages use `StudentHeader` (56 px); the
   exam page has its own sticky bar with a progress line. A "Skip to main content" link in the root
@@ -136,7 +140,7 @@ animation and transitions off (global rule in `globals.css`).
   and it never rounds up onto a whole number (89.95% shows "89.9%"), so a fail never reads as the
   pass mark. The percentage is the large Lexend figure; points follow as small muted secondary
   text ("23 of 25 points", "2 / 3" in tables). Shared table cell: `ResultScore`
-  (`src/components/app/result-score.tsx`): percent, points, Pass / Fail badge. Bars take the exact
+  (`src/components/app/result-score.tsx`): percent, points and a Passed / Not passed badge (`outcome={false}` puts the status badge beside it instead). Bars take the exact
   share from `percentValue()`. Pass or fail is decided exactly by `meetsPassMark()`
   (points x 100 >= pass mark x max). The standard pass mark is 90% (`DEFAULT_PASS_MARK_PERCENT`).
 - **Score report** (`/results/[id]`, `data-testid="result-report"`): letterhead (wordmark and a
@@ -162,6 +166,13 @@ animation and transitions off (global rule in `globals.css`).
   your trainer" (`contact-trainer`) and never promise a number; calculating shows `calculating`.
   "Your results" is grouped per curriculum (`results-group`), percentage first, "2 / 3 points"
   muted and the Passed / Not passed badge; running or uncalculated attempts show no numbers.
+- **Extra attempts dialog** (`ExtraAttemptsButton`, Extra attempts, Blocked and student pages):
+  title "Give <name> extra attempts", a description with the attempts used ("Giving attempts lifts
+  the block." when blocked), a 96 px number field (1 to 10) with helper text, and a shadcn `Switch`
+  "Allow repeating exam sets" with helper text (on by default when no exam set is left; locked on
+  once allowed). Success is announced at page level (`grant-success`), a refusal next to the button.
+- **Curriculum settings:** name and "Attempts per student" (1 to 20, standard 2) side by side
+  above the exam sets; a warning `Alert` when fewer exam sets can be given than students have attempts.
 - **No template chrome:** no eyebrow labels above headings, no "A · B · C" meta strings (use
   commas or separate facts), sentence case everywhere.
 - **Button links:** `buttonVariants()` returns merged classes (variant classes win over the base),

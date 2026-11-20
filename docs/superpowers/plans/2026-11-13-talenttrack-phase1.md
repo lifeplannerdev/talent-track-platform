@@ -1,5 +1,7 @@
 # TalentTrackPlatform Phase 1 Implementation Plan
 
+> **Superseded by spec change 1** (`docs/superpowers/specs/2026-11-18-immediate-marks-attempts-design.md`, plan `docs/superpowers/plans/2026-11-19-spec-change-1.md`): the held-result and release steps (Task 6 release, `release_attempt`), staff-granted attempts (Task 7 `attempt_grants`, `grant_attempt`), per-exam-set maximum attempts and hold settings, the sequential "next curriculum" start page and the one-exam-at-a-time rule across curriculums no longer apply. Marks are shown at once, every student gets 2 attempts per curriculum (extra attempts by staff), curriculums are independent, and each attempt uses a different exam set. Video capture is dropped. This plan is kept as the history of phase 1.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Staff can create students, curriculums, exam sets and questions; students log in, take a per-student randomised multiple-choice exam, and see a bilingual score once staff release it; failed-out students are blocked and visible to staff.
