@@ -24,12 +24,15 @@ describe("AttemptStatusBadge", () => {
 describe("ResultScore", () => {
   it("puts the percentage first, then the points", () => {
     const t = text(renderToStaticMarkup(<ResultScore points={2} maxPoints={3} passed={false} />));
+    // Both must be there, or indexOf(-1) would make the order check pass by accident.
+    expect(t).toContain("66.7%");
+    expect(t).toContain("2 / 3");
     expect(t.indexOf("66.7%")).toBeLessThan(t.indexOf("2 / 3"));
   });
 
   it("can leave the outcome to a separate status badge", () => {
     const t = text(renderToStaticMarkup(<ResultScore points={2} maxPoints={3} passed={false} outcome={false} />));
-    expect(t).not.toMatch(/Pass|Fail/);
+    expect(t).not.toMatch(/passed|fail/i);
   });
 
   it("names the outcome Passed or Not passed by default", () => {
