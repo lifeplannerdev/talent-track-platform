@@ -4,15 +4,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { InboxIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
-import { getExamStartState } from "@/lib/exam-start";
 import { greeting } from "@/lib/greeting";
-import { listStudentResults } from "@/lib/results";
 import { StudentHeader } from "@/components/app/student-header";
 import { studentMain } from "@/components/app/styles";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurriculumCardView } from "./curriculum-card";
+import { loadStartPage } from "./load";
 import { ResultsByCurriculum } from "./results-by-curriculum";
 import { groupResultsByCurriculum, latestPass } from "./view";
 
@@ -32,7 +31,7 @@ const START_ERRORS: Record<string, string> = {
 async function StartContent({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const profile = await requireRole("student");
   if (!profile.consent_at) redirect("/consent");
-  const [cards, results] = await Promise.all([getExamStartState(profile.id), listStudentResults(profile.id)]);
+  const { cards, results } = await loadStartPage(profile.id);
   const { error } = await searchParams;
   // Own keys only: "?error=__proto__" must not pick up an inherited object.
   const errorText = error
