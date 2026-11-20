@@ -44,6 +44,13 @@ test.beforeEach(async () => {
   await seed();
 });
 
+/** Before a score exists nothing shows a percentage, points or an outcome (innerText skips hidden routes). */
+async function expectNoMarks(page: Page) {
+  const text = await page.locator("body").innerText();
+  expect(text).not.toMatch(/\d\s*%/);
+  expect(text).not.toMatch(/points|passed|bestanden/i);
+}
+
 async function review(page: Page, info: TestInfo, name: string, findings: Finding[]) {
   // Wait for streamed content: no loading placeholders left.
   await expect(page.locator('[role="status"][aria-label^="Loading"]')).toHaveCount(0);
@@ -148,9 +155,11 @@ test("student screens: login, consent, empty start, curriculum cards, exam, subm
   if (pendingError) throw pendingError;
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
   await expect(curriculumCard(page, EXAM_CURRICULUM_OPEN).getByTestId("calculating")).toBeVisible();
+  await expectNoMarks(page);
   await review(page, info, "10-start-calculating", findings);
   await page.goto(`/results/${pending!.id}`);
   await expect(page.getByTestId("result-status")).toBeVisible();
+  await expectNoMarks(page);
   await review(page, info, "10-result-calculating", findings);
 
   finish(info, findings);

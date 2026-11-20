@@ -18,11 +18,19 @@ async function optionTexts(page: Page) {
 test("start one curriculum, refresh mid-way to the same paper, submit and see the result at once", async ({ page }) => {
   // Network level: nothing served to the student (start, exam and result pages, server actions)
   // may carry the answer key, and no page may promise a later review.
-  const bodies: Promise<{ url: string; body: string }>[] = [];
+  // Split at the submit click: before it, no /exam/ response may carry any score or pass mark.
+  let submitted = false;
+  const bodies: Promise<{ url: string; body: string; beforeSubmit: boolean }>[] = [];
   page.on("response", (res) => {
     const path = new URL(res.url()).pathname;
     if (path.startsWith("/exam/") || path.startsWith("/results/")) {
-      bodies.push(res.text().then((body) => ({ url: res.url(), body }), () => ({ url: res.url(), body: "" })));
+      const beforeSubmit = !submitted;
+      bodies.push(
+        res.text().then(
+          (body) => ({ url: res.url(), body, beforeSubmit }),
+          () => ({ url: res.url(), body: "", beforeSubmit }),
+        ),
+      );
     }
   });
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
@@ -70,6 +78,7 @@ test("start one curriculum, refresh mid-way to the same paper, submit and see th
   await dialog.getByRole("button", { name: "Keep working" }).click();
   await expect(dialog).toBeHidden();
   await page.getByRole("button", { name: "Submit", exact: true }).click();
+  submitted = true;
   await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
 
   // The result at once, percentage first: 2 of 3 = 66.7%, pass mark 60%.
@@ -98,6 +107,13 @@ test("start one curriculum, refresh mid-way to the same paper, submit and see th
   const seen = await Promise.all(bodies);
   expect(seen.some((r) => r.url.includes("/results/"))).toBe(true);
   expect(seen.some((r) => r.url.includes("/exam/start"))).toBe(true);
+  const preSubmit = seen.filter((r) => r.beforeSubmit && new URL(r.url).pathname.startsWith("/exam/"));
+  expect(preSubmit.some((r) => /\/exam\/[0-9a-f-]{36}/.test(r.url))).toBe(true);
+  for (const { url, body } of preSubmit) {
+    for (const leak of ["points", "max_points", "maxPoints", "percent", "pass_mark_percent", "passMarkPercent"]) {
+      expect(body, `${url} before submit: ${leak}`).not.toContain(leak);
+    }
+  }
   for (const { url, body } of seen) {
     expect(body, url).not.toContain("correct_option_id");
     expect(body, url).not.toContain("correctOptionId");
