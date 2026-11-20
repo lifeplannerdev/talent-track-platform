@@ -2,7 +2,34 @@
 // with the service role and throwaway users and curriculums removed again in afterAll.
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// Reads after the give_extra_attempts call fail while this is set (the rpc itself still runs).
+const readFailure = vi.hoisted(() => ({ on: false }));
+vi.mock("@/lib/supabase/admin", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/supabase/admin")>();
+  const failing = (): unknown =>
+    new Proxy(() => {}, {
+      get: (_t, prop) =>
+        prop === "then"
+          ? (resolve: (v: unknown) => void) => resolve({ data: null, count: null, error: { message: "simulated read failure" } })
+          : () => failing(),
+      apply: () => failing(),
+    });
+  return {
+    createAdminClient: () => {
+      const client = real.createAdminClient();
+      return new Proxy(client, {
+        get(target, prop, receiver) {
+          if (prop === "from" && readFailure.on) return () => failing();
+          const value = Reflect.get(target, prop, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+  };
+});
+
 import { startAttempt, submitAttempt } from "./attempts";
 import { ExtraAttemptsError, giveExtraAttempts } from "./extra-attempts";
 
@@ -128,6 +155,41 @@ describe("giveExtraAttempts", () => {
     // 1 + 2 = 3 exceeds 2 used.
     await expect(giveExtraAttempts(staffId, student, curriculumId, 1, false)).resolves.toEqual({ stillBlocked: false });
     expect(await assignment(student)).toMatchObject({ status: "open", extra_attempts: 2 });
+  });
+
+  it("reports still blocked from the attempts used, also when the stored status is open after the limit was lowered", async () => {
+    const student = await makeStudent();
+    // Two failed attempts used; the limit is 1 now, but the stored status stayed 'open'.
+    const sets = await must(db.from("exam_sets").select("id").eq("curriculum_id", curriculumId).order("name"));
+    const past = new Date(Date.now() - 3_600_000).toISOString();
+    for (const s of sets) {
+      await must(
+        db
+          .from("attempts")
+          .insert({ student_id: student, exam_set_id: s.id, status: "released", deadline_at: past, submitted_at: past, points: 0, max_points: 1, passed: false, released_at: past })
+          .select("id"),
+      );
+    }
+    expect(await assignment(student)).toMatchObject({ status: "open" });
+
+    // 1 + 1 = 2 does not exceed 2 used: still blocked in effect.
+    await expect(giveExtraAttempts(staffId, student, curriculumId, 1, false)).resolves.toEqual({ stillBlocked: true });
+    // 1 + 2 = 3 exceeds 2 used: free to start.
+    await expect(giveExtraAttempts(staffId, student, curriculumId, 1, false)).resolves.toEqual({ stillBlocked: false });
+  });
+
+  it("a failing read after the grant still reports success (the grant committed), with the status unknown", async () => {
+    const student = await makeStudent();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The rpc runs on the real client; only the reads that follow fail.
+    readFailure.on = true;
+    try {
+      await expect(giveExtraAttempts(staffId, student, curriculumId, 1, false)).resolves.toEqual({ stillBlocked: null });
+    } finally {
+      readFailure.on = false;
+      logged.mockRestore();
+    }
+    expect(await assignment(student)).toMatchObject({ extra_attempts: 1 });
   });
 
   it("adds up and can switch allow_repeats on (never off), at any time", async () => {

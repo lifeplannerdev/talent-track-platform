@@ -28,7 +28,10 @@ export const MAX_EXTRA_ATTEMPTS = 10;
  * Gives the student n (1..10) more attempts in the curriculum and, with allowRepeats, lets
  * exam sets they already had be given again (false never switches an earlier true off). A
  * blocked assignment opens in the same transaction when the new allowance exceeds the attempts
- * used (0024); `stillBlocked` says it did not (staff need to give more). Throws ExtraAttemptsError.
+ * used (0024). `stillBlocked`: the student still has no attempt to start (attempts used >=
+ * max_attempts + extra_attempts after the grant, whatever the stored status says, e.g. after staff
+ * lowered the limit); null when that could not be read (the grant itself committed). Throws
+ * ExtraAttemptsError.
  *
  * staffId must be the id of the authenticated staff session (requireRole('staff') in the
  * calling action); the database also refuses a giver who is not staff.
@@ -39,7 +42,7 @@ export async function giveExtraAttempts(
   curriculumId: string,
   n: number,
   allowRepeats: boolean,
-): Promise<{ stillBlocked: boolean }> {
+): Promise<{ stillBlocked: boolean | null }> {
   if (!Number.isInteger(n) || n < MIN_EXTRA_ATTEMPTS || n > MAX_EXTRA_ATTEMPTS) throw new ExtraAttemptsError("invalid_n");
   if (!isUuid(staffId)) throw new ExtraAttemptsError("not_staff");
   if (!isUuid(studentId) || !isUuid(curriculumId)) throw new ExtraAttemptsError("not_assigned");
@@ -55,13 +58,34 @@ export async function giveExtraAttempts(
     if (CODES.has(error.message)) throw new ExtraAttemptsError(error.message as ExtraAttemptsErrorCode);
     throw new Error(`Could not give extra attempts: ${error.message}`);
   }
-  // Display only: the status give_extra_attempts left (blocked when the allowance is still used up).
-  const { data, error: readError } = await db
-    .from("assignments")
-    .select("status")
-    .eq("student_id", studentId)
-    .eq("curriculum_id", curriculumId)
-    .maybeSingle<{ status: string }>();
-  if (readError) throw new Error(`Could not read the assignment: ${readError.message}`);
-  return { stillBlocked: data?.status === "blocked" };
+  return { stillBlocked: await stillBlockedAfterGrant(studentId, curriculumId) };
+}
+
+/**
+ * After a committed grant: attempts used (submitted or released over the curriculum's exam sets)
+ * >= max_attempts + extra_attempts. Display only; a failing read is logged (ids only) and gives
+ * null, never an error, so staff are not led to give the attempts twice.
+ */
+async function stillBlockedAfterGrant(studentId: string, curriculumId: string): Promise<boolean | null> {
+  const db = createAdminClient();
+  try {
+    const [assignment, curriculum, used] = await Promise.all([
+      db.from("assignments").select("extra_attempts").eq("student_id", studentId).eq("curriculum_id", curriculumId).maybeSingle<{ extra_attempts: number }>(),
+      db.from("curriculums").select("max_attempts").eq("id", curriculumId).maybeSingle<{ max_attempts: number }>(),
+      db
+        .from("attempts")
+        .select("id, exam_sets!inner(curriculum_id)", { count: "exact", head: true })
+        .eq("student_id", studentId)
+        .eq("exam_sets.curriculum_id", curriculumId)
+        .in("status", ["submitted", "released"]),
+    ]);
+    const error = assignment.error ?? curriculum.error ?? used.error;
+    if (error || !assignment.data || !curriculum.data || used.count === null) {
+      throw new Error(error?.message ?? "missing row");
+    }
+    return used.count >= curriculum.data.max_attempts + assignment.data.extra_attempts;
+  } catch {
+    console.error(`giveExtraAttempts: status after the grant could not be read (student ${studentId}, curriculum ${curriculumId})`);
+    return null;
+  }
 }

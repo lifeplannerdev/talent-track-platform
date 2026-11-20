@@ -35,6 +35,12 @@ describe("extraAttemptsSuccess", () => {
     );
   });
 
+  it("asks to refresh when the status after the grant could not be read", () => {
+    expect(extraAttemptsSuccess({ ...base, n: 2, wasBlocked: true, stillBlocked: null })).toBe(
+      "Gave Asha Nair 2 extra attempts for Pflege Ausbildung. Extra attempts were added; refresh to see the current status.",
+    );
+  });
+
   it("says when the student is still blocked because they have used more attempts than they now have", () => {
     expect(extraAttemptsSuccess({ ...base, n: 1, wasBlocked: true, stillBlocked: true })).toBe(
       "Gave Asha Nair 1 extra attempt for Pflege Ausbildung. Still blocked: they have already used more attempts than they now have, so give more extra attempts to lift the block.",

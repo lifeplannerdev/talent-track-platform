@@ -6,7 +6,7 @@ import { isUuid } from "@/lib/attempts";
 import { ExtraAttemptsError, giveExtraAttempts, type ExtraAttemptsErrorCode } from "@/lib/extra-attempts";
 
 export type ExtraAttemptsActionResult =
-  | { ok: true; stillBlocked: boolean }
+  | { ok: true; stillBlocked: boolean | null }
   | { ok: false; error: ExtraAttemptsErrorCode | "invalid_request" | "failed" };
 
 /**
@@ -26,7 +26,7 @@ export async function giveExtraAttemptsAction(input: {
   if (typeof input !== "object" || input === null || !isUuid(input.studentId) || !isUuid(input.curriculumId)) {
     return { ok: false, error: "invalid_request" };
   }
-  let stillBlocked: boolean;
+  let stillBlocked: boolean | null;
   try {
     ({ stillBlocked } = await giveExtraAttempts(profile.id, input.studentId, input.curriculumId, input.n, input.allowRepeats === true));
   } catch (e) {
