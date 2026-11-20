@@ -210,7 +210,9 @@ async function readAttempts(studentId: string, curriculumId?: string): Promise<S
  * expired in-progress attempt is submitted and scored (lazy expiry), and a submitted attempt
  * without a score (a submit interrupted between close and score) is scored now. A failure to
  * score is logged and leaves the attempt 'submitted' (shown as "being calculated"); the next
- * read or the daily sweep retries it. studentId must come from the session (or be staff-chosen).
+ * read or the daily sweep retries it. After any failure the rows are read again, so a step that
+ * closed an attempt before scoring failed is reported as submitted, never as still in progress.
+ * studentId must come from the session (or be staff-chosen).
  */
 export async function settleAttempts(studentId: string, curriculumId?: string): Promise<SettledAttempt[]> {
   const before = await readAttempts(studentId, curriculumId);
@@ -224,6 +226,8 @@ export async function settleAttempts(studentId: string, curriculumId?: string): 
       }
     } catch (e) {
       console.error(`settleAttempts: could not settle attempt ${a.id}`, e);
+      // The close may have succeeded before scoring failed: read the attempts again.
+      changed = true;
     }
   }
   return changed ? readAttempts(studentId, curriculumId) : before;

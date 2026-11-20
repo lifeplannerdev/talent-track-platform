@@ -290,6 +290,26 @@ describe("getExamStartState", () => {
     expect(await must(db.from("assignments").select("status").eq("student_id", s.id).single())).toEqual({ status: "blocked" });
   });
 
+  it("an expired attempt that is closed on read but whose scoring crashes shows calculating, not in progress", async () => {
+    const s = await makeStudent();
+    await assign(s.id, curA, 1);
+    const { attemptId } = await startAttempt(s.id, curA);
+    await expireWithAnswers(attemptId);
+    poisoned.add(attemptId);
+    session.client = s.client;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await getExamStartState(s.id)).toMatchObject([{ curriculumId: curA, kind: "calculating", attemptId }]);
+      expect(await must(db.from("attempts").select("status, points").eq("id", attemptId).single())).toEqual({
+        status: "submitted",
+        points: null,
+      });
+    } finally {
+      poisoned.delete(attemptId);
+      logged.mockRestore();
+    }
+  });
+
   it("unavailable: no exam set with enough questions, or every exam set used without allow_repeats", async () => {
     const s = await makeStudent();
     await assign(s.id, curEmpty, 1);
