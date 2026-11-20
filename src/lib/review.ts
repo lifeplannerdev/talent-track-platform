@@ -95,9 +95,11 @@ function byListOrder(x: ResultRow, y: ResultRow): number {
   if (x.submitted_at !== y.submitted_at) {
     if (x.submitted_at === null) return -1;
     if (y.submitted_at === null) return 1;
-    return Date.parse(y.submitted_at) - Date.parse(x.submitted_at);
+    const d = Date.parse(y.submitted_at) - Date.parse(x.submitted_at);
+    if (d !== 0) return d;
   }
-  if (x.started_at !== y.started_at) return Date.parse(y.started_at) - Date.parse(x.started_at);
+  const s = Date.parse(y.started_at) - Date.parse(x.started_at);
+  if (s !== 0) return s;
   return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
 }
 
