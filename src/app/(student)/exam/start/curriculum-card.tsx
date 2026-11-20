@@ -74,7 +74,7 @@ export function CurriculumCardView({ card, passedResult }: { card: CurriculumCar
             <p data-testid="attempts-left" className="flex items-baseline gap-1.5 text-base text-muted-foreground">
               <span className="font-heading text-[1.75rem] leading-none font-semibold text-foreground tabular-nums">
                 {card.attemptsLeft}
-              </span>
+              </span>{" "}
               {attemptsLeftLabel(card.attemptsLeft).replace(/^\d+ /, "")}
             </p>
             <p className="text-base">

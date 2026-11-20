@@ -36,6 +36,12 @@ describe("CurriculumCardView", () => {
     expect(text(html)).toContain("Start exam");
   });
 
+  it("attempts left reads as words with a space after the number (textContent and screen readers)", () => {
+    const html = render({ kind: "ready", attemptsLeft: 2 });
+    const inner = html.match(/<p[^>]*data-testid="attempts-left"[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? "";
+    expect(inner.replace(/<[^>]+>/g, "")).toBe("2 attempts left");
+  });
+
   it("ready with one attempt left says it is the last one", () => {
     const html = render({ kind: "ready", attemptsLeft: 1 });
     expect(text(html)).toContain("1 attempt left");
