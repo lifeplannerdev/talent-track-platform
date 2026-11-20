@@ -24,3 +24,16 @@ Hero entrance (CSS, works without JS); scroll reveal (`Reveal`, once, hidden onl
 
 ## Notes
 - Local Supabase ports were moved to 57xxx in `supabase/config.toml` and `.env.local` for this session because Windows reserved 54264 to 54363. `config.toml` was restored before committing.
+
+## Gate results
+- `npm run lint`: clean. `npx tsc --noEmit`: clean (after `next typegen`). `npm test`: 46 files, 406 tests passed. `npm run build`: passed.
+- `npm run test:e2e`: 88 passed (both projects: mobile-375 and desktop), including 16 new landing tests (public, one h1, brand words, CTA to /login, skip link, signed-in redirects for student, staff and not-yet-consented student, no overflow at 320/375/768/1024/1280/1536, axe 0 serious/critical, no-JS readable, reveal on scroll) and the landing plus all refreshed shots in `design.spec.ts` (axe on every screen at both widths).
+- `npm run db:reset` and `node scripts/demo-seed.mjs` ran at the very end.
+
+## Screenshots viewed
+Landing at 375 and 1280 (full page and first viewport), login at 1280, student start cards, score report and staff dashboard at desktop. Fixed: seal ring colour token missing, login right pane background. All screenshots are in `docs/design-review/`. The other pages (staff tables, forms, dialogs) were not individually re-inspected; they inherit the token and chrome changes and pass axe and the overflow check.
+
+## Final checks and honest gaps
+- Not run: the impeccable detector CLI and the web-design-guidelines skill review (no time left in this session); no Lighthouse or measured LCP/CLS (no hero images, fonts via next/font, reveal uses opacity and transform only).
+- Staff dashboard and tables got the shared chrome upgrade (tokens, header rule, footer, fades) but not a bespoke redesign, so they are calmer and less editorial than the landing page.
+- The exam screen was not changed beyond its title text.
