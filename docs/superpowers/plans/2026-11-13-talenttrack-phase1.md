@@ -112,40 +112,40 @@ Failure modes the spec implies but did not pin; each has a test in the owning ta
 
 **Interfaces:**
 - Consumes: `drawPaper`, `scoreAttempt`.
-- Produces: `startAttempt(studentId: string, examSetId: string): Promise<{ attemptId: string }>` (requires an unused grant, draws with the student's previously seen question ids, stores `attempt_questions`, sets `deadline_at = started_at + time_limit_min`); `saveAnswer(attemptId: string, attemptQuestionId: string, optionId: string): Promise<void>` (rejects after `deadline_at`); `submitAttempt(attemptId: string): Promise<void>` (idempotent, scores once, sets `submitted`, then `released` immediately only when `hold_result` is false); `sweepExpired(): Promise<number>` (submits every in-progress attempt past its deadline).
+- ~~Produces: `startAttempt(studentId: string, examSetId: string): Promise<{ attemptId: string }>` (requires an unused grant, draws with the student's previously seen question ids, stores `attempt_questions`, sets `deadline_at = started_at + time_limit_min`); `saveAnswer(attemptId: string, attemptQuestionId: string, optionId: string): Promise<void>` (rejects after `deadline_at`); `submitAttempt(attemptId: string): Promise<void>` (idempotent, scores once, sets `submitted`, then `released` immediately only when `hold_result` is false); `sweepExpired(): Promise<number>` (submits every in-progress attempt past its deadline).~~ (superseded by spec change 1)
 
-- [ ] **Step 1:** Failing tests: resuming an in-progress attempt returns the same questions and option order and the same deadline; `saveAnswer` after the deadline throws; `submitAttempt` twice leaves one score and one state change; a submit after the deadline scores only answers saved before the deadline; `sweepExpired` submits only expired attempts; `startAttempt` with no grant throws.
+- [ ] ~~**Step 1:** Failing tests: resuming an in-progress attempt returns the same questions and option order and the same deadline; `saveAnswer` after the deadline throws; `submitAttempt` twice leaves one score and one state change; a submit after the deadline scores only answers saved before the deadline; `sweepExpired` submits only expired attempts; `startAttempt` with no grant throws.~~ (superseded by spec change 1)
 - [ ] **Step 2:** Run, expect FAIL. Implement with database transactions; the deadline is compared with database time, never client time.
 - [ ] **Step 3:** Exam page: one question at a time, German text with English interface chrome, countdown from the server deadline, answer autosave on select, a confirm dialog on submit, an offline banner. Add a Vercel cron route calling `sweepExpired` every minute plus a lazy expiry check when an attempt is read.
 - [ ] **Step 4:** Playwright: take a 3-question exam at 375px and desktop, refresh mid-way and see the same paper. Expect PASS.
 - [ ] **Step 5:** Commit.
 
-### Task 6: Results, release and student result page
+### Task 6: Results, release and student result page (release superseded by spec change 1: marks are shown at once)
 
 **Files:**
 - Create: `app/(student)/results/[attemptId]/page.tsx`, `app/(staff)/review/page.tsx`, `lib/release.ts`
 - Test: `lib/release.test.ts`, `e2e/results.spec.ts`
 
 **Interfaces:**
-- Produces: `releaseAttempt(attemptId: string, staffId: string): Promise<void>` (only from `submitted`; sets `released_at`, `status = 'released'`; if passed marks the assignment `passed`, else applies the Task 7 blocking rule via `applyOutcome(attemptId)`).
+- ~~Produces: `releaseAttempt(attemptId: string, staffId: string): Promise<void>` (only from `submitted`; sets `released_at`, `status = 'released'`; if passed marks the assignment `passed`, else applies the Task 7 blocking rule via `applyOutcome(attemptId)`).~~ (superseded by spec change 1)
 
-- [ ] **Step 1:** Failing tests: a student reading a `submitted` attempt's points gets nothing (RLS); a student cannot read another student's released attempt; release of an already released attempt is a no-op; staff cannot change `points`.
-- [ ] **Step 2:** Implement; the student page shows "awaiting review" until released, then score, pass or fail and per-topic breakdown in English and German. Staff review page lists submitted attempts with a bilingual question-by-question evaluation view (German and English side by side) and a Release button. Print stylesheet gives a bilingual printable report.
-- [ ] **Step 3:** Run tests and Playwright (staff releases, student then sees score). Expect PASS.
+- [ ] ~~**Step 1:** Failing tests: a student reading a `submitted` attempt's points gets nothing (RLS); a student cannot read another student's released attempt; release of an already released attempt is a no-op; staff cannot change `points`.~~ (superseded by spec change 1)
+- [ ] ~~**Step 2:** Implement; the student page shows "awaiting review" until released, then score, pass or fail and per-topic breakdown in English and German. Staff review page lists submitted attempts with a bilingual question-by-question evaluation view (German and English side by side) and a Release button. Print stylesheet gives a bilingual printable report.~~ (superseded by spec change 1)
+- [ ] ~~**Step 3:** Run tests and Playwright (staff releases, student then sees score). Expect PASS.~~ (superseded by spec change 1)
 - [ ] **Step 4:** Commit.
 
-### Task 7: Blocking, grants and the dashboard
+### Task 7: Blocking, grants and the dashboard (grants superseded by spec change 1: extra attempts)
 
 **Files:**
-- Create: `lib/outcome.ts`, `app/(staff)/dashboard/page.tsx`, `app/(staff)/blocked/page.tsx`, `app/(staff)/grants/actions.ts`
+- ~~Create: `lib/outcome.ts`, `app/(staff)/dashboard/page.tsx`, `app/(staff)/blocked/page.tsx`, `app/(staff)/grants/actions.ts`~~ (superseded by spec change 1)
 - Test: `lib/outcome.test.ts`
 
 **Interfaces:**
-- Produces: `applyOutcome(attemptId: string): Promise<void>` (on a failed released attempt, if the student has used `max_attempts` grants for that set, set the assignment to `blocked`); `grantAttempt(studentId: string, examSetId: string, staffId: string): Promise<{ ok: true } | { ok: false; unseenAvailable: number; needed: number }>` (checks that enough unseen approved questions exist, otherwise returns the shortfall and creates nothing).
+- ~~Produces: `applyOutcome(attemptId: string): Promise<void>` (on a failed released attempt, if the student has used `max_attempts` grants for that set, set the assignment to `blocked`); `grantAttempt(studentId: string, examSetId: string, staffId: string): Promise<{ ok: true } | { ok: false; unseenAvailable: number; needed: number }>` (checks that enough unseen approved questions exist, otherwise returns the shortfall and creates nothing).~~ (superseded by spec change 1)
 
-- [ ] **Step 1:** Failing tests: failing the last allowed attempt blocks; failing with attempts left does not; a pass marks the assignment passed; `grantAttempt` with too few unseen questions returns the shortfall and writes no grant; a second grant after a block unblocks.
-- [ ] **Step 2:** Implement. Dashboard: counts of students by status, a "Blocked" summary card with the first five blocked students linking to the Blocked page, submitted attempts awaiting review. Blocked page lists every blocked student with curriculum, attempts used, last score and a Grant attempt / Reassign action.
-- [ ] **Step 3:** Run tests; Playwright: fail twice, see blocked on both pages, grant, student can start. Expect PASS.
+- [ ] ~~**Step 1:** Failing tests: failing the last allowed attempt blocks; failing with attempts left does not; a pass marks the assignment passed; `grantAttempt` with too few unseen questions returns the shortfall and writes no grant; a second grant after a block unblocks.~~ (superseded by spec change 1)
+- [ ] ~~**Step 2:** Implement. Dashboard: counts of students by status, a "Blocked" summary card with the first five blocked students linking to the Blocked page, submitted attempts awaiting review. Blocked page lists every blocked student with curriculum, attempts used, last score and a Grant attempt / Reassign action.~~ (superseded by spec change 1)
+- [ ] ~~**Step 3:** Run tests; Playwright: fail twice, see blocked on both pages, grant, student can start. Expect PASS.~~ (superseded by spec change 1)
 - [ ] **Step 4:** Commit.
 
 ### Task 8: Staff management: students, curriculums, exam sets, questions

@@ -85,7 +85,7 @@ Used only by Life Planner's own students and staff. Not a public product.
 
 1. **Next.js web app on Supabase, hosted on Vercel (chosen).** Database~~, logins and video storage~~ and logins in Supabase (Mumbai); app on Vercel. Fastest and cheapest, fits the existing connectors; some dependence on two vendors.
 2. **Custom AWS build** (Cognito, database, S3). Most control, most work and maintenance; nothing in the brief needs it.
-3. **Off-the-shelf quiz tools** (Moodle, Typeform). Cannot combine per-student random draws, side-by-side German/English review, live-only video and per-student curriculum lists.
+3. **Off-the-shelf quiz tools** (Moodle, Typeform). Cannot combine per-student random draws, side-by-side German/English review~~, live-only video~~ and per-student curriculum lists.
 
 The owner chose 1.
 
