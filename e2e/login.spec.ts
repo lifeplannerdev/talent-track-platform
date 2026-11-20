@@ -138,3 +138,14 @@ test("pages cannot be framed by other sites and send baseline security headers",
   expect(headers["x-content-type-options"]).toBe("nosniff");
   expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
 });
+
+test("the skip link has exactly one target on the login and not-found pages", async ({ page }) => {
+  for (const path of ["/login", "/no-such-page-here"]) {
+    await page.goto(path);
+    await expect(page.locator("#main-content"), path).toHaveCount(1);
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: "Skip to main content" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    expect(await page.evaluate(() => document.activeElement?.id), path).toBe("main-content");
+  }
+});

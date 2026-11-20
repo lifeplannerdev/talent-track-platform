@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Sign in | TalentTrack" };
 
 export default function LoginPage() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-8">
+    <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-8 outline-none">
       <Wordmark className="self-center" />
       <Card className="w-full max-w-sm shadow-panel">
         <CardHeader>

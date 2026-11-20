@@ -197,6 +197,8 @@ test("a result is only visible to its own student", async ({ page }) => {
   // notFound() inside the streamed Suspense boundary renders the not-found UI (HTTP status stays 200).
   const res = await page.goto(`/results/${attemptId}`);
   await expect(page.getByText(/could not be found/i)).toBeVisible();
+  // One skip-link target, also when the not-found UI streams into a page with a header.
+  await expect(page.locator("#main-content")).toHaveCount(1);
   const body = await res!.text();
   for (const leak of ["Bestanden", "3 of 3", "result-score", "allgemein", STUDENT_EXAM_OPEN.fullName]) {
     expect(body).not.toContain(leak);

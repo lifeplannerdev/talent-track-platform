@@ -34,7 +34,7 @@ export default function ExamPage(props: PageProps<"/exam/[attemptId]">) {
   return (
     <Suspense
       fallback={
-        <main role="status" aria-label="Loading exam" className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pt-20">
+        <main id="main-content" tabIndex={-1} role="status" aria-label="Loading exam" className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pt-20 outline-none">
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-8 w-full max-w-lg" />
           <Skeleton className="h-14 w-full" />
