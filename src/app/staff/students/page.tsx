@@ -111,7 +111,7 @@ async function StudentList({ searchParams }: { searchParams: Promise<Record<stri
                       {r.assignments.map((a) => (
                         <li key={a.name} className="flex flex-wrap items-center gap-2">
                           <span>{a.name}</span>
-                          <Badge variant={statusVariant(a.status)}>{a.status}</Badge>
+                          <Badge variant={statusVariant(a.effectiveStatus)}>{a.effectiveStatus}</Badge>
                         </li>
                       ))}
                     </ul>

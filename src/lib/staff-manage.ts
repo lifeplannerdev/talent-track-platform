@@ -17,28 +17,63 @@ export type StudentListRow = {
   fullName: string;
   batch: string | null;
   track: string | null;
-  assignments: { name: string; status: AssignmentStatus; position: number }[];
+  /** Per curriculum: the stored status and the effective one staff see (same rule as the Blocked page). */
+  assignments: { name: string; status: AssignmentStatus; effectiveStatus: AssignmentStatus; position: number }[];
 };
 
 export type StudentFilters = { q?: string; batch?: string; track?: string };
 
 export async function listStudents(filters: StudentFilters): Promise<{ rows: StudentListRow[]; batches: string[] }> {
   const db = await createClient();
-  const [profiles, assignments] = await Promise.all([
+  const [profiles, assignments, examSets, attempts] = await Promise.all([
     fetchAll(
       (from, to) =>
         db.from("profiles").select("id, username, full_name, batch, track").eq("role", "student").order("username").range(from, to),
       "Could not read students",
     ),
     fetchAll(
-      (from, to) => db.from("assignments").select("id, student_id, position, status, curriculums(name)").order("id").range(from, to),
+      (from, to) =>
+        db
+          .from("assignments")
+          .select("id, student_id, curriculum_id, position, status, extra_attempts, curriculums(name, max_attempts)")
+          .order("id")
+          .range(from, to),
       "Could not read assignments",
     ),
+    fetchAll((from, to) => db.from("exam_sets").select("id, curriculum_id").order("id").range(from, to), "Could not read exam sets"),
+    fetchAll(
+      (from, to) => db.from("attempts").select("id, student_id, exam_set_id, status, points").order("id").range(from, to),
+      "Could not read attempts",
+    ),
   ]);
+  const curriculumOfSet = new Map(examSets.map((s) => [s.id as string, s.curriculum_id as string]));
+  // Per student and curriculum: attempts used (submitted or released) and whether one is still running or unscored.
+  const tally = new Map<string, { used: number; busy: boolean }>();
+  for (const t of attempts as { student_id: string; exam_set_id: string; status: string; points: number | null }[]) {
+    const key = `${t.student_id}:${curriculumOfSet.get(t.exam_set_id)}`;
+    const v = tally.get(key) ?? { used: 0, busy: false };
+    if (t.status === "submitted" || t.status === "released") v.used += 1;
+    if (t.status === "in_progress" || (t.status === "submitted" && t.points === null)) v.busy = true;
+    tally.set(key, v);
+  }
   const byStudent = new Map<string, StudentListRow["assignments"]>();
-  for (const a of assignments as unknown as { student_id: string; position: number; status: AssignmentStatus; curriculums: { name: string } | null }[]) {
+  for (const a of assignments as unknown as {
+    student_id: string;
+    curriculum_id: string;
+    position: number;
+    status: AssignmentStatus;
+    extra_attempts: number;
+    curriculums: { name: string; max_attempts: number } | null;
+  }[]) {
     const list = byStudent.get(a.student_id) ?? [];
-    list.push({ name: a.curriculums?.name ?? "", status: a.status, position: a.position });
+    const t = tally.get(`${a.student_id}:${a.curriculum_id}`) ?? { used: 0, busy: false };
+    const allowance = (a.curriculums?.max_attempts ?? 0) + (a.extra_attempts ?? 0);
+    list.push({
+      name: a.curriculums?.name ?? "",
+      status: a.status,
+      effectiveStatus: effectiveStatus(a.status, t.used, allowance, t.busy),
+      position: a.position,
+    });
     byStudent.set(a.student_id, list);
   }
   const batches = [...new Set(profiles.map((p) => p.batch as string | null).filter((b): b is string => Boolean(b)))].sort();

@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 const session = vi.hoisted(() => ({ client: null as unknown }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => session.client }));
 
-import { getStudentDetail } from "./staff-manage";
+import { getStudentDetail, listStudents } from "./staff-manage";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -149,5 +149,57 @@ describe("getStudentDetail", () => {
     const a = (await getStudentDetail(student.id))!.assignments[0];
     expect(a.examSetsLeft).toBe(1);
     expect(a.effectiveStatus).toBe("open");
+  });
+});
+
+describe("listStudents", () => {
+  const row = async (username: string) => (await listStudents({ q: username })).rows.find((r) => r.username === username)!;
+  const usernameOf = async (id: string) => (await must(db.from("profiles").select("username").eq("id", id).single())).username as string;
+
+  it("badges an open curriculum with every attempt used and nothing running as blocked (stored status kept)", async () => {
+    const student = await makeUser("student", 5);
+    const c = await curriculum([1, 1]);
+    await must(db.from("assignments").insert({ student_id: student.id, curriculum_id: c.id, position: 1, status: "open" }).select("id"));
+    await attempt(student.id, c.sets[0], "released", "2026-01-01T10:00:00Z");
+    await attempt(student.id, c.sets[1], "released", "2026-01-02T10:00:00Z");
+
+    const a = (await row(await usernameOf(student.id))).assignments[0];
+    expect(a.status).toBe("open");
+    expect(a.effectiveStatus).toBe("blocked");
+  });
+
+  it("shows blocked when staff lower the attempts per student below what the student already used", async () => {
+    const student = await makeUser("student", 6);
+    const c = await curriculum([1, 1]);
+    await must(db.from("assignments").insert({ student_id: student.id, curriculum_id: c.id, position: 1, status: "open" }).select("id"));
+    await attempt(student.id, c.sets[0], "released", "2026-01-01T10:00:00Z");
+    const username = await usernameOf(student.id);
+    expect((await row(username)).assignments[0].effectiveStatus).toBe("open");
+
+    await must(db.from("curriculums").update({ max_attempts: 1 }).eq("id", c.id).select("id"));
+    expect((await row(username)).assignments[0].effectiveStatus).toBe("blocked");
+  });
+
+  it("keeps open while an attempt is in progress, and counts extra attempts", async () => {
+    const student = await makeUser("student", 7);
+    const c = await curriculum([1, 1, 1]);
+    const d = await curriculum([1, 1]);
+    await must(
+      db
+        .from("assignments")
+        .insert([
+          { student_id: student.id, curriculum_id: c.id, position: 1, status: "open", extra_attempts: 0 },
+          { student_id: student.id, curriculum_id: d.id, position: 2, status: "open", extra_attempts: 1 },
+        ])
+        .select("id"),
+    );
+    await attempt(student.id, c.sets[0], "released", "2026-01-01T10:00:00Z");
+    await attempt(student.id, c.sets[1], "in_progress", new Date().toISOString());
+    await attempt(student.id, d.sets[0], "released", "2026-01-01T10:00:00Z");
+    await attempt(student.id, d.sets[1], "released", "2026-01-02T10:00:00Z");
+
+    const [first, second] = (await row(await usernameOf(student.id))).assignments;
+    expect(first.effectiveStatus).toBe("open");
+    expect(second.effectiveStatus).toBe("open");
   });
 });
