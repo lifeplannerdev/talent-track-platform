@@ -140,7 +140,8 @@ export async function listResults(
   ]);
 
   return {
-    rows: [...rows].sort(byListOrder).map(toResult),
+    // One row per attempt even if a page boundary served a row twice (stable React keys).
+    rows: [...new Map(rows.map((r) => [r.id, r])).values()].sort(byListOrder).map(toResult),
     batches: [...new Set(students.map((p) => p.batch as string))].sort(),
     curriculums: curriculums.map((c) => ({ id: c.id as string, name: c.name as string })),
   };

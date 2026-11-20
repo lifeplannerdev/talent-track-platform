@@ -19,7 +19,7 @@ type Row = {
   exam_sets: { name: string; curriculum_id: string; curriculums: { name: string } };
 };
 
-const db = vi.hoisted(() => ({ rows: [] as Row[], pageCalls: 0, onFirstPage: () => {} }));
+const db = vi.hoisted(() => ({ rows: [] as Row[], pageCalls: 0, onFirstPage: () => {}, duplicateAcrossPages: false }));
 
 function builder(table: string) {
   const orders: { col: keyof Row; ascending: boolean; nullsFirst: boolean }[] = [];
@@ -51,7 +51,8 @@ function builder(table: string) {
         }
         return 0;
       });
-      const page = sorted.slice(range[0], range[1] + 1);
+      // Simulate a row served on both pages (an inserted row shifting the window, say).
+      const page = sorted.slice(db.duplicateAcrossPages && range[0] > 0 ? range[0] - 1 : range[0], range[1] + 1);
       db.pageCalls += 1;
       if (db.pageCalls === 1) db.onFirstPage();
       resolve({ data: page.map((r) => ({ ...r })), error: null });
@@ -108,6 +109,21 @@ describe("listResults paging", () => {
     // Display order after collection: the 1199 running attempts, then the newest submission.
     expect(rows.slice(0, 1199).every((r) => r.status === "in_progress")).toBe(true);
     expect(rows[1199].id).toBe(moved.id);
+  });
+
+  it("lists an attempt served on two pages once (no duplicate keys)", async () => {
+    db.rows = Array.from({ length: 1200 }, (_, i) => row(i + 1, `2026-02-01T00:00:00.${pad(i + 1)}Z`));
+    db.pageCalls = 0;
+    db.onFirstPage = () => {};
+    db.duplicateAcrossPages = true;
+    try {
+      const { rows } = await listResults({});
+      const ids = rows.map((r) => r.id);
+      expect(ids).toHaveLength(1200);
+      expect(new Set(ids).size).toBe(1200);
+    } finally {
+      db.duplicateAcrossPages = false;
+    }
   });
 
   it("puts running attempts first, then by submission time (newest first), then by start, then id", async () => {
