@@ -119,7 +119,8 @@ select is((select count(*)::int from public.attempt_questions), 0, 'student cann
 select is((select count(*)::int from public.attempt_questions where awarded_points is not null or correct_option_id is not null), 0,
   'student cannot read the stored key or awarded points, not even of a released attempt');
 select is((select count(*)::int from public.profiles), 1, 'student sees only their own profile');
-select is_empty($$update public.profiles set role = 'staff' where id = '00000000-0000-0000-0000-0000000000b1' returning id$$,
+-- Since 0025 no session may UPDATE profiles at all (it used to be a silent no-op under RLS).
+select throws_ok($$update public.profiles set role = 'staff' where id = '00000000-0000-0000-0000-0000000000b1'$$, '42501', null,
   'student cannot update their profile (no privilege escalation)');
 -- Students have no INSERT/UPDATE privilege on answers at all (0004): every save goes through
 -- server code and public.save_answer, whose ownership, deadline and option checks are tested
