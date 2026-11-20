@@ -237,13 +237,6 @@ export function ExamClient({
     };
   }, [attemptId, startedAt, deadlineAt, serverNow, reminderIntervalMin]);
 
-  // A reminder hides itself after a while; closing it sooner is up to the student.
-  useEffect(() => {
-    if (reminder === null) return;
-    const timer = setTimeout(() => setReminder(null), REMINDER_VISIBLE_MS);
-    return () => clearTimeout(timer);
-  }, [reminder]);
-
   // At expiry the server submits the saved answers; ask it to do so now (retrying at most every 5 s).
   useEffect(() => {
     if (remaining === null || remaining > 0 || !online) return;
@@ -331,7 +324,7 @@ export function ExamClient({
           />
         </div>
         {/* Inside the sticky bar: it never covers the question, the answers or the bottom bar. */}
-        <TimeReminder minutes={reminder} onClose={() => setReminder(null)} />
+        <TimeReminder minutes={reminder} onClose={() => setReminder(null)} visibleMs={REMINDER_VISIBLE_MS} />
       </header>
       <span id="main-content" tabIndex={-1} className="outline-none" />
 

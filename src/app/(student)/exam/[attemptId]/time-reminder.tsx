@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { ClockIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { reminderText } from "@/lib/reminders";
@@ -10,9 +10,18 @@ import { Button } from "@/components/ui/button";
  * The "N minutes left" reminder under the exam bar. Non-modal: it never takes focus, never
  * handles keys outside itself and closing it only hides it. The polite status region is always
  * in the DOM so screen readers announce a new reminder reliably; with no reminder it has no
- * height. Escape closes it while focus is inside it.
+ * height. Escape closes it while focus is inside it. It hides itself after `visibleMs` through
+ * the same close path, so a focused Close button never strands focus on <body>.
  */
-export function TimeReminder({ minutes, onClose }: { minutes: number | null; onClose: () => void }) {
+export function TimeReminder({
+  minutes,
+  onClose,
+  visibleMs,
+}: {
+  minutes: number | null;
+  onClose: () => void;
+  visibleMs: number;
+}) {
   const row = useRef<HTMLDivElement>(null);
   const urgent = minutes !== null && minutes <= 5;
 
@@ -22,6 +31,14 @@ export function TimeReminder({ minutes, onClose }: { minutes: number | null; onC
     onClose();
     if (hadFocus) document.getElementById("main-content")?.focus({ preventScroll: true });
   }
+  const autoClose = useEffectEvent(() => close());
+
+  // A reminder hides itself after a while (a new reminder restarts the time).
+  useEffect(() => {
+    if (minutes === null) return;
+    const timer = setTimeout(() => autoClose(), visibleMs);
+    return () => clearTimeout(timer);
+  }, [minutes, visibleMs]);
 
   return (
     <div

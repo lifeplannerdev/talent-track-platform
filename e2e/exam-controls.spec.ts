@@ -138,6 +138,20 @@ test("time reminders: shown at the right minutes, closable, never touch answers,
   expect(await savedAnswers(attemptId)).toEqual({ 1: "b", 2: "a", 3: "b" });
 });
 
+test("a reminder that hides itself while its close button has focus moves focus to the main content", async ({ page }) => {
+  await page.clock.install();
+  await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
+  await startExam(page, EXAM_CURRICULUM_OPEN);
+  await expect(page.getByTestId("timer")).not.toHaveText("--:--");
+  await page.clock.fastForward("15:05");
+  await expect(page.getByTestId("time-reminder")).toHaveText("15 minutes left.");
+  await page.getByRole("button", { name: "Close reminder" }).focus();
+  // 20 s later it hides itself; focus must not fall back to <body>.
+  await page.clock.fastForward("00:21");
+  await expect(page.getByTestId("time-reminder")).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement?.id ?? document.activeElement?.tagName)).toBe("main-content");
+});
+
 test("reminders off: an exam set with interval 0 shows none", async ({ page }) => {
   const db = adminDb();
   const { data: c } = await db.from("curriculums").select("id").eq("name", EXAM_CURRICULUM_OPEN).single();
