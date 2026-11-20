@@ -224,3 +224,20 @@ test("staff delete a student after typing the username, and the account and data
   const { data: authUser } = await db.auth.admin.getUserById(created.user.id);
   expect(authUser.user).toBeNull();
 });
+
+test("the staff nav keeps the current section in view after the screen rotates", async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 375 });
+  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
+  // A section in the middle of the row (the last one is always reachable because scrolling clamps).
+  await page.goto("/staff/curriculums");
+  const current = page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Curriculums", exact: true });
+  await expect(current).toHaveAttribute("aria-current", "page");
+  // Portrait: the nav row now scrolls sideways; the current section must still be fully visible.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect
+    .poll(async () => {
+      const box = await current.boundingBox();
+      return box !== null && box.x >= 0 && box.x + box.width <= 375;
+    })
+    .toBe(true);
+});

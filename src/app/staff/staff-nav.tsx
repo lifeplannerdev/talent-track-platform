@@ -27,7 +27,7 @@ function currentHref(pathname: string | null): string | null {
 /**
  * Staff section links in the shared header; the current section is marked with aria-current
  * and an ink underline. On narrow screens the row scrolls sideways and keeps the current
- * section in view.
+ * section in view, also after the row is resized (rotation).
  */
 export function StaffNav() {
   const current = currentHref(usePathname());
@@ -36,9 +36,17 @@ export function StaffNav() {
   useEffect(() => {
     const link = activeRef.current;
     const row = link?.closest("ul");
-    if (!link || !row || row.scrollWidth <= row.clientWidth) return;
-    // Scroll only the nav row (not the page) so the current section is visible.
-    row.scrollLeft = link.offsetLeft - (row.clientWidth - link.offsetWidth) / 2;
+    if (!link || !row) return;
+    const centre = () => {
+      if (row.scrollWidth <= row.clientWidth) return;
+      // Scroll only the nav row (not the page) so the current section is visible.
+      row.scrollLeft = link.offsetLeft - (row.clientWidth - link.offsetWidth) / 2;
+    };
+    centre();
+    // Again whenever the row changes size (rotation, window resize).
+    const observer = new ResizeObserver(centre);
+    observer.observe(row);
+    return () => observer.disconnect();
   }, [current]);
 
   return (
