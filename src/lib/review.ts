@@ -90,6 +90,17 @@ function toResult(a: ResultRow): ResultListItem {
   };
 }
 
+/** Display order of the Attempts list: running first, then newest submission, newest start, id. */
+function byListOrder(x: ResultRow, y: ResultRow): number {
+  if (x.submitted_at !== y.submitted_at) {
+    if (x.submitted_at === null) return -1;
+    if (y.submitted_at === null) return 1;
+    return Date.parse(y.submitted_at) - Date.parse(x.submitted_at);
+  }
+  if (x.started_at !== y.started_at) return Date.parse(y.started_at) - Date.parse(x.started_at);
+  return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
+}
+
 /**
  * Every attempt for the read-only staff Attempts list (in progress, being scored, or scored and
  * shown to the student at once), newest first (running ones first), with the filter options.
@@ -112,9 +123,9 @@ export async function listResults(
           if (query.passed !== undefined) q = q.eq("passed", query.passed);
           if (batch) q = q.eq("student.batch", batch);
           if (curriculumId) q = q.eq("exam_sets.curriculum_id", curriculumId);
+          // Page by id (never changes), so an attempt submitted meanwhile is neither skipped nor
+          // listed twice; the display order is applied after collection (byListOrder).
           return q
-            .order("submitted_at", { ascending: false, nullsFirst: true })
-            .order("started_at", { ascending: false })
             .order("id")
             .range(from, to)
             .overrideTypes<ResultRow[], { merge: false }>();
@@ -127,7 +138,7 @@ export async function listResults(
   ]);
 
   return {
-    rows: rows.map(toResult),
+    rows: [...rows].sort(byListOrder).map(toResult),
     batches: [...new Set(students.map((p) => p.batch as string))].sort(),
     curriculums: curriculums.map((c) => ({ id: c.id as string, name: c.name as string })),
   };
