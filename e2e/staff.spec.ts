@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { usernameToEmail } from "../src/lib/auth/username";
 import { BLOCK_CURRICULUM, BLOCK_OTHER_CURRICULUM, STAFF, STAFF_CURRICULUM, STAFF_EXAM_SET, STUDENT_BLOCK, STUDENT_CREATED } from "./fixtures";
 import { curriculumCard, signIn } from "./helpers";

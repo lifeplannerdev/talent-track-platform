@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { EXAM_CURRICULUM_OPEN, STAFF, STUDENT_EXAM_OPEN } from "./fixtures";
 import { expectNoHorizontalOverflow, signIn, startExam } from "./helpers";
 import { adminDb, seed } from "./seed";
