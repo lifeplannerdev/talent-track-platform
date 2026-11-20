@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { NEXT_CURRICULUM, STAFF, STUDENT_CONSENTED, STUDENT_NEW } from "./fixtures";
+import {
+  NEW_CURRICULUM_EMPTY,
+  NEW_CURRICULUM_PASSED,
+  NEW_CURRICULUM_READY,
+  STAFF,
+  STUDENT_CONSENTED,
+  STUDENT_NEW,
+} from "./fixtures";
+import { curriculumCard } from "./helpers";
 import { adminDb, seed } from "./seed";
 
 test.beforeEach(async () => {
@@ -26,7 +34,7 @@ test("wrong password shows an error and stays on login", async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test("student accepts consent and lands on the next open exam", async ({ page }) => {
+test("student accepts consent and sees one card per curriculum", async ({ page }) => {
   await signIn(page, STUDENT_NEW.username, STUDENT_NEW.password);
   await expect(page).toHaveURL(/\/consent$/);
 
@@ -44,8 +52,17 @@ test("student accepts consent and lands on the next open exam", async ({ page })
     .single();
   expect(profile?.consent_at).not.toBeNull();
   expect(Math.abs(Date.now() - new Date(profile!.consent_at!).getTime())).toBeLessThan(60_000);
-  // Lowest position with status open: B (position 2), not the passed A or the later C.
-  await expect(page.getByTestId("next-exam")).toContainText(NEXT_CURRICULUM);
+  // One independent card per assigned curriculum, in the staff order: A passed, B ready (any order
+  // between ready ones), C without exam sets (contact the trainer).
+  const cards = page.getByTestId("curriculum-card").filter({ visible: true });
+  await expect(cards).toHaveCount(3);
+  await expect(cards.getByRole("heading")).toHaveText([NEW_CURRICULUM_PASSED, NEW_CURRICULUM_READY, NEW_CURRICULUM_EMPTY]);
+  await expect(curriculumCard(page, NEW_CURRICULUM_PASSED)).toHaveAttribute("data-kind", "passed");
+  await expect(curriculumCard(page, NEW_CURRICULUM_READY)).toHaveAttribute("data-kind", "ready");
+  await expect(curriculumCard(page, NEW_CURRICULUM_READY).getByTestId("attempts-left")).toHaveText("2 attempts left");
+  await expect(curriculumCard(page, NEW_CURRICULUM_READY).getByRole("button", { name: "Start exam" })).toBeVisible();
+  await expect(curriculumCard(page, NEW_CURRICULUM_EMPTY)).toHaveAttribute("data-kind", "unavailable");
+  await expect(curriculumCard(page, NEW_CURRICULUM_EMPTY).getByTestId("contact-trainer")).toBeVisible();
 
   // Consent is only asked once.
   await page.goto("/consent");

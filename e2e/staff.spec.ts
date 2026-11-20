@@ -1,10 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { usernameToEmail } from "../src/lib/auth/username";
-import { STAFF, STAFF_CURRICULUM, STAFF_EXAM_SET, STUDENT_BLOCK, STUDENT_CREATED } from "./fixtures";
+import { BLOCK_CURRICULUM, BLOCK_OTHER_CURRICULUM, STAFF, STAFF_CURRICULUM, STAFF_EXAM_SET, STUDENT_BLOCK, STUDENT_CREATED } from "./fixtures";
+import { curriculumCard, signIn } from "./helpers";
 import { adminDb, seed } from "./seed";
 
 // Staff management end to end: create a nursing student, create a curriculum and exam set,
-// import 20 bilingual questions, assign and grant, then the new student signs in and starts.
+// set its attempts per student, import 20 bilingual questions, assign it and give an extra attempt
+// at any time; the new student signs in and starts (no approval needed).
 
 const CSV_HEADER =
   "topic,difficulty,stem_de,stem_en,option_a_de,option_a_en,option_b_de,option_b_en,option_c_de,option_c_en,option_d_de,option_d_en,correct,points";
@@ -36,16 +38,7 @@ test.afterAll(async () => {
   await cleanUp();
 });
 
-async function signIn(page: Page, username: string, password: string, home: RegExp) {
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByLabel("Username or email").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(home);
-}
-
-test("staff create a nursing student, an exam set and 20 questions, grant an attempt, and the student starts the exam", async ({ page }) => {
+test("staff create a nursing student, a curriculum with its attempts per student, an exam set and 20 questions; the student starts without approval", async ({ page }) => {
   await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
 
   // 1. Create the student (track nursing).
@@ -78,6 +71,14 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   await page.getByRole("button", { name: "Create curriculum" }).click();
   await expect(page).toHaveURL(/\/staff\/curriculums\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("curriculum-name")).toHaveText(STAFF_CURRICULUM);
+  // Attempts per student: 2 by default, staff set 3.
+  const settings = page.getByRole("form", { name: "Curriculum settings" });
+  await expect(settings.getByLabel("Attempts per student")).toHaveValue("2");
+  await settings.getByLabel("Attempts per student").fill("3");
+  await settings.getByRole("button", { name: "Save curriculum" }).click();
+  await expect(settings.getByTestId("curriculum-saved")).toContainText("Curriculum saved.");
+  const { data: savedCurriculum } = await adminDb().from("curriculums").select("max_attempts").eq("name", STAFF_CURRICULUM).single();
+  expect(savedCurriculum!.max_attempts).toBe(3);
   const setForm = page.getByRole("form", { name: "New exam set" });
   await setForm.getByLabel("Exam set name").fill(STAFF_EXAM_SET);
   await setForm.getByLabel("Questions per paper").fill("5");
@@ -86,8 +87,9 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   // A new exam set proposes the 90% standard; staff can still choose another pass mark.
   await expect(setForm.getByLabel("Pass mark (%)")).toHaveValue("90");
   await setForm.getByLabel("Pass mark (%)").fill("60");
-  await setForm.getByLabel("Maximum attempts").fill("2");
-  await setForm.getByLabel("Hold results for review").uncheck();
+  // Attempts and holding results are not exam set settings any more.
+  await expect(setForm.getByLabel("Maximum attempts")).toHaveCount(0);
+  await expect(setForm.getByLabel("Hold results for review")).toHaveCount(0);
   // A mix that does not add up is refused.
   await setForm.getByLabel("Topic mix (optional)").fill("Pflege: 3\nRecht: 1");
   await setForm.getByRole("button", { name: "Create exam set" }).click();
@@ -95,11 +97,13 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   await setForm.getByLabel("Topic mix (optional)").fill("Pflege: 3\nRecht: 2");
   await setForm.getByRole("button", { name: "Create exam set" }).click();
   await expect(setForm.getByTestId("exam-set-preview")).toContainText(
-    "5 questions, 2 h 30 min, pass at 60%, 2 attempts, result shown at once, reminder every 15 min",
+    "5 questions, 2 h 30 min, pass at 60%, result shown at once, reminder every 15 min",
   );
   await expect(setForm.getByTestId("exam-set-saved")).toContainText("Exam set created.");
   await expect(setForm.getByTestId("exam-set-warnings")).toContainText('Topic "Pflege" has no approved questions');
   await expect(page.getByTestId("exam-set-card").filter({ hasText: STAFF_EXAM_SET })).toBeVisible();
+  // One usable exam set (once questions exist) for 3 attempts: the curriculum warns.
+  await expect(page.getByTestId("curriculum-warning")).toContainText("but students get 3 attempts");
 
   // 3. Import 20 questions: a file with an error is previewed and nothing is saved; then the fixed file.
   await page.getByTestId("exam-set-card").filter({ hasText: STAFF_EXAM_SET }).getByRole("link", { name: "Questions" }).click();
@@ -121,10 +125,10 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   await expect(page.getByTestId("question-card")).toHaveCount(20);
   await expect(page.getByTestId("question-card").first()).toContainText("Größe, Übung und Wärme");
   await expect(page.getByTestId("question-card").first()).toContainText("size, practice and warmth");
-  // 20 approved >= 3 x 5: no pool warning.
+  // 20 approved >= 5 per paper: no pool warning.
   await expect(page.getByTestId("pool-row").filter({ hasText: STAFF_EXAM_SET })).toContainText("Enough");
 
-  // 4. Assign the curriculum to the student first, then give an attempt.
+  // 4. Assign the curriculum to the student and move it first.
   await page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Students" }).click();
   await page.getByRole("row").filter({ hasText: STUDENT_CREATED.fullName }).getByRole("link", { name: /Open/ }).click();
   await expect(page.getByTestId("student-name")).toHaveText(STUDENT_CREATED.fullName);
@@ -139,17 +143,27 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   await page.getByRole("button", { name: `Move ${STAFF_CURRICULUM} up` }).click();
   await expect(page.getByTestId("assignment-row").nth(0)).toContainText(STAFF_CURRICULUM);
 
-  await page.getByTestId("assignment-row").nth(0).getByRole("button", { name: "Give attempt" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Grant attempt" }).click();
-  await expect(page.getByRole("dialog")).toBeHidden();
-  await expect(page.getByTestId("grant-success")).toContainText(`Attempt granted to ${STUDENT_CREATED.fullName} for ${STAFF_EXAM_SET}`);
+  await expect(page.getByTestId("assignment-row").nth(0).getByTestId("assignment-attempts")).toContainText("0 of 3 used");
+
+  // Extra attempts can be given at any time, not only after a block.
+  await page.getByTestId("assignment-row").nth(0).getByRole("button", { name: /Give extra attempts/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).not.toContainText("lifts the block");
+  await dialog.getByRole("spinbutton", { name: "Number of extra attempts" }).fill("2");
+  await dialog.getByRole("button", { name: "Give extra attempts" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("grant-success")).toHaveText(`Gave ${STUDENT_CREATED.fullName} 2 extra attempts for ${STAFF_CURRICULUM}.`);
+  await expect(page.getByTestId("assignment-row").nth(0).getByTestId("assignment-attempts")).toContainText("0 of 5 used");
+  await expect(page.getByTestId("assignment-row").nth(0).getByTestId("assignment-attempts")).toContainText("3 + 2 extra");
 
   // 5. The new student signs in with the credentials staff chose and starts the exam.
   await signIn(page, STUDENT_CREATED.username, STUDENT_CREATED.password, /\/consent$/);
   await page.getByRole("button", { name: "I agree and continue" }).click();
   await expect(page).toHaveURL(/\/exam\/start$/);
-  await expect(page.getByTestId("next-exam")).toContainText(STAFF_CURRICULUM);
-  await page.getByRole("button", { name: "Start exam" }).click();
+  // One card per curriculum; the new curriculum is ready with its 3 + 2 attempts.
+  await expect(page.getByTestId("curriculum-card").filter({ visible: true })).toHaveCount(3);
+  await expect(curriculumCard(page, STAFF_CURRICULUM).getByTestId("attempts-left")).toHaveText("5 attempts left");
+  await curriculumCard(page, STAFF_CURRICULUM).getByRole("button", { name: "Start exam" }).click();
   await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name: "Question 1 of 5" })).toBeVisible();
 
@@ -158,21 +172,24 @@ test("staff create a nursing student, an exam set and 20 questions, grant an att
   await expect(page).not.toHaveURL(/\/staff/);
 });
 
-test("the Reassign curriculums link on the Blocked page opens the student's page", async ({ page }) => {
+test("the Student page link on the Blocked page opens the student's page with the blocked curriculum", async ({ page }) => {
   const db = adminDb();
   const { data: student } = await db.from("profiles").select("id").eq("username", STUDENT_BLOCK.username).single();
-  await db.from("assignments").update({ status: "blocked" }).eq("student_id", student!.id);
+  const { data: blockedCurriculum } = await db.from("curriculums").select("id").eq("name", BLOCK_CURRICULUM).single();
+  await db.from("assignments").update({ status: "blocked" }).eq("student_id", student!.id).eq("curriculum_id", blockedCurriculum!.id);
 
   await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
   await page.goto("/staff/blocked");
-  await page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName }).getByRole("link", { name: "Reassign curriculums" }).click();
+  await page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName }).getByRole("link", { name: /Student page/ }).click();
   await expect(page).toHaveURL(new RegExp(`/staff/students/${student!.id}$`));
   await expect(page.getByTestId("student-name")).toHaveText(STUDENT_BLOCK.fullName);
-  const row = page.getByTestId("assignment-row");
-  await expect(row).toHaveCount(1);
+  await expect(page.getByTestId("assignment-row")).toHaveCount(2);
+  const row = page.getByTestId("assignment-row").filter({ hasText: BLOCK_CURRICULUM }).first();
   await expect(row.getByTestId("assignment-status")).toHaveText("blocked");
-  await expect(row.getByRole("button", { name: "Give attempt" })).toBeVisible();
+  await expect(row.getByRole("button", { name: /Give extra attempts/ })).toBeVisible();
   await expect(row.getByRole("button", { name: /^Remove/ })).toBeVisible();
+  const other = page.getByTestId("assignment-row").filter({ hasText: BLOCK_OTHER_CURRICULUM });
+  await expect(other.getByTestId("assignment-status")).toHaveText("open");
 });
 
 test("staff delete a student after typing the username, and the account and data are gone", async ({ page }) => {

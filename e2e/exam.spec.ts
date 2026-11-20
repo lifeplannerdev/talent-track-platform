@@ -1,35 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { EXAM_CURRICULUM_HELD, EXAM_CURRICULUM_OPEN, STUDENT_EXAM, STUDENT_EXAM_OPEN } from "./fixtures";
+import { EXAM_CURRICULUM, EXAM_CURRICULUM_OPEN, EXAM_CURRICULUM_TWO, STUDENT_EXAM, STUDENT_EXAM_OPEN } from "./fixtures";
+import { assignment, attemptRow, choose, curriculumCard, signIn as signInAs, startExam } from "./helpers";
 import { adminDb, seed } from "./seed";
 
 test.beforeEach(async () => {
   await seed();
 });
 
-async function signIn(page: Page, username: string, password: string) {
-  await page.goto("/login");
-  await page.getByLabel("Username or email").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/exam\/start$/);
-}
-
-async function studentId(username: string) {
-  const { data } = await adminDb().from("profiles").select("id").eq("username", username).single();
-  return data!.id as string;
-}
-
-async function assignmentStatus(username: string, curriculumName: string) {
-  const db = adminDb();
-  const { data: c } = await db.from("curriculums").select("id").eq("name", curriculumName).single();
-  const { data } = await db
-    .from("assignments")
-    .select("status")
-    .eq("student_id", await studentId(username))
-    .eq("curriculum_id", c!.id)
-    .single();
-  return data!.status as string;
-}
+const signIn = (page: Page, username: string, password: string) => signInAs(page, username, password, /\/exam\/start$/);
 
 const stem = (page: Page) => page.getByTestId("question-stem");
 async function optionTexts(page: Page) {
@@ -37,32 +15,21 @@ async function optionTexts(page: Page) {
   return page.getByRole("radio").evaluateAll((els) => els.map((e) => e.closest("label")!.textContent));
 }
 
-async function choose(page: Page, option: string) {
-  await page.getByRole("radio", { name: option, exact: true }).click();
-  await expect(page.getByTestId("save-status")).toHaveText(/Saved/);
-}
-
-// Marks must never reach the student before release (results.spec.ts covers showing them after).
-async function expectNoMarks(page: Page) {
-  // innerText skips routes Next keeps rendered but hidden after navigation.
-  await expect(page.getByTestId("result-status")).toBeVisible();
-  expect(await page.locator("body").innerText()).not.toMatch(/\d+\s*(\/|of)\s*\d+|points|%|passed|failed|bestanden/i);
-}
-
-test("held exam: start, refresh mid-way to the same paper, submit and see awaiting review without marks", async ({ page }) => {
-  // Network level: no response for the start or result pages (HTML, RSC payloads) may carry marks or the key.
+test("start one curriculum, refresh mid-way to the same paper, submit and see the result at once", async ({ page }) => {
+  // Network level: nothing served to the student (start, exam and result pages, server actions)
+  // may carry the answer key, and no page may promise a later review.
   const bodies: Promise<{ url: string; body: string }>[] = [];
   page.on("response", (res) => {
     const path = new URL(res.url()).pathname;
-    if (path.startsWith("/exam/start") || path.startsWith("/results/")) {
+    if (path.startsWith("/exam/") || path.startsWith("/results/")) {
       bodies.push(res.text().then((body) => ({ url: res.url(), body }), () => ({ url: res.url(), body: "" })));
     }
   });
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
-  await expect(page.getByTestId("next-exam")).toContainText(EXAM_CURRICULUM_HELD);
-  await expect(page.getByTestId("question-count")).toHaveText("3");
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  // Two independent cards; this one is started first.
+  await expect(curriculumCard(page, EXAM_CURRICULUM).getByTestId("attempts-left")).toHaveText("2 attempts left");
+  await expect(curriculumCard(page, EXAM_CURRICULUM_TWO).getByTestId("attempts-left")).toHaveText("2 attempts left");
+  const attemptId = await startExam(page, EXAM_CURRICULUM);
   const examUrl = page.url();
 
   // German question text, English interface, a running countdown.
@@ -99,25 +66,32 @@ test("held exam: start, refresh mid-way to the same paper, submit and see awaiti
   await page.getByRole("button", { name: "Review and submit" }).click();
   const dialog = page.getByRole("dialog", { name: "Submit your exam?" });
   await expect(dialog).toContainText("You answered 3 of 3 questions");
+  await expect(dialog).toContainText("Your result is shown right after you submit.");
   await dialog.getByRole("button", { name: "Keep working" }).click();
   await expect(dialog).toBeHidden();
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
 
-  await expect(page).toHaveURL(/\/results\/[0-9a-f-]{36}$/);
-  await expect(page.getByTestId("result-status")).toHaveText(/Submitted, awaiting review/);
-  await expectNoMarks(page);
+  // The result at once, percentage first: 2 of 3 = 66.7%, pass mark 60%.
+  await expect(page).toHaveURL(new RegExp(`/results/${attemptId}$`));
+  await expect(page.getByTestId("result-score")).toHaveText("66.7%");
+  await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
+  await expect(page.getByTestId("result-status")).toHaveCount(0);
 
-  // The attempt is scored and held; the assignment does not change until release.
-  const attemptId = page.url().split("/").pop()!;
-  const { data: attempt } = await adminDb().from("attempts").select("status, points, released_at").eq("id", attemptId).single();
-  expect(attempt).toEqual({ status: "submitted", points: 2, released_at: null });
-  expect(await assignmentStatus(STUDENT_EXAM.username, EXAM_CURRICULUM_HELD)).toBe("open");
+  // Scored and released in one step; the assignment is passed in the same transaction.
+  const attempt = await attemptRow(attemptId);
+  expect(attempt).toMatchObject({ status: "released", points: 2, max_points: 3, passed: true });
+  expect(attempt.released_at).not.toBeNull();
+  expect((await assignment(STUDENT_EXAM.username, EXAM_CURRICULUM)).status).toBe("passed");
 
-  // Back on the start page: awaiting review, no new attempt; the exam page now leads to the result.
+  // Back on the start page: this card is passed, the other curriculum is untouched and still ready.
   await page.goto("/exam/start");
-  await expect(page.getByTestId("awaiting-review")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start exam" })).toHaveCount(0);
+  await expect(curriculumCard(page, EXAM_CURRICULUM)).toHaveAttribute("data-kind", "passed");
+  await expect(curriculumCard(page, EXAM_CURRICULUM)).toContainText("66.7%");
+  await expect(curriculumCard(page, EXAM_CURRICULUM).getByRole("button", { name: "Start exam" })).toHaveCount(0);
+  await expect(curriculumCard(page, EXAM_CURRICULUM_TWO)).toHaveAttribute("data-kind", "ready");
+  await expect(curriculumCard(page, EXAM_CURRICULUM_TWO).getByTestId("attempts-left")).toHaveText("2 attempts left");
+  // The finished exam page now leads to the result.
   await page.goto(examUrl);
   await expect(page).toHaveURL(/\/results\//);
 
@@ -125,36 +99,16 @@ test("held exam: start, refresh mid-way to the same paper, submit and see awaiti
   expect(seen.some((r) => r.url.includes("/results/"))).toBe(true);
   expect(seen.some((r) => r.url.includes("/exam/start"))).toBe(true);
   for (const { url, body } of seen) {
-    expect(body, url).not.toMatch(/"?(points|max_points|correct_option_id)"?\s*:/);
     expect(body, url).not.toContain("correct_option_id");
-    expect(body, url).not.toContain("max_points");
+    expect(body, url).not.toContain("correctOptionId");
+    expect(body, url).not.toMatch(/awaiting review|before it is released/i);
   }
 });
 
-test("non-held exam: released at once, the student sees the released report", async ({ page }) => {
+test("an expired attempt is submitted and scored when the student comes back", async ({ page }) => {
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
-
-  for (let i = 1; i <= 3; i++) {
-    await expect(page.getByRole("heading", { name: `Question ${i} of 3` })).toBeVisible();
-    await choose(page, "Nein");
-    if (i < 3) await page.getByRole("button", { name: "Next", exact: true }).click();
-  }
-  await page.getByRole("button", { name: "Review and submit" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
-
-  await expect(page).toHaveURL(/\/results\/[0-9a-f-]{36}$/);
-  await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
-  expect(await assignmentStatus(STUDENT_EXAM_OPEN.username, EXAM_CURRICULUM_OPEN)).toBe("passed");
-});
-
-test("an expired attempt is submitted when the student comes back", async ({ page }) => {
-  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  const attemptId = await startExam(page, EXAM_CURRICULUM_OPEN);
   await choose(page, "Nein");
-  const attemptId = page.url().split("/").pop()!;
 
   // Move the deadline into the past (database time decides).
   await adminDb()
@@ -164,18 +118,24 @@ test("an expired attempt is submitted when the student comes back", async ({ pag
       deadline_at: new Date(Date.now() - 60_000).toISOString(),
     })
     .eq("id", attemptId);
+  // The answer was saved in time (only answers saved before the deadline count).
+  const { data: aqs } = await adminDb().from("attempt_questions").select("id").eq("attempt_id", attemptId);
+  await adminDb()
+    .from("answers")
+    .update({ saved_at: new Date(Date.now() - 30 * 60_000).toISOString() })
+    .in("attempt_question_id", aqs!.map((q) => q.id));
 
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`/results/${attemptId}$`));
-  await expect(page.getByTestId("result-status")).toHaveText(/Submitted, awaiting review/);
-  const { data } = await adminDb().from("attempts").select("status").eq("id", attemptId).single();
-  expect(data!.status).toBe("submitted");
+  // 1 of 3 answered correctly: shown at once, below the 90% pass mark.
+  await expect(page.getByTestId("result-score")).toHaveText("33.3%");
+  await expect(page.getByTestId("result-outcome")).toHaveText("Nicht bestanden / Not passed");
+  expect(await attemptRow(attemptId)).toMatchObject({ status: "released", points: 1, max_points: 3, passed: false });
 });
 
 test("offline: a banner shows and the answer is saved once the connection is back", async ({ page, context }) => {
-  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password);
+  await startExam(page, EXAM_CURRICULUM_OPEN);
   const attemptId = page.url().split("/").pop()!;
   // The countdown appears once the page is hydrated and listening for connection changes.
   await expect(page.getByTestId("timer")).not.toHaveText("--:--");
@@ -194,9 +154,8 @@ test("offline: a banner shows and the answer is saved once the connection is bac
 });
 
 test("a submit that cannot reach the server keeps the exam and its unsaved answer; after reconnecting it saves first", async ({ page }) => {
-  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password);
+  await startExam(page, EXAM_CURRICULUM_OPEN);
   const examUrl = page.url();
   const attemptId = examUrl.split("/").pop()!;
   await expect(page.getByTestId("timer")).not.toHaveText("--:--");
@@ -226,13 +185,12 @@ test("a submit that cannot reach the server keeps the exam and its unsaved answe
   const { data: answer } = await adminDb().from("answers").select("option_id").eq("attempt_question_id", aq!.id).single();
   expect(answer!.option_id).toBe("c");
   const { data: done } = await adminDb().from("attempts").select("status").eq("id", attemptId).single();
-  expect(done!.status).toBe("submitted");
+  expect(done!.status).toBe("released");
 });
 
 test("a save that fails while the browser stays online is retried on its own", async ({ page }) => {
-  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password);
+  await startExam(page, EXAM_CURRICULUM_OPEN);
   const attemptId = page.url().split("/").pop()!;
   await expect(page.getByTestId("timer")).not.toHaveText("--:--");
 
@@ -251,9 +209,8 @@ test("a save that fails while the browser stays online is retried on its own", a
 });
 
 test("Submit is disabled while the browser is offline", async ({ page, context }) => {
-  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
+  await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password);
+  await startExam(page, EXAM_CURRICULUM_OPEN);
   await expect(page.getByTestId("timer")).not.toHaveText("--:--");
   await context.setOffline(true);
   await expect(page.getByTestId("offline-banner")).toBeVisible();

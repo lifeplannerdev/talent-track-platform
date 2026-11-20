@@ -1,55 +1,20 @@
-import { expect, test, type Page } from "@playwright/test";
-import { EXAM_CURRICULUM_HELD, STAFF, STUDENT_EXAM, STUDENT_EXAM_OPEN } from "./fixtures";
-import { adminDb, seed } from "./seed";
+import { expect, test } from "@playwright/test";
+import { EXAM_CURRICULUM, EXAM_CURRICULUM_OPEN, EXAM_CURRICULUM_TWO, STAFF, STUDENT_EXAM, STUDENT_EXAM_OPEN } from "./fixtures";
+import { assignment, attemptRow, curriculumCard, signIn, staffNav, takeExam } from "./helpers";
+import { seed } from "./seed";
+
+// Spec change 1: the result is shown the moment the exam is submitted (percentage first), with no
+// hold or release; staff see every attempt read-only, with the bilingual evaluation.
 
 test.beforeEach(async () => {
   await seed();
 });
 
-async function signIn(page: Page, username: string, password: string, home: RegExp) {
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByLabel("Username or email").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(home);
-}
-
-async function choose(page: Page, option: string) {
-  await page.getByRole("radio", { name: option, exact: true }).click();
-  await expect(page.getByTestId("save-status")).toHaveText(/Saved/);
-}
-
-/** Takes the student's exam answering in paper order and submits. Every question's key is "Nein". */
-async function takeExam(page: Page, picks: string[], beforeSubmit?: () => void): Promise<string> {
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
-  for (let i = 0; i < picks.length; i++) {
-    await expect(page.getByRole("heading", { name: `Question ${i + 1} of ${picks.length}` })).toBeVisible();
-    await choose(page, picks[i]);
-    if (i < picks.length - 1) await page.getByRole("button", { name: "Next", exact: true }).click();
-  }
-  await page.getByRole("button", { name: "Review and submit" }).click();
-  beforeSubmit?.();
-  await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
-  await expect(page).toHaveURL(/\/results\/[0-9a-f-]{36}$/);
-  return page.url().split("/").pop()!;
-}
-
-async function assignmentStatus(username: string, curriculumName: string) {
-  const db = adminDb();
-  const { data: p } = await db.from("profiles").select("id").eq("username", username).single();
-  const { data: c } = await db.from("curriculums").select("id").eq("name", curriculumName).single();
-  const { data } = await db.from("assignments").select("status").eq("student_id", p!.id).eq("curriculum_id", c!.id).single();
-  return data!.status as string;
-}
-
-test("held result: no marks before release, staff checks the bilingual evaluation and releases, the student then sees and prints the report", async ({
+test("result at once: the student sees the percentage, staff see the read-only bilingual evaluation, the student prints the report", async ({
   page,
 }) => {
-  // Network level: from the submit click on, nothing served to the student (documents and
-  // fetches, including the submit server action POST that redirects to the result page and
-  // the result page's RSC payloads) may carry marks or the key before release.
+  // Network level: from the submit click on, nothing served to the student (documents, fetches,
+  // the submit server action and the result page payloads) carries the answer key or question texts.
   let capturing = false;
   const bodies: Promise<{ url: string; method: string; body: string }>[] = [];
   page.on("response", (res) => {
@@ -59,44 +24,57 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   });
 
   await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
-  const attemptId = await takeExam(page, ["Nein", "Nein", "Ja"], () => {
-    capturing = true;
+  const attemptId = await takeExam(page, EXAM_CURRICULUM, ["Nein", "Nein", "Ja"], {
+    beforeSubmit: () => {
+      capturing = true;
+    },
   }); // 2 of 3, pass mark 60 %
   const resultUrl = page.url();
-  await expect(page.getByTestId("result-status")).toHaveText(/Submitted, awaiting review/);
+  await expect(page.getByTestId("result-score")).toHaveText("66.7%");
+  await expect(page.getByTestId("result-points")).toContainText("2 of 3 points");
+  await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
   await page.reload();
-  await expect(page.getByTestId("result-status")).toBeVisible();
-  expect(await page.locator("body").innerText()).not.toMatch(/\d+\s*(\/|of)\s*\d+|points|%|passed|bestanden/i);
+  await expect(page.getByTestId("result-score")).toHaveText("66.7%");
   capturing = false;
   const seen = await Promise.all(bodies);
   expect(seen.some((r) => r.method === "POST" && r.url.includes("/exam/"))).toBe(true); // the submit action
   expect(seen.some((r) => r.url.includes("/results/"))).toBe(true);
   for (const { url, body } of seen) {
-    expect(body, url).not.toMatch(/"?(points|max_points|maxPoints|correct_option_id|percent|topics)"?\s*:/);
     expect(body, url).not.toContain("correct_option_id");
-    expect(body, url).not.toContain("max_points");
-    expect(body, url).not.toContain("Bestanden");
+    expect(body, url).not.toContain("correctOptionId");
+    expect(body, url).not.toContain("Ist Berlin die Hauptstadt");
+    expect(body, url).not.toContain("Ist der Mond aus");
+    expect(body, url).not.toMatch(/awaiting review/i);
   }
+  const examSetName = (await attemptRow(attemptId)).exam_sets.name;
+  // The exam set is chosen at random among the curriculum's sets (seed: set 1 starts with Berlin, set 2 with the moon).
+  const [firstDe, firstEn] =
+    examSetName === "Grundlagen 1"
+      ? ["Ist Berlin die Hauptstadt von Frankreich?", "Is Berlin the capital of France?"]
+      : ["Ist der Mond aus Käse?", "Is the moon made of cheese?"];
 
-  // A student cannot reach the staff review.
+  // A student cannot reach the staff attempts list.
   await page.goto("/staff/review");
   await expect(page).toHaveURL(/\/exam\/start$/);
 
-  // Staff: list, evaluation view, release.
+  // Staff: the read-only Attempts list and the evaluation view (no Release anywhere).
   await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
-  await page.getByRole("link", { name: "Review and release results" }).click();
+  await staffNav(page, "Attempts");
   await expect(page).toHaveURL(/\/staff\/review$/);
-  const row = page.getByRole("row").filter({ hasText: STUDENT_EXAM.fullName });
-  await expect(row).toContainText(EXAM_CURRICULUM_HELD);
+  const row = page.getByTestId("results-table").getByRole("row").filter({ hasText: STUDENT_EXAM.fullName });
+  await expect(row).toContainText(EXAM_CURRICULUM);
+  await expect(row).toContainText(examSetName);
   await expect(row).toContainText("66.7%");
   await expect(row).toContainText("2 / 3");
-  await row.getByRole("link", { name: STUDENT_EXAM.fullName }).click();
+  await expect(row).toContainText("Passed");
+  await expect(page.getByRole("button", { name: /release/i })).toHaveCount(0);
+  await row.getByRole("link", { name: new RegExp(STUDENT_EXAM.fullName) }).click();
   await expect(page).toHaveURL(new RegExp(`/staff/review/${attemptId}$`));
 
   await expect(page.getByRole("heading", { name: STUDENT_EXAM.fullName })).toBeVisible();
   await expect(page.getByTestId("review-question")).toHaveCount(3);
-  await expect(page.getByText("Ist Berlin die Hauptstadt von Frankreich?")).toBeVisible();
-  await expect(page.getByText("Is Berlin the capital of France?")).toBeVisible();
+  await expect(page.getByText(firstDe)).toBeVisible();
+  await expect(page.getByText(firstEn)).toBeVisible();
   await expect(page.getByTestId("review-option").filter({ hasText: "Vielleicht" }).first()).toContainText("Maybe");
   await expect(page.locator("[data-testid=review-option][data-correct]")).toHaveCount(3);
   await expect(page.locator("[data-testid=review-option][data-chosen]")).toHaveCount(3);
@@ -105,73 +83,67 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   await expect(page.getByTestId("awarded-points").filter({ hasText: "0 / 1 points" })).toHaveCount(1);
   await expect(page.getByTestId("review-score")).toHaveText("66.7%");
   await expect(page.getByTestId("review-points")).toHaveText("2 of 3 points");
-  await expect(page.getByTestId("review-status")).toHaveText("Awaiting release");
+  await expect(page.getByTestId("review-status")).toHaveText("Passed");
+  await expect(page.getByRole("button", { name: /release/i })).toHaveCount(0);
+  const stored = await attemptRow(attemptId);
+  expect(stored).toMatchObject({ status: "released", points: 2, passed: true });
+  expect((await assignment(STUDENT_EXAM.username, EXAM_CURRICULUM)).status).toBe("passed");
 
-  await page.getByRole("button", { name: "Release result" }).click();
-  const dialog = page.getByRole("dialog", { name: "Release this result?" });
-  await expect(dialog).toContainText("2 of 3");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(dialog).toBeHidden();
-  const { data: still } = await adminDb().from("attempts").select("status").eq("id", attemptId).single();
-  expect(still!.status).toBe("submitted");
+  // Back to the list: the attempt stays there (nothing to release).
+  await page.getByRole("link", { name: "Back to attempts" }).click();
+  await expect(page).toHaveURL(/\/staff\/review$/);
+  await expect(page.getByTestId("results-table").getByRole("row").filter({ hasText: STUDENT_EXAM.fullName })).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Release result" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Release", exact: true }).click();
-  await expect(page.getByTestId("review-status")).toHaveText("Released");
-  await expect(page.getByRole("button", { name: "Released" })).toBeDisabled();
-  await expect(page.getByText(`by ${STAFF.fullName}`)).toBeVisible();
-
-  const { data: released } = await adminDb().from("attempts").select("status, points, released_by").eq("id", attemptId).single();
-  expect(released).toMatchObject({ status: "released", points: 2 });
-  const { data: staffProfile } = await adminDb().from("profiles").select("id").eq("username", "e2e.staff").single();
-  expect(released!.released_by).toBe(staffProfile!.id);
-  expect(await assignmentStatus(STUDENT_EXAM.username, EXAM_CURRICULUM_HELD)).toBe("passed");
-
-  await page.getByRole("link", { name: "Back to review list" }).click();
-  await expect(page.getByRole("row").filter({ hasText: STUDENT_EXAM.fullName })).toHaveCount(0);
-
-  // Staff still find the released result: the Results list (filtered) and the student page.
-  await page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Results" }).click();
-  await expect(page).toHaveURL(/\/staff\/results$/);
-  await page.getByRole("combobox", { name: "Curriculum" }).selectOption({ label: EXAM_CURRICULUM_HELD });
-  await page.getByRole("combobox", { name: "Status" }).selectOption("released");
+  // Filters: curriculum and status. The old Results address leads to the same list.
+  await page.getByRole("combobox", { name: "Curriculum" }).selectOption({ label: EXAM_CURRICULUM });
+  await page.getByRole("combobox", { name: "Status" }).selectOption("passed");
   await page.getByRole("button", { name: "Filter" }).click();
-  await expect(page).toHaveURL(/status=released/);
-  const staffRow = page.getByTestId("results-table").getByRole("row").filter({ hasText: STUDENT_EXAM.fullName });
-  await expect(staffRow).toContainText("Released");
-  await expect(staffRow).toContainText("2 / 3");
-  await staffRow.getByRole("link", { name: STUDENT_EXAM.fullName }).click();
-  await expect(page).toHaveURL(new RegExp(`/staff/review/${attemptId}$`));
+  await expect(page).toHaveURL(/status=passed/);
+  await expect(page.getByTestId("results-table").getByRole("row").filter({ hasText: STUDENT_EXAM.fullName })).toContainText("2 / 3");
+  await page.getByRole("combobox", { name: "Status" }).selectOption("not_passed");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await expect(page).toHaveURL(/status=not_passed/);
+  await expect(page.getByTestId("results-empty")).toBeVisible();
+  await page.goto("/staff/results");
+  await expect(page).toHaveURL(/\/staff\/review$/);
+
+  // The student page lists the result with its evaluation link.
   await page.goto("/staff/students?q=" + STUDENT_EXAM.username);
   await page.getByRole("link", { name: `Open ${STUDENT_EXAM.fullName}` }).click();
   const studentResults = page.getByTestId("student-results-table");
-  await expect(studentResults.getByRole("row").filter({ hasText: EXAM_CURRICULUM_HELD })).toContainText("2 / 3");
-
-  // Student: the bilingual report.
-  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
-  // The passed assignment is no longer the student's next exam; the result stays reachable.
-  await expect(page.getByTestId("all-completed")).toBeVisible();
-  const resultRow = page.getByTestId("results-list").getByRole("listitem").filter({ hasText: EXAM_CURRICULUM_HELD });
-  await expect(resultRow.getByTestId("result-percent")).toHaveText("66.7%");
+  const resultRow = studentResults.getByRole("row").filter({ hasText: EXAM_CURRICULUM });
   await expect(resultRow).toContainText("2 / 3");
   await expect(resultRow).toContainText("Passed");
-  await resultRow.getByRole("link", { name: /View result/ }).click();
+  await resultRow.getByRole("link", { name: /Evaluation/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/staff/review/${attemptId}$`));
+
+  // Student: the passed card, the results list and the bilingual report.
+  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
+  await expect(curriculumCard(page, EXAM_CURRICULUM)).toHaveAttribute("data-kind", "passed");
+  await expect(curriculumCard(page, EXAM_CURRICULUM_TWO)).toHaveAttribute("data-kind", "ready");
+  const group = page.getByTestId("results-group").filter({ visible: true }).filter({ hasText: EXAM_CURRICULUM });
+  const listRow = group.getByTestId("result-row").first();
+  await expect(listRow.getByTestId("result-percent")).toHaveText("66.7%");
+  await expect(listRow).toContainText("2 / 3");
+  await expect(listRow).toContainText("Passed");
+  await listRow.getByRole("link", { name: /View result/ }).click();
   await expect(page).toHaveURL(resultUrl);
   await expect(page.getByRole("heading", { name: "Ergebnis / Result" })).toBeVisible();
   await expect(page.getByTestId("result-score")).toHaveText("66.7%");
   await expect(page.getByTestId("result-points")).toContainText("2 of 3 points");
-  // The pass mark snapshot of the attempt (this exam set uses 60%).
+  // The pass mark snapshot of the attempt (this curriculum's exam sets use 60%).
   await expect(page.getByTestId("result-pass-mark")).toContainText("60%");
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
   const topics = page.getByTestId("topic-table");
   await expect(topics).toContainText("Thema / Topic");
   await expect(topics.getByRole("row").filter({ hasText: "allgemein" })).toContainText("2 / 3");
   await expect(page.getByText("Prüfung / Exam")).toBeVisible();
+  await expect(page.getByTestId("result-report")).toContainText(examSetName);
   await expect(page.getByRole("button", { name: "Print report" })).toBeVisible();
   // No answer key or question-by-question results for students.
   const html = await page.content();
   expect(html).not.toContain("correct_option_id");
-  expect(html).not.toContain("Ist Berlin die Hauptstadt");
+  expect(html).not.toContain(firstDe);
 
   // Print view: report content stays, app controls disappear.
   await page.emulateMedia({ media: "print" });
@@ -185,13 +157,39 @@ test("held result: no marks before release, staff checks the bilingual evaluatio
   await page.emulateMedia({ media: null });
 });
 
-test("a released result is only visible to its own student", async ({ page }) => {
+test("a failed attempt is shown at once with its percentage; the other curriculum is independent", async ({ page }) => {
+  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
+  // The second curriculum first: any order.
+  const attemptId = await takeExam(page, EXAM_CURRICULUM_TWO, ["Ja", "Ja", "Nein"]); // 1 of 3, pass mark 90 %
+  await expect(page.getByTestId("result-score")).toHaveText("33.3%");
+  await expect(page.getByTestId("result-outcome")).toHaveText("Nicht bestanden / Not passed");
+  await expect(page.getByTestId("result-pass-mark")).toContainText("90%");
+  expect(await attemptRow(attemptId)).toMatchObject({ status: "released", points: 1, passed: false });
+  // One of two attempts used: still open.
+  expect((await assignment(STUDENT_EXAM.username, EXAM_CURRICULUM_TWO)).status).toBe("open");
+
+  await page.getByRole("link", { name: "Back to exams" }).click();
+  await expect(page).toHaveURL(/\/exam\/start$/);
+  await expect(curriculumCard(page, EXAM_CURRICULUM_TWO)).toHaveAttribute("data-kind", "ready");
+  await expect(curriculumCard(page, EXAM_CURRICULUM_TWO).getByTestId("attempts-left")).toHaveText("1 attempt left");
+  await expect(curriculumCard(page, EXAM_CURRICULUM_TWO)).toContainText("This is your last attempt.");
+  await expect(curriculumCard(page, EXAM_CURRICULUM).getByTestId("attempts-left")).toHaveText("2 attempts left");
+  const group = page.getByTestId("results-group").filter({ visible: true }).filter({ hasText: EXAM_CURRICULUM_TWO });
+  await expect(group.getByTestId("result-row")).toHaveCount(1);
+  await expect(group.getByTestId("result-percent")).toHaveText("33.3%");
+  await expect(group).toContainText("Not passed");
+  // Nothing about the other curriculum, and no promise of a later review.
+  await expect(page.getByTestId("results-group").filter({ visible: true })).toHaveCount(1);
+  // innerText skips routes Next keeps rendered but hidden after navigation.
+  expect(await page.locator("body").innerText()).not.toMatch(/awaiting|review|released/i);
+});
+
+test("a result is only visible to its own student", async ({ page }) => {
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
-  // This exam set was created without a pass mark: the 90% standard applies and is shown up front.
-  await expect(page.getByTestId("pass-mark")).toHaveText("90%");
-  const attemptId = await takeExam(page, ["Nein", "Nein", "Nein"]); // not held: released at once
+  const attemptId = await takeExam(page, EXAM_CURRICULUM_OPEN, ["Nein", "Nein", "Nein"]);
   await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
   await expect(page.getByTestId("result-score")).toHaveText("100%");
+  // This exam set was created without a pass mark: the 90% standard applies.
   await expect(page.getByTestId("result-pass-mark")).toContainText("90%");
 
   // Another student with a valid session gets not found and none of the numbers.

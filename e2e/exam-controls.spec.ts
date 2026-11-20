@@ -1,24 +1,16 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { EXAM_CURRICULUM_HELD, STAFF, STUDENT_EXAM, STUDENT_EXAM_OPEN } from "./fixtures";
-import { expectNoHorizontalOverflow } from "./helpers";
+import { EXAM_CURRICULUM_OPEN, STAFF, STUDENT_EXAM_OPEN } from "./fixtures";
+import { expectNoHorizontalOverflow, signIn, startExam } from "./helpers";
 import { adminDb, seed } from "./seed";
 
 // Exam controls: staff set hours, minutes, count and reminders per exam set; students see them
-// on the start card and get non-blocking "N minutes left" reminders during the exam.
+// in the exam bar (the exam set is chosen at start, so the start card has no exam facts) and get
+// non-blocking "N minutes left" reminders during the exam.
 
 test.beforeEach(async () => {
   await seed();
 });
-
-async function signIn(page: Page, username: string, password: string, home: RegExp) {
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByLabel("Username or email").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(home);
-}
 
 async function savedAnswers(attemptId: string) {
   const db = adminDb();
@@ -35,13 +27,13 @@ async function savedAnswers(attemptId: string) {
   return byPosition;
 }
 
-test("staff set hours, minutes, questions and reminders; the student start card shows them", async ({ page }) => {
+test("staff set hours, minutes, questions and reminders; the student's exam uses them", async ({ page }) => {
   await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
-  const { data: c } = await adminDb().from("curriculums").select("id").eq("name", EXAM_CURRICULUM_HELD).single();
+  const { data: c } = await adminDb().from("curriculums").select("id").eq("name", EXAM_CURRICULUM_OPEN).single();
   await page.goto(`/staff/curriculums/${c!.id}`);
   const card = page.getByTestId("exam-set-card").first();
   await expect(card.getByTestId("exam-set-summary")).toContainText(
-    "3 questions, 30 min, pass at 60%, 1 attempt, result held for review, reminder every 15 min",
+    "3 questions, 30 min, pass at 90%, result shown at once, reminder every 15 min",
   );
 
   await card.getByText("Edit settings").click();
@@ -62,7 +54,7 @@ test("staff set hours, minutes, questions and reminders; the student start card 
   await form.getByLabel("Minutes", { exact: true }).fill("30");
   await form.getByLabel("Time reminder every (minutes)").fill("20");
   await expect(form.getByTestId("exam-set-preview")).toContainText(
-    "3 questions, 2 h 30 min, pass at 60%, 1 attempt, result held for review, reminder every 20 min",
+    "3 questions, 2 h 30 min, pass at 90%, result shown at once, reminder every 20 min",
   );
   await form.getByRole("button", { name: "Save settings" }).click();
   await expect(form.getByTestId("exam-set-saved")).toContainText("Settings saved.");
@@ -75,9 +67,13 @@ test("staff set hours, minutes, questions and reminders; the student start card 
     .single();
   expect(row).toEqual({ time_limit_min: 150, question_count: 3, reminder_interval_min: 20 });
 
-  await signIn(page, STUDENT_EXAM.username, STUDENT_EXAM.password, /\/exam\/start$/);
-  await expect(page.getByTestId("question-count")).toHaveText("3");
-  await expect(page.getByTestId("time-limit")).toHaveText("2 h 30 min");
+  // The next attempt uses the new settings: 3 questions and a 2 h 30 min countdown.
+  await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
+  await startExam(page, EXAM_CURRICULUM_OPEN);
+  await expect(page.getByRole("heading", { name: "Question 1 of 3" })).toBeVisible();
+  await expect(page.getByTestId("timer")).toHaveText(/^2:(29|30):\d\d$/);
+  // The bar names the duration from 640 px (hidden on phones; the text is still there).
+  await expect(page.getByTestId("exam-duration")).toContainText("2 h 30 min exam");
 });
 
 test("time reminders: shown at the right minutes, closable, never touch answers, submit still works", async ({ page }) => {
@@ -85,9 +81,7 @@ test("time reminders: shown at the right minutes, closable, never touch answers,
   // jumping the clock moves the exam forward on screen (the server deadline is real time).
   await page.clock.install();
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
-  const attemptId = page.url().split("/").pop()!;
+  const attemptId = await startExam(page, EXAM_CURRICULUM_OPEN);
   await expect(page.getByTestId("timer")).not.toHaveText("--:--");
   await expect(page.getByTestId("time-reminder")).toHaveCount(0);
 
@@ -146,11 +140,11 @@ test("time reminders: shown at the right minutes, closable, never touch answers,
 
 test("reminders off: an exam set with interval 0 shows none", async ({ page }) => {
   const db = adminDb();
-  const { data: c } = await db.from("curriculums").select("id").eq("name", "E2E Exam Curriculum Open").single();
+  const { data: c } = await db.from("curriculums").select("id").eq("name", EXAM_CURRICULUM_OPEN).single();
   await db.from("exam_sets").update({ reminder_interval_min: 0 }).eq("curriculum_id", c!.id);
   await page.clock.install();
   await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, /\/exam\/start$/);
-  await page.getByRole("button", { name: "Start exam" }).click();
+  await startExam(page, EXAM_CURRICULUM_OPEN);
   await expect(page.getByTestId("timer")).not.toHaveText("--:--");
   await page.clock.fastForward("15:05");
   await expect(page.getByTestId("timer")).toHaveText(/^1[45]:\d\d$/);

@@ -1,101 +1,67 @@
 import { expect, test, type Page } from "@playwright/test";
-import { BLOCK_CURRICULUM, STAFF, STUDENT_BLOCK } from "./fixtures";
+import { BLOCK_CURRICULUM, BLOCK_OTHER_CURRICULUM, STAFF, STUDENT_BLOCK } from "./fixtures";
+import { assignment, attemptRow, curriculumCard, curriculumId, profileId, signIn, staffNav, takeExam } from "./helpers";
 import { adminDb, seed } from "./seed";
 
-// STUDENT_BLOCK: held exam set, 2 questions per paper from 6, max 2 attempts, pass mark 100 %
-// (the student always answers "Ja", the key is "Nein", so every attempt fails). No grant at first.
+// STUDENT_BLOCK: BLOCK_CURRICULUM has 2 attempts per student and two exam sets of 2 questions
+// with a 100 % pass mark (the student answers "Ja", the key is "Nein": every attempt fails).
+// BLOCK_OTHER_CURRICULUM is a separate exam that must stay untouched.
 
 test.beforeEach(async () => {
   await seed();
 });
 
-async function signIn(page: Page, username: string, password: string, home: RegExp) {
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByLabel("Username or email").fill(username);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(home);
+const signInStudent = (page: Page) => signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
+const signInStaff = (page: Page) => signIn(page, STAFF.email, STAFF.password, /\/staff$/);
+
+/** Fails one attempt of BLOCK_CURRICULUM from the start page; the result shows at once. */
+async function failOnce(page: Page): Promise<string> {
+  const attemptId = await takeExam(page, BLOCK_CURRICULUM, ["Ja", "Ja"]);
+  await expect(page.getByTestId("result-score")).toHaveText("0%");
+  await expect(page.getByTestId("result-outcome")).toHaveText("Nicht bestanden / Not passed");
+  await page.goto("/exam/start");
+  return attemptId;
 }
 
-async function failExam(page: Page): Promise<string> {
-  await signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
-  for (let i = 0; i < 2; i++) {
-    await expect(page.getByRole("heading", { name: `Question ${i + 1} of 2` })).toBeVisible();
-    await page.getByRole("radio", { name: "Ja", exact: true }).click();
-    await expect(page.getByTestId("save-status")).toHaveText(/Saved/);
-    if (i === 0) await page.getByRole("button", { name: "Next", exact: true }).click();
-  }
-  await page.getByRole("button", { name: "Review and submit" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Submit exam" }).click();
-  await expect(page).toHaveURL(/\/results\/[0-9a-f-]{36}$/);
-  return page.url().split("/").pop()!;
-}
-
-async function release(page: Page, attemptId: string) {
-  await page.goto(`/staff/review/${attemptId}`);
-  await page.getByRole("button", { name: "Release result" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Release", exact: true }).click();
-  await expect(page.getByTestId("review-status")).toHaveText("Released");
-}
-
-async function giveAttemptFromGrantsPage(page: Page) {
-  await page.goto("/staff/grants");
-  const row = page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName });
-  await expect(row).toContainText(BLOCK_CURRICULUM);
-  await row.getByRole("button", { name: "Give attempt" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Grant attempt" }).click();
-  // The modal hides the page from the accessibility tree; wait for it to close first.
-  await expect(page.getByRole("dialog")).toBeHidden();
-  await expect(page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName })).toHaveCount(0);
-  // The confirmation stays visible although the row is gone.
-  await expect(page.getByTestId("grant-success")).toContainText(`Attempt granted to ${STUDENT_BLOCK.fullName}`);
-}
-
-async function assignmentStatus() {
-  const db = adminDb();
-  const { data: p } = await db.from("profiles").select("id").eq("username", STUDENT_BLOCK.username).single();
-  const { data: c } = await db.from("curriculums").select("id").eq("name", BLOCK_CURRICULUM).single();
-  const { data } = await db.from("assignments").select("status").eq("student_id", p!.id).eq("curriculum_id", c!.id).single();
-  return data!.status as string;
-}
-
-test("a student who fails the last allowed attempt is blocked, appears on the Blocked page and dashboard, and staff can grant another attempt", async ({
+test("two failed attempts on two different exam sets block the curriculum at once; the other stays open; extra attempts with repeats unblock; a pass then counts", async ({
   page,
 }) => {
-  // Two full exams, two releases, the Blocked page and a grant: this flow runs close to the 30 s
-  // default on a busy machine (27.6 s measured), so it gets its own budget like full-flow.
-  test.setTimeout(90_000);
-  // No attempt until staff give one.
-  await signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
-  await expect(page.getByRole("button", { name: "Start exam" })).toHaveCount(0);
+  // Four exams, the Blocked page and the dialog: this flow gets its own budget like full-flow.
+  test.setTimeout(120_000);
+  await signInStudent(page);
+  await expect(curriculumCard(page, BLOCK_CURRICULUM).getByTestId("attempts-left")).toHaveText("2 attempts left");
 
-  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
-  await page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Give attempts" }).click();
-  await expect(page).toHaveURL(/\/staff\/grants$/);
-  await giveAttemptFromGrantsPage(page);
+  // Attempt 1 fails: one left, still open.
+  const first = await failOnce(page);
+  expect((await assignment(STUDENT_BLOCK.username, BLOCK_CURRICULUM)).status).toBe("open");
+  await expect(curriculumCard(page, BLOCK_CURRICULUM).getByTestId("attempts-left")).toHaveText("1 attempt left");
 
-  // Attempt 1 fails, staff release: one attempt left, so the student stays open and is grantable again.
-  const first = await failExam(page);
-  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
-  await release(page, first);
-  expect(await assignmentStatus()).toBe("open");
-  await giveAttemptFromGrantsPage(page);
+  // Attempt 2 fails on the other exam set: blocked in the same step the result is shown.
+  const second = await failOnce(page);
+  const [a1, a2] = [await attemptRow(first), await attemptRow(second)];
+  expect(a1.exam_set_id).not.toBe(a2.exam_set_id);
+  expect(a2).toMatchObject({ status: "released", points: 0, passed: false });
+  expect((await assignment(STUDENT_BLOCK.username, BLOCK_CURRICULUM)).status).toBe("blocked");
 
-  // Attempt 2 fails: held, so no block is written (or shown) until release.
-  const second = await failExam(page);
-  await expect(page.getByTestId("result-status")).toHaveText(/Submitted, awaiting review/);
-  expect(await assignmentStatus()).toBe("open");
-  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
-  await page.goto("/staff/blocked");
-  await expect(page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName })).toHaveCount(0);
-  await release(page, second);
-  expect(await assignmentStatus()).toBe("blocked");
+  const blockedCard = curriculumCard(page, BLOCK_CURRICULUM);
+  await expect(blockedCard).toHaveAttribute("data-kind", "blocked");
+  await expect(blockedCard.getByTestId("contact-trainer")).toHaveText(/contact your trainer/);
+  await expect(blockedCard.getByRole("button", { name: "Start exam" })).toHaveCount(0);
+  await expect(blockedCard.getByTestId("attempts-left")).toHaveCount(0);
+  // The other curriculum is independent: still ready with both attempts.
+  await expect(curriculumCard(page, BLOCK_OTHER_CURRICULUM)).toHaveAttribute("data-kind", "ready");
+  await expect(curriculumCard(page, BLOCK_OTHER_CURRICULUM).getByTestId("attempts-left")).toHaveText("2 attempts left");
+  expect((await assignment(STUDENT_BLOCK.username, BLOCK_OTHER_CURRICULUM)).status).toBe("open");
+  // A third start is refused by the database as well.
+  const { error: refused } = await adminDb().rpc("start_attempt", {
+    p_student_id: await profileId(STUDENT_BLOCK.username),
+    p_exam_set_id: a1.exam_set_id,
+    p_draw: [],
+  });
+  expect(refused?.message).toBe("blocked");
 
   // Dashboard card.
-  await page.goto("/staff");
+  await signInStaff(page);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   const card = page.getByTestId("blocked-card");
   await expect(card.getByTestId("blocked-total")).not.toHaveText("0");
@@ -108,78 +74,88 @@ test("a student who fails the last allowed attempt is blocked, appears on the Bl
   await card.getByRole("link", { name: "View blocked students" }).click();
   await expect(page).toHaveURL(/\/staff\/blocked$/);
   const row = page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName });
+  await expect(row).toHaveCount(1);
   await expect(row).toContainText(BLOCK_CURRICULUM);
+  await expect(row).toContainText(a2.exam_sets.name);
   await expect(row).toContainText("2 of 2");
   await expect(row).toContainText("0%");
   await expect(row).toContainText("0 / 2");
-  await expect(row.getByRole("link", { name: "Reassign curriculums" })).toHaveAttribute("href", /\/staff\/students\/[0-9a-f-]{36}$/);
+  await expect(row.getByRole("link", { name: /Student page/ })).toHaveAttribute("href", /\/staff\/students\/[0-9a-f-]{36}$/);
 
-  // The blocked student cannot start anything.
-  await signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
-  await expect(page.getByTestId("blocked-contact-trainer")).toBeVisible();
-
-  // Staff grant another attempt from the Blocked page (2 unseen questions left, 2 needed).
-  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
-  await page.goto("/staff/blocked");
-  const blockedRow = page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName });
-  await blockedRow.getByRole("button", { name: "Grant another attempt" }).click();
+  // Give one extra attempt from the Blocked page. No exam set is left, so repeats start switched on.
+  await row.getByRole("button", { name: /Give extra attempts/ }).click();
   const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("2 of 2 attempts used");
   await expect(dialog).toContainText("lifts the block");
-  await dialog.getByRole("button", { name: "Grant attempt" }).click();
+  await expect(dialog.getByRole("spinbutton", { name: "Number of extra attempts" })).toHaveValue("1");
+  await expect(dialog.getByRole("switch", { name: "Allow repeating exam sets" })).toBeChecked();
+  await dialog.getByRole("button", { name: "Give extra attempts" }).click();
   await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("grant-success")).toHaveText(
+    `Gave ${STUDENT_BLOCK.fullName} 1 extra attempt for ${BLOCK_CURRICULUM}. The block is lifted. Exam sets they already had may be given again.`,
+  );
   await expect(page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName })).toHaveCount(0);
-  await expect(page.getByTestId("grant-success")).toContainText(`Attempt granted to ${STUDENT_BLOCK.fullName}`);
-  expect(await assignmentStatus()).toBe("open");
+  expect(await assignment(STUDENT_BLOCK.username, BLOCK_CURRICULUM)).toEqual({ status: "open", extra_attempts: 1, allow_repeats: true });
 
-  // The student can start again.
-  await signIn(page, STUDENT_BLOCK.username, STUDENT_BLOCK.password, /\/exam\/start$/);
-  await expect(page.getByTestId("next-exam")).toContainText(BLOCK_CURRICULUM);
-  await page.getByRole("button", { name: "Start exam" }).click();
-  await expect(page).toHaveURL(/\/exam\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole("heading", { name: "Question 1 of 2" })).toBeVisible();
+  // The student can start again (a repeated exam set) and this time passes: the card is passed.
+  await signInStudent(page);
+  await expect(curriculumCard(page, BLOCK_CURRICULUM).getByTestId("attempts-left")).toHaveText("1 attempt left");
+  const third = await takeExam(page, BLOCK_CURRICULUM, ["Nein", "Nein"]);
+  await expect(page.getByTestId("result-score")).toHaveText("100%");
+  await expect(page.getByTestId("result-outcome")).toHaveText("Bestanden / Passed");
+  expect([a1.exam_set_id, a2.exam_set_id]).toContain((await attemptRow(third)).exam_set_id);
+  expect((await assignment(STUDENT_BLOCK.username, BLOCK_CURRICULUM)).status).toBe("passed");
+  await page.goto("/exam/start");
+  await expect(curriculumCard(page, BLOCK_CURRICULUM)).toHaveAttribute("data-kind", "passed");
+  await expect(curriculumCard(page, BLOCK_CURRICULUM)).toContainText("100%");
+  await expect(curriculumCard(page, BLOCK_OTHER_CURRICULUM)).toHaveAttribute("data-kind", "ready");
 });
 
-test("when too few unseen questions are left, staff see the shortfall and nothing is granted", async ({ page }) => {
-  // Make the student blocked with only 1 unseen question left: retire 2 of the 6 questions.
+test("fewer exam sets than attempts: staff see a warning, the student is told to contact the trainer, and allowing repeats on the Extra attempts page lets them continue", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  // Leave BLOCK_CURRICULUM with one exam set for its 2 attempts.
   const db = adminDb();
-  const { data: c } = await db.from("curriculums").select("id").eq("name", BLOCK_CURRICULUM).single();
-  const { data: set } = await db.from("exam_sets").select("id").eq("curriculum_id", c!.id).single();
-  const { data: student } = await db.from("profiles").select("id").eq("username", STUDENT_BLOCK.username).single();
-  const { data: qs } = await db.from("questions").select("id").eq("exam_set_id", set!.id).order("stem_de");
-  const ids = qs!.map((q) => q.id);
-  // Two attempts on questions 1-4, failed and released; question 5 drafted; question 6 is the only unseen one.
-  for (const pair of [ids.slice(0, 2), ids.slice(2, 4)]) {
-    await db.from("attempt_grants").insert({ student_id: student!.id, exam_set_id: set!.id });
-    const { data: attemptId, error } = await db.rpc("start_attempt", {
-      p_student_id: student!.id,
-      p_exam_set_id: set!.id,
-      p_draw: pair.map((id) => ({ question_id: id, option_order: ["a", "b", "c"] })),
-    });
-    if (error) throw error;
-    await db.rpc("close_attempt", { p_attempt_id: attemptId, p_only_if_expired: false });
-    const { data: aq } = await db.from("attempt_questions").select("id").eq("attempt_id", attemptId);
-    const { error: scoreError } = await db.rpc("record_score", {
-      p_attempt_id: attemptId,
-      p_points: 0,
-      p_max_points: 2,
-      p_passed: false,
-      p_questions: aq!.map((q) => ({ attempt_question_id: q.id, correct_option_id: "b", max_points: 1, awarded_points: 0, topic: "allgemein" })),
-    });
-    if (scoreError) throw scoreError;
-    const { error: releaseError } = await db.rpc("release_attempt", { p_attempt_id: attemptId, p_released_by: null });
-    if (releaseError) throw releaseError;
-  }
-  await db.from("questions").update({ status: "draft" }).eq("id", ids[4]);
-  expect(await assignmentStatus()).toBe("blocked");
+  const cId = await curriculumId(BLOCK_CURRICULUM);
+  const { error } = await db.from("exam_sets").delete().eq("curriculum_id", cId).eq("name", "Block 2");
+  if (error) throw error;
 
-  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
-  await page.goto("/staff/blocked");
-  const row = page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName });
-  await row.getByRole("button", { name: "Grant another attempt" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Grant attempt" }).click();
-  await expect(page.getByRole("dialog")).toBeHidden();
-  await expect(row.getByTestId("grant-error")).toHaveText("Only 1 unseen question left, 2 needed");
-  expect(await assignmentStatus()).toBe("blocked");
-  const { data: grants } = await db.from("attempt_grants").select("id").eq("student_id", student!.id).is("used_attempt_id", null);
-  expect(grants).toEqual([]);
+  await signInStaff(page);
+  await page.goto(`/staff/curriculums/${cId}`);
+  await expect(page.getByTestId("curriculum-warning")).toContainText("Only 1 exam set can be given, but students get 2 attempts");
+
+  // The first attempt uses the only exam set; then there is none left for this student.
+  await signInStudent(page);
+  await failOnce(page);
+  const card = curriculumCard(page, BLOCK_CURRICULUM);
+  await expect(card).toHaveAttribute("data-kind", "unavailable");
+  await expect(card.getByTestId("contact-trainer")).toHaveText("No exam is available right now, please contact your trainer.");
+  await expect(card.getByRole("button", { name: "Start exam" })).toHaveCount(0);
+  expect((await assignment(STUDENT_BLOCK.username, BLOCK_CURRICULUM)).status).toBe("open");
+
+  // Staff: listed under "No exam set left" (not blocked); allow repeats with one extra attempt.
+  await signInStaff(page);
+  await staffNav(page, "Extra attempts");
+  await expect(page).toHaveURL(/\/staff\/grants$/);
+  await expect(page.getByTestId("grants-table").getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName })).toHaveCount(0);
+  const row = page.getByTestId("short-table").getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName });
+  await expect(row).toContainText(BLOCK_CURRICULUM);
+  await expect(row).toContainText("1 of 2");
+  await row.getByRole("button", { name: /Give extra attempts/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).not.toContainText("lifts the block");
+  await expect(dialog).toContainText("Repeats are saved together with at least one extra attempt.");
+  await expect(dialog.getByRole("switch", { name: "Allow repeating exam sets" })).toBeChecked();
+  await dialog.getByRole("button", { name: "Give extra attempts" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("grant-success")).toHaveText(
+    `Gave ${STUDENT_BLOCK.fullName} 1 extra attempt for ${BLOCK_CURRICULUM}. Exam sets they already had may be given again.`,
+  );
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_BLOCK.fullName })).toHaveCount(0);
+  expect(await assignment(STUDENT_BLOCK.username, BLOCK_CURRICULUM)).toEqual({ status: "open", extra_attempts: 1, allow_repeats: true });
+
+  await signInStudent(page);
+  await expect(curriculumCard(page, BLOCK_CURRICULUM)).toHaveAttribute("data-kind", "ready");
+  await expect(curriculumCard(page, BLOCK_CURRICULUM).getByTestId("attempts-left")).toHaveText("2 attempts left");
 });
