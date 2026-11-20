@@ -10,6 +10,9 @@
 // TEST credentials only; passwords and keys are never printed.
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { assertLocalUrl } from "./local-url.mjs";
+
+export { assertLocalUrl };
 
 export const DEMO_STAFF = { email: "demo-staff@example.test", password: "demo-staff-pass-1", username: "demo.staff", fullName: "Demo Staff" };
 export const DEMO_STUDENT = { username: "demo.student", password: "demo-student-pass-1", fullName: "Demo Student" };
@@ -33,19 +36,6 @@ const STEMS = [
   ["Hat ein Jahr dreizehn Monate?", "Does a year have thirteen months?"],
   ["Ist Schnee schwarz?", "Is snow black?"],
 ];
-
-/** Throws unless url is the local stack over http (127.0.0.1 or localhost). */
-export function assertLocalUrl(url) {
-  let parsed;
-  try {
-    parsed = new URL(url ?? "");
-  } catch {
-    throw new Error("demo-seed runs only against the local Supabase stack (NEXT_PUBLIC_SUPABASE_URL is not a URL)");
-  }
-  if (parsed.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(parsed.hostname)) {
-    throw new Error("demo-seed runs only against the local Supabase stack (http://127.0.0.1 or http://localhost)");
-  }
-}
 
 const must = async (promise, what) => {
   const { data, error } = await promise;
