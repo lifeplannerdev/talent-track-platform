@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isPublicPath } from "@/lib/auth/public-paths";
 
 type PendingCookie = { name: string; value: string; options: CookieOptions }[];
 
@@ -41,7 +42,7 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return path === "/login" ? finish(NextResponse.next({ request })) : redirectTo("/login");
+    return isPublicPath(path) ? finish(NextResponse.next({ request })) : redirectTo("/login");
   }
 
   const { data: profile } = await supabase
@@ -50,7 +51,7 @@ export async function proxy(request: NextRequest) {
     .eq("id", user.id)
     .single();
   if (!profile) {
-    return path === "/login" ? finish(NextResponse.next({ request })) : redirectTo("/login");
+    return isPublicPath(path) ? finish(NextResponse.next({ request })) : redirectTo("/login");
   }
 
   const home =
