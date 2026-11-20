@@ -31,6 +31,7 @@ vi.mock("@/lib/extra-attempts", async (importOriginal) => {
     ExtraAttemptsError: real.ExtraAttemptsError,
     giveExtraAttempts: async (...args: unknown[]) => {
       fake.calls.push(args);
+      return { stillBlocked: false };
     },
   };
 });
@@ -61,7 +62,7 @@ describe("giveExtraAttemptsAction", () => {
   });
 
   it("staff: gives with the session's staff id; bad ids give nothing", async () => {
-    await expect(giveExtraAttemptsAction(input)).resolves.toEqual({ ok: true });
+    await expect(giveExtraAttemptsAction(input)).resolves.toEqual({ ok: true, stillBlocked: false });
     expect(fake.calls).toEqual([[fake.profile.id, STUDENT, CURRICULUM, 2, true]]);
     await expect(giveExtraAttemptsAction({ ...input, studentId: "nope" })).resolves.toEqual({ ok: false, error: "invalid_request" });
     expect(fake.calls).toHaveLength(1);

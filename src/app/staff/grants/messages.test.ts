@@ -34,6 +34,12 @@ describe("extraAttemptsSuccess", () => {
       "Gave Asha Nair 2 extra attempts for Pflege Ausbildung. The block is lifted. Exam sets they already had may be given again.",
     );
   });
+
+  it("says when the student is still blocked because they have used more attempts than they now have", () => {
+    expect(extraAttemptsSuccess({ ...base, n: 1, wasBlocked: true, stillBlocked: true })).toBe(
+      "Gave Asha Nair 1 extra attempt for Pflege Ausbildung. Still blocked: they have already used more attempts than they now have, so give more extra attempts to lift the block.",
+    );
+  });
 });
 
 describe("parseExtraAttemptsCount", () => {

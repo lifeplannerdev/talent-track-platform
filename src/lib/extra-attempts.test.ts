@@ -101,10 +101,33 @@ describe("giveExtraAttempts", () => {
     await submitAttempt(attemptId);
     expect(await assignment(student)).toMatchObject({ status: "blocked" });
 
-    await giveExtraAttempts(staffId, student, curriculumId, 1, false);
+    await expect(giveExtraAttempts(staffId, student, curriculumId, 1, false)).resolves.toEqual({ stillBlocked: false });
     expect(await assignment(student)).toEqual({ status: "open", extra_attempts: 1, allow_repeats: false });
     const next = await startAttempt(student, curriculumId);
     expect(next.attemptId).not.toBe(attemptId);
+  });
+
+  it("keeps a student blocked who has used more attempts than the new allowance, and says so", async () => {
+    const student = await makeStudent();
+    // Two failed attempts used under an earlier, larger limit; the limit is now 1 (blocked).
+    const sets = await must(db.from("exam_sets").select("id").eq("curriculum_id", curriculumId).order("name"));
+    const past = new Date(Date.now() - 3_600_000).toISOString();
+    for (const s of sets) {
+      await must(
+        db
+          .from("attempts")
+          .insert({ student_id: student, exam_set_id: s.id, status: "released", deadline_at: past, submitted_at: past, points: 0, max_points: 1, passed: false, released_at: past })
+          .select("id"),
+      );
+    }
+    await must(db.from("assignments").update({ status: "blocked" }).eq("student_id", student).eq("curriculum_id", curriculumId).select("id"));
+
+    // 1 + 1 = 2 does not exceed 2 used.
+    await expect(giveExtraAttempts(staffId, student, curriculumId, 1, false)).resolves.toEqual({ stillBlocked: true });
+    expect(await assignment(student)).toMatchObject({ status: "blocked", extra_attempts: 1 });
+    // 1 + 2 = 3 exceeds 2 used.
+    await expect(giveExtraAttempts(staffId, student, curriculumId, 1, false)).resolves.toEqual({ stillBlocked: false });
+    expect(await assignment(student)).toMatchObject({ status: "open", extra_attempts: 2 });
   });
 
   it("adds up and can switch allow_repeats on (never off), at any time", async () => {

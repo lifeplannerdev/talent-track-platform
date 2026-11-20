@@ -78,7 +78,16 @@ export function ExtraAttemptsButton({
         const result = await giveExtraAttemptsAction({ studentId, curriculumId, n, allowRepeats: repeats });
         setOpen(false);
         if (result.ok) {
-          announce(extraAttemptsSuccess({ n, studentName, curriculumName, allowRepeats: repeats && !allowRepeats, wasBlocked: blocked }));
+          announce(
+            extraAttemptsSuccess({
+              n,
+              studentName,
+              curriculumName,
+              allowRepeats: repeats && !allowRepeats,
+              wasBlocked: blocked,
+              stillBlocked: result.stillBlocked,
+            }),
+          );
         } else {
           setError(extraAttemptsMessage(result));
         }

@@ -27,7 +27,8 @@ export const MAX_EXTRA_ATTEMPTS = 10;
 /**
  * Gives the student n (1..10) more attempts in the curriculum and, with allowRepeats, lets
  * exam sets they already had be given again (false never switches an earlier true off). A
- * blocked assignment becomes open again in the same transaction. Throws ExtraAttemptsError.
+ * blocked assignment opens in the same transaction when the new allowance exceeds the attempts
+ * used (0024); `stillBlocked` says it did not (staff need to give more). Throws ExtraAttemptsError.
  *
  * staffId must be the id of the authenticated staff session (requireRole('staff') in the
  * calling action); the database also refuses a giver who is not staff.
@@ -38,7 +39,7 @@ export async function giveExtraAttempts(
   curriculumId: string,
   n: number,
   allowRepeats: boolean,
-): Promise<void> {
+): Promise<{ stillBlocked: boolean }> {
   if (!Number.isInteger(n) || n < MIN_EXTRA_ATTEMPTS || n > MAX_EXTRA_ATTEMPTS) throw new ExtraAttemptsError("invalid_n");
   if (!isUuid(staffId)) throw new ExtraAttemptsError("not_staff");
   if (!isUuid(studentId) || !isUuid(curriculumId)) throw new ExtraAttemptsError("not_assigned");
@@ -54,4 +55,13 @@ export async function giveExtraAttempts(
     if (CODES.has(error.message)) throw new ExtraAttemptsError(error.message as ExtraAttemptsErrorCode);
     throw new Error(`Could not give extra attempts: ${error.message}`);
   }
+  // Display only: the status give_extra_attempts left (blocked when the allowance is still used up).
+  const { data, error: readError } = await db
+    .from("assignments")
+    .select("status")
+    .eq("student_id", studentId)
+    .eq("curriculum_id", curriculumId)
+    .maybeSingle<{ status: string }>();
+  if (readError) throw new Error(`Could not read the assignment: ${readError.message}`);
+  return { stillBlocked: data?.status === "blocked" };
 }

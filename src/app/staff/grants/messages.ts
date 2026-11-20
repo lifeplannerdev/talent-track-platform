@@ -24,9 +24,13 @@ export function extraAttemptsSuccess(p: {
   curriculumName: string;
   allowRepeats: boolean;
   wasBlocked: boolean;
+  /** The allowance is still used up (0024): the block stays. */
+  stillBlocked?: boolean;
 }): string {
   const parts = [`Gave ${p.studentName} ${p.n} extra attempt${p.n === 1 ? "" : "s"} for ${p.curriculumName}.`];
-  if (p.wasBlocked) parts.push("The block is lifted.");
+  if (p.stillBlocked)
+    parts.push("Still blocked: they have already used more attempts than they now have, so give more extra attempts to lift the block.");
+  else if (p.wasBlocked) parts.push("The block is lifted.");
   if (p.allowRepeats) parts.push("Exam sets they already had may be given again.");
   return parts.join(" ");
 }
