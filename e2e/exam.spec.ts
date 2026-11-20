@@ -18,13 +18,17 @@ async function optionTexts(page: Page) {
 test("start one curriculum, refresh mid-way to the same paper, submit and see the result at once", async ({ page }) => {
   // Network level: nothing served to the student (start, exam and result pages, server actions)
   // may carry the answer key, and no page may promise a later review.
-  // Split at the submit click: before it, no /exam/ response may carry any score or pass mark.
+  // Split at the submit click: no /exam/ response to a request issued before it may carry any
+  // score or pass mark. The phase is recorded when the REQUEST starts (a slow response arriving
+  // after the click still counts as before submit).
   let submitted = false;
+  const phase = new WeakMap<import("@playwright/test").Request, boolean>();
+  page.on("request", (req) => phase.set(req, !submitted));
   const bodies: Promise<{ url: string; body: string; beforeSubmit: boolean }>[] = [];
   page.on("response", (res) => {
     const path = new URL(res.url()).pathname;
     if (path.startsWith("/exam/") || path.startsWith("/results/")) {
-      const beforeSubmit = !submitted;
+      const beforeSubmit = phase.get(res.request()) ?? true; // unknown = issued before listening, so before submit
       bodies.push(
         res.text().then(
           (body) => ({ url: res.url(), body, beforeSubmit }),
