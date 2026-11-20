@@ -1,6 +1,6 @@
-# TalentTrackPlatform
+# KVP (Knowledge Validation Platform, "Powered by F.L.A.G")
 
-Exam platform for Life Planner students (Kerala, India). Spec: `docs/superpowers/specs/2026-11-13-talenttrackplatform-design.md`. Phase 1 plan: `docs/superpowers/plans/2026-11-13-talenttrack-phase1.md`.
+Exam platform for students in Kerala, India (repo and package name still `talenttrackplatform`; the brand everywhere in the UI is KVP; never expand F.L.A.G). Spec: `docs/superpowers/specs/2026-11-13-talenttrackplatform-design.md`. Phase 1 plan: `docs/superpowers/plans/2026-11-13-talenttrack-phase1.md`.
 
 ## Stack
 Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (Postgres, Auth, Storage), Vitest, Playwright. Versions are pinned in `package.json`.
@@ -92,6 +92,7 @@ Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (
 Superpowers (TDD). Project log lives on the Monday board named "TalentTrackPlatform - Project Log". Commits carry no attribution lines.
 
 ## Design system (Task 9)
+- Landing page: `/` is public (`isPublicPath` in `src/lib/auth/public-paths.ts`, used by `src/proxy.ts`; signed-in users still go to their own area). Page `src/app/page.tsx`, parts in `src/components/landing/` (`Reveal`, `CountUp`, `Seal`, specimens). Honest copy only: logging, not blocking; no stats or testimonials. e2e: `e2e/landing.spec.ts` plus the `00-landing` shots in `design.spec.ts`. Motion rules (reduced motion, no JS, exam page calm) are in DESIGN.md.
 - Read `DESIGN.md` before any UI work: Königsblau (`--primary #2346a0`) on white paper, Source Sans 3 (body, exam text) and Lexend (headings, big numbers) via `next/font`, light only (no `dark` variant, no `dark:` classes). Tokens live in `src/app/globals.css` (including `bg-scrim`, `shadow-overlay`, `shadow-panel`); never raw hex in components.
 - Students: white paper, narrow centred column (`studentMain`), `StudentHeader`, `size="lg"` buttons; exam text uses `text-stem` / `text-option`. Staff: grey canvas, `src/app/staff/layout.tsx` header with `StaffNav` (client, marks the current section from the path; Dashboard, Attempts, Blocked, Extra attempts, Students, Curriculums, Questions), `staffMain`, `PageHeader`, framed tables.
 - Shared pieces: `src/components/app/` (wordmark, page header, student header, error state, class strings in `styles.ts`). Status badges use `success` / `warning` / `destructive` / `outline` (attempts: Passed, Not passed, Being scored, In progress; student cards: Ready, In progress, Being calculated, Passed, Blocked, Not available).

@@ -1,12 +1,12 @@
-# TalentTrack design system
+# KVP design system
 
-The visual rules for TalentTrack (Life Planner exam platform). Tokens live in `src/app/globals.css`;
+The visual rules for KVP, the Knowledge Validation Platform, "Powered by F.L.A.G" (the letters exactly as given; never expand them). Tokens live in `src/app/globals.css`;
 shared pieces in `src/components/app/` and the shadcn components in `src/components/ui/`.
 Screenshots of every main screen at 375 px and desktop are in `docs/design-review/`.
 
 ## Direction: the exam sheet
 
-TalentTrack should feel like a well-set official exam paper: white paper, clear ruled structure,
+KVP should feel like a well-set official exam paper: white paper, clear ruled structure,
 one ink colour. The ink is **Königsblau**, the royal-blue school ink German students write with,
 so the one accent comes from the subject (German exams) rather than from a SaaS palette.
 
@@ -22,6 +22,16 @@ The one memorable element is the answer sheet: each option is a full-width row w
 round answer mark that fills with Königsblau when chosen, and the question navigator is a grid
 of numbered squares that fill (and get a check mark) as questions are answered.
 
+**The landing page and the motifs (landing branch).** The public home page (`/`, `src/app/page.tsx`)
+and the sign-in page carry a more editorial finish of the same system: very large Lexend headings
+(bold, tracking -0.04em), ruled exam-paper lines behind the hero (`.ruled`, `--rule-faint`), ruled
+dividers (`border-rule`) instead of card grids, and two motifs that belong to validation:
+the **answer bubble** (the filled round mark; the start cards show one per attempt left) and the
+**validation seal** (`Seal`: two rings and a check in seal gold, drawn once). The German and
+English pair appears as the side-by-side review specimen (`ReviewSpecimen`). The specimens on the
+landing page are labelled as samples; no statistics, testimonials or logos exist and none may be added.
+Copy states only what the code does (see the Fairness section: logging, not blocking).
+
 Light mode only. Dark mode was left out on purpose: the exam and the printed report are designed
 for paper contrast, and a second theme would double the contrast checks for little gain. There is no
 `dark` variant in `globals.css` and the components carry no `dark:` classes; do not add them.
@@ -32,14 +42,16 @@ for paper contrast, and a second theme would double the contrast checks for litt
 
 | Token | Value | Use |
 |---|---|---|
-| `--background` | `#f4f6f9` | Staff canvas, login canvas |
+| `--background` | `#f2f4f8` | Staff canvas, login canvas |
 | `--card` | `#ffffff` | Paper: student pages, staff panels, dialogs |
-| `--foreground` | `#172033` | Body text (16.3:1 on white) |
+| `--foreground` | `#111a30` | Body text (16.3:1 on white) |
 | `--muted-foreground` | `#525d6e` | Secondary text (6.6:1 on white, 5.8:1 on muted) |
 | `--primary` | `#2346a0` | Königsblau: primary action, chosen answer, current item, links, focus ring (8.6:1 on white) |
 | `--secondary` / `--accent` | `#e8edf8` | Blue tint: selected option fill, current nav item, info notes |
 | `--secondary-foreground` | `#1a2f6b` | Text on the blue tint |
 | `--muted` | `#eef1f5` | Table head, hover fill, card footer |
+| `--rule` / `--rule-faint` | `#c4cddc` / blue at 7% | Ruled dividers on the landing page; the faint ruled-paper lines |
+| `--seal` / `--seal-ring` / `--seal-muted` | `#7d5a00` / `#b8860b` / `#f6ecce` | The one warm accent: the gold of the validation seal. Not for actions, links or status |
 | `--border` | `#d5dbe4` | Dividers and panel frames |
 | `--input` | `#8a94a6` | Form control outline (3:1 on white, so fields are findable) |
 | `--success` / `--success-muted` | `#1d6b3f` / `#e3f2e8` | Passed, approved, correct answer, saved |
@@ -76,16 +88,32 @@ Headings: semibold, tracking -0.012em, balanced wrapping. No all-caps labels.
   `native-select.tsx`. Student pages use `size="lg"` (44 px) everywhere.
 - Radius `--radius` 0.5 rem: controls 6 px (`rounded-md`), panels and cards 12 px (`rounded-xl`),
   status tags 5 px (`rounded-sm`). No pills except tiny legend swatches.
-- Elevation is a 1 px border (`ring-border`). Only overlays carry a shadow: `shadow-overlay`
+- Elevation is a 1 px border (`ring-border`). Only overlays carry a shadow (plus the landing specimens, which use `--lift-shadow` instead of a border, and linked cards on hover): `shadow-overlay`
   (`--overlay-shadow`, dialogs) and `shadow-panel` (`--panel-shadow`, the login panel). The
   dialog backdrop is `bg-scrim` (`--scrim`, ink at 45%). No decorative gradients, glass or blur.
 
 ### Motion
 
-150 ms colour and border transitions on controls; the answer mark scales in when chosen (the
-one authored moment); the exam progress line under the sticky bar grows with `transform` only;
-dialogs fade and zoom slightly. `prefers-reduced-motion` turns all
-animation and transitions off (global rule in `globals.css`).
+Tokens: `--ease-out` (exponential ease-out), `--dur-fast` 150 ms, `--dur-base` 220 ms, `--dur-slow`
+640 ms. Only transform and opacity move. Everything respects `prefers-reduced-motion` (the global
+rule in `globals.css` shortens animations and transitions to nothing, and the reveal states below
+are never applied) and plays once without blocking input or shifting layout.
+
+- Hero entrance: `.enter` with `--enter-i` stagger (90 ms steps), CSS only, so it works without JS.
+- Scroll reveal: `<Reveal>` (`src/components/landing/reveal.tsx`, one IntersectionObserver per
+  element, disconnects after the first hit) sets `data-in`; `.reveal` is hidden only inside
+  `@media (scripting: enabled) and (prefers-reduced-motion: no-preference)`, so the page is fully readable without JS.
+- Seal and score bar: the strokes draw (`.seal-draw`) and the bar grows (`.bar-grow`) when their
+  `.reveal` ancestor gets `data-in`; elsewhere they simply render.
+- Count-up: `<CountUp>` animates the sample percentage once; the final value is the server-rendered
+  text plus an `sr-only` copy, so no-JS and screen readers always get the real number.
+- Micro-interactions: `.lift` (card rises 2 px with `--lift-shadow`, used on the landing buttons and the
+  start cards), `.link-draw` (underline draws in), the answer mark scales in when chosen, dialogs fade
+  and zoom slightly, the exam progress line grows with `transform`.
+- Route change: `template.tsx` files (staff, login, consent, results, exam/start) wrap pages in
+  `PageFade` (`.page-in`, a 220 ms opacity fade). The exam page (`/exam/[attemptId]`) has no template and
+  no decorative animation: the exam surface stays calm.
+- Loading: `Skeleton` has a shimmer (a translating highlight, transform only).
 
 ## Components and conventions
 
@@ -178,8 +206,9 @@ animation and transitions off (global rule in `globals.css`).
   commas or separate facts), sentence case everywhere.
 - **Button links:** `buttonVariants()` returns merged classes (variant classes win over the base),
   so `<Link className={buttonVariants({ variant: "outline" })}>` keeps its border.
-- **Wordmark:** text only, "TalentTrack" with "Life Planner" underneath and a small mark of two
-  ruled lines. No logo files exist; do not invent one.
+- **Wordmark:** "KVP" in heavy Lexend with "Knowledge Validation Platform" underneath (`compact` drops the
+  second line) and a Königsblau square holding a check stroke. `PoweredBy` writes "Powered by F.L.A.G"
+  (shown on the landing page, login, student and staff footers). No logo files exist; do not invent one.
 - **Print:** the result report prints on A4 (14/16 mm margins, 11 pt) with no app chrome
   (`print:hidden` on headers and buttons); the letterhead rule and the bars keep their ink
   (`print-color-adjust: exact`); badges, table heads and frames are forced to black; sections,

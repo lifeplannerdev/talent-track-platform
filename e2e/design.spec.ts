@@ -72,6 +72,15 @@ function finish(info: TestInfo, findings: Finding[]) {
   if (!REPORT_ONLY) expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
 }
 
+test("landing page: public home at 375 px and desktop", async ({ page }, info) => {
+  const findings: Finding[] = [];
+  await page.context().clearCookies();
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await review(page, info, "00-landing", findings);
+  finish(info, findings);
+});
+
 test("student screens: login, consent, empty start, curriculum cards, exam, submit dialog, result at once and print, results list, blocked and calculating cards", async ({
   page,
 }, info) => {
