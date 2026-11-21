@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ActionStatusProvider } from "./action-status";
 import { ExtraAttemptsButton } from "./extra-attempts-button";
 
-export const metadata: Metadata = { title: "Extra attempts | KVP" };
+export const metadata: Metadata = { title: "Extra attempts | Talent Track Platform" };
 
 function CandidateTable({ rows, testId }: { rows: ExtraAttemptRow[]; testId: string }) {
   return (

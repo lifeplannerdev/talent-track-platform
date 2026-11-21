@@ -9,7 +9,7 @@ import { firstName } from "@/lib/greeting";
 import { logout } from "@/app/login/actions";
 import { acceptConsent } from "./actions";
 
-export const metadata: Metadata = { title: "Consent | KVP" };
+export const metadata: Metadata = { title: "Consent | Talent Track Platform" };
 
 async function ConsentContent() {
   const profile = await requireRole("student");
@@ -25,7 +25,7 @@ async function ConsentContent() {
       </div>
       <div className="flex max-w-[62ch] flex-col gap-3 text-[1.0625rem] leading-relaxed">
         <p>
-          KVP stores your exam answers and results so that your instructors can assess your progress. Your
+          Talent Track Platform stores your exam answers and results so that your instructors can assess your progress. Your
           answers are timed and saved automatically while you work.
         </p>
         <p>

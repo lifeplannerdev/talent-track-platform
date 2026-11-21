@@ -21,7 +21,7 @@ import { AddCurriculumForm, MoveButtons, RemoveCurriculumButton } from "./assign
 import { DeleteStudentForm } from "./delete-student-form";
 import { ResetPasswordForm } from "./reset-password-form";
 
-export const metadata: Metadata = { title: "Student | KVP" };
+export const metadata: Metadata = { title: "Student | Talent Track Platform" };
 
 async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
   await requireRole("staff");

@@ -6,7 +6,7 @@ import { getAttemptForStudent } from "@/lib/attempts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExamClient } from "./exam-client";
 
-export const metadata: Metadata = { title: "Exam in progress | KVP" };
+export const metadata: Metadata = { title: "Exam in progress | Talent Track Platform" };
 
 async function Exam({ params }: { params: Promise<{ attemptId: string }> }) {
   const profile = await requireRole("student");

@@ -1,9 +1,9 @@
 import { cn } from "cn";
 
 /**
- * Wordmark: "KVP" set heavy in Lexend with "Knowledge Validation Platform" beneath. The mark is a
+ * Wordmark: "Talent Track Platform" set heavy in Lexend with "Powered by F.L.A.G" beneath. The mark is a
  * Königsblau square with a check drawn as one stroke, the same check the validation seal uses.
- * `compact` drops the full name (tight headers); "Powered by F.L.A.G" lives in <PoweredBy />.
+ * `compact` drops the sub-line (tight headers and footers that already carry <PoweredBy />).
  * No logo files exist; do not invent one.
  */
 export function Wordmark({ className, compact = false }: { className?: string; compact?: boolean }) {
@@ -15,8 +15,8 @@ export function Wordmark({ className, compact = false }: { className?: string; c
         </svg>
       </span>
       <span className="flex flex-col leading-none">
-        <span className="font-heading text-[1.1875rem] font-bold tracking-[-0.025em] text-foreground">KVP</span>
-        {compact ? null : <span className="mt-1 text-xs font-medium text-muted-foreground">Knowledge Validation Platform</span>}
+        <span className="font-heading text-base font-bold tracking-[-0.025em] whitespace-nowrap text-foreground sm:text-[1.1875rem]">Talent Track Platform</span>
+        {compact ? null : <span className="mt-1 text-xs font-medium whitespace-nowrap text-muted-foreground">Powered by F.L.A.G</span>}
       </span>
     </span>
   );

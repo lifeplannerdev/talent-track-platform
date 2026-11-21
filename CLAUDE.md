@@ -1,6 +1,6 @@
-# KVP (Knowledge Validation Platform, "Powered by F.L.A.G")
+# Talent Track Platform (powered by F.L.A.G)
 
-Exam platform for students in Kerala, India (repo and package name still `talenttrackplatform`; the brand everywhere in the UI is KVP; never expand F.L.A.G). Spec: `docs/superpowers/specs/2026-11-13-talenttrackplatform-design.md`. Phase 1 plan: `docs/superpowers/plans/2026-11-13-talenttrack-phase1.md`.
+Exam platform for students in Kerala, India (repo and package name still `talenttrackplatform`; the product name in the UI is "Talent Track Platform", never abbreviated; F.L.A.G is written exactly so and means Foreign Languages Academy Gurukulam, spelled out once on the landing footer). Spec: `docs/superpowers/specs/2026-11-13-talenttrackplatform-design.md`. Phase 1 plan: `docs/superpowers/plans/2026-11-13-talenttrack-phase1.md`.
 
 ## Stack
 Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (Postgres, Auth, Storage), Vitest, Playwright. Versions are pinned in `package.json`.

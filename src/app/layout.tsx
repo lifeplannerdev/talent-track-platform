@@ -23,8 +23,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Knowledge Validation Platform | KVP", template: "%s" },
-  description: "KVP, the Knowledge Validation Platform, powered by F.L.A.G: exams and results for students and trainers.",
+  title: { default: "Talent Track Platform, powered by F.L.A.G", template: "%s" },
+  description: "Talent Track Platform, powered by F.L.A.G: exams and results for students and trainers.",
 };
 
 export const viewport: Viewport = {

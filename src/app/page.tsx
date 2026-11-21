@@ -6,14 +6,14 @@ import { Reveal } from "@/components/landing/reveal";
 import { AnswerSheetSpecimen, ReviewSpecimen } from "@/components/landing/specimens";
 import { cn } from "cn";
 
-const TITLE = "Knowledge Validation Platform (KVP), powered by F.L.A.G";
+const TITLE = "Talent Track Platform, powered by F.L.A.G";
 const DESCRIPTION =
-  "KVP is where trainers set exams and students sit them: German questions, results as a percentage the moment you submit, and every attempt open to review.";
+  "Talent Track Platform is where trainers set exams and students sit them: German questions, results as a percentage the moment you submit, and every attempt open to review.";
 
 export const metadata: Metadata = {
   title: { absolute: TITLE },
   description: DESCRIPTION,
-  openGraph: { title: TITLE, description: DESCRIPTION, type: "website", siteName: "Knowledge Validation Platform" },
+  openGraph: { title: TITLE, description: DESCRIPTION, type: "website", siteName: "Talent Track Platform" },
   twitter: { card: "summary", title: TITLE, description: DESCRIPTION },
 };
 
@@ -60,7 +60,7 @@ const doesList = [
 ];
 
 const cannotList = [
-  "Block screenshots or screen recordings. No web page can, and KVP does not claim to.",
+  "Block screenshots or screen recordings. No web page can, and Talent Track Platform does not claim to.",
   "See a phone camera or a second device.",
 ];
 
@@ -106,11 +106,9 @@ export default function LandingPage() {
                 className="enter font-heading text-[clamp(2.6rem,10.5vw,5.75rem)] leading-[0.96] font-bold tracking-[-0.04em] text-foreground"
                 style={{ "--enter-i": 0 } as React.CSSProperties}
               >
-                <span className="block">Knowledge</span> <span className="block">Validation</span> <span className="block text-primary">Platform</span>
+                <span className="block">Talent</span> <span className="block">Track</span> <span className="block text-primary">Platform</span>
               </h1>
               <p className="enter mt-6 flex flex-wrap items-center gap-x-4 gap-y-2" style={{ "--enter-i": 2 } as React.CSSProperties}>
-                <span translate="no" className="font-heading text-2xl font-bold tracking-[-0.02em] text-primary">KVP</span>
-                <span aria-hidden="true" className="h-5 w-px bg-rule" />
                 <PoweredBy className="text-base" />
               </p>
               <p className={cn(body, "enter mt-5 max-w-[52ch] text-foreground/80 sm:text-lg")} style={{ "--enter-i": 3 } as React.CSSProperties}>
@@ -146,7 +144,7 @@ export default function LandingPage() {
             <div className="flex flex-col gap-8 lg:col-span-7">
               <Reveal index={1}>
                 <p className={cn(body, "max-w-[58ch]")}>
-                  KVP is where trainers set exams and students sit them. Everyone gets a paper built to the same rules, a clock that runs on the server and a result scored by the platform, so a pass means the same thing for every student.
+                  Talent Track Platform is where trainers set exams and students sit them. Everyone gets a paper built to the same rules, a clock that runs on the server and a result scored by the platform, so a pass means the same thing for every student.
                 </p>
               </Reveal>
               <FactList
@@ -215,7 +213,7 @@ export default function LandingPage() {
             </Reveal>
             <div className="mt-10 grid gap-10 lg:grid-cols-12 lg:gap-12">
               <Reveal className="lg:col-span-7">
-                <h3 className="font-heading text-xl font-semibold tracking-[-0.015em]">What KVP does</h3>
+                <h3 className="font-heading text-xl font-semibold tracking-[-0.015em]">What Talent Track Platform does</h3>
                 <ul className="mt-4 flex list-none flex-col border-t border-rule p-0">
                   {doesList.map((t) => (
                     <li key={t} className="border-b border-rule py-3.5 text-base leading-relaxed text-foreground/85">{t}</li>
@@ -259,8 +257,9 @@ export default function LandingPage() {
       <footer className="border-t bg-card">
         <div className={cn(wrap, "flex flex-col gap-4 py-8 sm:flex-row sm:items-center sm:justify-between")}>
           <div className="flex flex-col gap-3">
-            <Wordmark />
+            <Wordmark compact />
             <PoweredBy />
+            <p className="text-sm text-muted-foreground">F.L.A.G is the Foreign Languages Academy Gurukulam.</p>
           </div>
           <div className="flex flex-col gap-1 sm:items-end">
             <Link href="/login" className="link-draw w-fit rounded-sm py-1 text-sm font-semibold text-primary">

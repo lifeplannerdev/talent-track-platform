@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* KVP (Knowledge Validation Platform) design tokens. See DESIGN.md for the direction and the rules. Light only:
+/* Talent Track Platform design tokens. See DESIGN.md for the direction and the rules. Light only:
    the exam and the printed report are designed for paper-like contrast. */
 
 @theme inline {

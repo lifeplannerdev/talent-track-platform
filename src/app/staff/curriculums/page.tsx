@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { linkClass } from "../students/ui";
 import { CurriculumNameForm } from "./curriculum-name-form";
 
-export const metadata: Metadata = { title: "Curriculums | KVP" };
+export const metadata: Metadata = { title: "Curriculums | Talent Track Platform" };
 
 async function CurriculumList() {
   await requireRole("staff");

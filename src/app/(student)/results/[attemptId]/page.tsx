@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CalculatingResult } from "./calculating";
 import { PrintButton } from "./print-button";
 
-export const metadata: Metadata = { title: "Result | KVP" };
+export const metadata: Metadata = { title: "Result | Talent Track Platform" };
 
 // English interface; the report itself is bilingual (German / English) and prints as a clean
 // report. It shows as soon as the attempt is scored (spec change 1: scoring releases at once).

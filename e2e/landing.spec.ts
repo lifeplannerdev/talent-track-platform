@@ -14,18 +14,19 @@ test("the landing page is public, has one h1 and the brand words", async ({ page
   expect(res?.status()).toBe(200);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Knowledge\s+Validation\s+Platform/);
-  await expect(page).toHaveTitle(/Knowledge Validation Platform/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Talent\s+Track\s+Platform/);
+  await expect(page).toHaveTitle(/Talent Track Platform/);
   const main = page.getByRole("main");
-  await expect(main.getByText("KVP", { exact: true }).first()).toBeVisible();
+  await expect(main.getByText("Powered by F.L.A.G").first()).toBeVisible();
+  await expect(page.getByRole("contentinfo")).toContainText("Foreign Languages Academy Gurukulam");
   await expect(page.getByText("Powered by F.L.A.G").first()).toBeVisible();
-  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /Knowledge Validation Platform/);
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /Talent Track Platform/);
   await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /.+/);
   for (const landmark of ["banner", "main", "contentinfo"] as const) {
     await expect(page.getByRole(landmark)).toHaveCount(1);
   }
   // No old brand text anywhere on the page.
-  expect(await page.locator("body").innerText()).not.toMatch(/TalentTrack|Life Planner/i);
+  expect(await page.locator("body").innerText()).not.toMatch(/KVP|Knowledge Validation|TalentTrack|Life Planner/i);
 });
 
 test("the sample score is in the page text, and the call to action goes to sign in", async ({ page }) => {

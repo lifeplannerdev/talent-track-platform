@@ -15,7 +15,7 @@ import { loadStartPage } from "./load";
 import { ResultsByCurriculum } from "./results-by-curriculum";
 import { groupResultsByCurriculum, latestPass } from "./view";
 
-export const metadata: Metadata = { title: "Exam | KVP" };
+export const metadata: Metadata = { title: "Exam | Talent Track Platform" };
 
 const START_ERRORS: Record<string, string> = {
   unavailable: "This exam cannot be started right now. Please contact your trainer.",
