@@ -31,7 +31,11 @@ export type StudentDetails = {
 export type StudentDetailsInput = Partial<Record<keyof StudentDetails, string>>
 
 const EMAIL = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/
-const PHONE = /^\+?[0-9][0-9 ()-]{4,19}$/
+// Leading "+", "(" or a digit, then digits, spaces, dots, dashes, slashes and parentheses.
+const PHONE = /^[+(0-9][0-9 ().\/-]*$/
+const PHONE_MAX_LENGTH = 25
+const PHONE_MIN_DIGITS = 7
+const IST_OFFSET_MS = 330 * 60 * 1000
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /** True for a real calendar date written yyyy-mm-dd. */
@@ -43,6 +47,15 @@ function isRealIsoDate(value: string): boolean {
   return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d
 }
 
+function isValidPhone(value: string): boolean {
+  return value.length <= PHONE_MAX_LENGTH && PHONE.test(value) && value.replace(/\D/g, '').length >= PHONE_MIN_DIGITS
+}
+
+/** The calendar date (yyyy-mm-dd) in Asia/Kolkata at `now`. */
+function istDate(now: Date): string {
+  return new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10)
+}
+
 export function isValidContactEmail(value: string): boolean {
   return value.length <= 254 && EMAIL.test(value)
 }
@@ -50,7 +63,7 @@ export function isValidContactEmail(value: string): boolean {
 /**
  * Validates and normalises the raw (string) fields. Blank optional fields become null, the
  * contact email is required (the table says not null), the status defaults to 'active'.
- * `now` supplies "today" (UTC date) for the passport and birth-date checks.
+ * `now` supplies "today" (the Asia/Kolkata calendar date) for the passport and birth-date checks.
  */
 export function validateStudentDetails(
   input: StudentDetailsInput,
@@ -61,7 +74,7 @@ export function validateStudentDetails(
     const v = (input[key] ?? '').trim()
     return v === '' ? null : v
   }
-  const today = now.toISOString().slice(0, 10)
+  const today = istDate(now)
 
   const email = (input.contactEmail ?? '').trim().toLowerCase()
   if (!email) return fail('Missing contact email')
@@ -69,8 +82,8 @@ export function validateStudentDetails(
 
   for (const key of ['phone', 'guardianPhone'] as const) {
     const v = text(key)
-    if (v !== null && !PHONE.test(v)) {
-      return fail(`${key === 'phone' ? 'Phone' : 'Guardian phone'} number is not valid (digits, spaces, + ( ) -)`)
+    if (v !== null && !isValidPhone(v)) {
+      return fail(`${key === 'phone' ? 'Phone' : 'Guardian phone'} number is not valid (at least 7 digits; spaces, + ( ) . - / allowed)`)
     }
   }
 

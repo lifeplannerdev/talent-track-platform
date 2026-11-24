@@ -96,6 +96,39 @@ describe('validateStudentDetails', () => {
       details: { phone: null, notes: null },
     })
   })
+
+  it('accepts common phone formats: leading ( or +, dots, dashes, slashes, at least 7 digits, up to 25 characters', () => {
+    for (const phone of ['(0484) 123-4567', '+91.98765.43210', '0484/2345678', '+91 (484) 234-5678', '9876543210']) {
+      expect(validateStudentDetails({ contactEmail: 'a@b.co', phone }, NOW)).toMatchObject({ ok: true, details: { phone } })
+    }
+    for (const phone of ['123456', '+91 12 34', '98765x43210', 'call 9876543210', '1234567 ext 5', '+91 98765 43210 98765 4321', '-9876543210', '98+76543210']) {
+      expect(validateStudentDetails({ contactEmail: 'a@b.co', phone }, NOW)).toMatchObject({ ok: false })
+    }
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', guardianPhone: 'abc' }, NOW)).toMatchObject({ ok: false })
+    // Exactly 25 characters is fine, 26 is not.
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', phone: '+91 98765 43210 98765 432' }, NOW)).toMatchObject({ ok: true })
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', phone: '+91 98765 43210 98765 4321' }, NOW)).toMatchObject({ ok: false })
+  })
+
+  it('takes today from the Asia/Kolkata calendar date, not UTC', () => {
+    // 2026-11-24 19:00 UTC is already 2026-11-25 00:30 in India.
+    const lateUtc = new Date('2026-11-24T19:00:00Z')
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', passportExpiry: '2026-11-24' }, lateUtc)).toEqual({
+      ok: false,
+      message: 'Passport expiry 2026-11-24 is in the past',
+    })
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', passportExpiry: '2026-11-25' }, lateUtc)).toMatchObject({ ok: true })
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', dateOfBirth: '2026-11-25' }, lateUtc)).toMatchObject({ ok: true })
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', dateOfBirth: '2026-11-26' }, lateUtc)).toMatchObject({ ok: false })
+    // 2026-11-24 18:29 UTC is 23:59 in India: still the 24th.
+    const justBefore = new Date('2026-11-24T18:29:59Z')
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', passportExpiry: '2026-11-24' }, justBefore)).toMatchObject({ ok: true })
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', dateOfBirth: '2026-11-25' }, justBefore)).toMatchObject({ ok: false })
+    // The boundary itself: 18:30 UTC is 00:00 on the 25th.
+    const boundary = new Date('2026-11-24T18:30:00Z')
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', passportExpiry: '2026-11-24' }, boundary)).toMatchObject({ ok: false })
+    expect(validateStudentDetails({ contactEmail: 'a@b.co', dateOfBirth: '2026-11-25' }, boundary)).toMatchObject({ ok: true })
+  })
 })
 
 describe('detailsToRow and rowToDetails', () => {
