@@ -51,7 +51,7 @@ vi.mock("@/lib/mail", () => ({
   },
 }));
 
-import { INVITE_LIFETIME_DAYS, createInviteLink, sendInvite } from "./invites";
+import { INVITE_LIFETIME_HOURS, createInviteLink, sendInvite } from "./invites";
 import { buildInviteMail } from "./mail/invite-template";
 
 beforeEach(() => {
@@ -139,16 +139,19 @@ describe("sendInvite", () => {
 });
 
 describe("invite lifetime", () => {
-  it("the mail template states the exported lifetime", () => {
+  it("the mail template states the exported lifetime in hours", () => {
     const mail = buildInviteMail({ fullName: "A", username: "a", link: "https://x.test/set-password?token_hash=t" });
-    expect(INVITE_LIFETIME_DAYS).toBe(7);
-    expect(mail.text).toContain(`expires in ${INVITE_LIFETIME_DAYS} days`);
-    expect(mail.html).toContain(`expires in ${INVITE_LIFETIME_DAYS} days`);
+    expect(INVITE_LIFETIME_HOURS).toBe(24);
+    expect(mail.text).toContain(`within ${INVITE_LIFETIME_HOURS} hours`);
+    expect(mail.html).toContain(`within ${INVITE_LIFETIME_HOURS} hours`);
+    expect(mail.text + mail.html).not.toMatch(/days/);
   });
 
-  it("local Supabase Auth otp_expiry matches it (production: raise the dashboard value to the same)", () => {
+  it("local Supabase Auth otp_expiry matches it and stays within the hosted maximum of 86400 s", () => {
     const config = readFileSync("supabase/config.toml", "utf8");
     const match = config.match(/^\s*otp_expiry\s*=\s*(\d+)/m);
-    expect(Number(match?.[1])).toBe(INVITE_LIFETIME_DAYS * 24 * 60 * 60);
+    const message = "supabase/config.toml [auth.email] otp_expiry must equal INVITE_LIFETIME_HOURS * 3600 (hosted Auth allows at most 86400)";
+    expect(Number(match?.[1]), message).toBe(INVITE_LIFETIME_HOURS * 60 * 60);
+    expect(INVITE_LIFETIME_HOURS * 60 * 60, message).toBeLessThanOrEqual(86400);
   });
 });

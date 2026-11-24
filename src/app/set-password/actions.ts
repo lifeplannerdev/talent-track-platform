@@ -4,11 +4,13 @@ import { redirect } from "next/navigation";
 import { checkPassword } from "@/lib/csv/students";
 import { createClient } from "@/lib/supabase/server";
 
-export type SetPasswordResult = { ok: false; message: string };
+/** `saved` is true when the password was changed even though the request ended with a problem. */
+export type SetPasswordResult = { ok: false; message: string; saved?: true };
 
 // One message for every token problem (used, expired, garbage, empty), so the page tells an
 // outsider nothing about which tokens exist.
-const INVALID_LINK = "This link is no longer valid. Ask your trainer to send you a new one.";
+const INVALID_LINK = "This link is no longer valid. Ask your trainer to send you a new invite.";
+const SAVED_BUT = "Your password was saved and you can sign in with it now. Your other sessions could not be ended, so ask your trainer if you notice anything odd.";
 const NOT_SAVED = "Your password could not be saved. Ask your trainer to send you a new link.";
 
 /**
@@ -40,6 +42,6 @@ export async function setPasswordAction(input: { tokenHash: string; password: st
   const { error: othersError } = await supabase.auth.signOut({ scope: "others" });
   if (othersError) console.error("setPasswordAction: signOut others failed", othersError.code ?? othersError.status ?? "unknown");
   await supabase.auth.signOut({ scope: "local" });
-  if (othersError) return { ok: false, message: NOT_SAVED };
+  if (othersError) return { ok: false, saved: true, message: SAVED_BUT };
   redirect("/login");
 }

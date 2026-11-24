@@ -34,7 +34,7 @@ async function SetPasswordCard({ searchParams }: { searchParams: PageProps<"/set
         ) : (
           <div className="flex flex-col gap-3" data-testid="set-password-invalid">
             <p role="alert" className="rounded-md bg-destructive-muted px-3 py-2 text-sm font-semibold text-destructive">
-              This link is no longer valid. Ask your trainer to send you a new one.
+              This link is no longer valid. Ask your trainer to send you a new invite.
             </p>
             <Link href="/login" className={linkClass}>
               Go to sign in

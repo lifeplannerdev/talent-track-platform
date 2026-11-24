@@ -237,8 +237,9 @@ max_frequency = "1s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour). Invite links live this
-# long: 7 days (INVITE_LIFETIME_DAYS in src/lib/invite-link.ts). Raise the hosted value to match.
-otp_expiry = 604800
+# long: 24 hours (INVITE_LIFETIME_HOURS in src/lib/invite-link.ts). Hosted Auth allows at most
+# 86400 seconds, so set the dashboard value to 86400 for production.
+otp_expiry = 86400
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]

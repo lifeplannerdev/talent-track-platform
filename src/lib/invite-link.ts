@@ -4,12 +4,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // exact same code with its own service-role client (see e2e/set-password.spec.ts).
 
 /**
- * How long an invite link works. The mail template states it, and the Auth OTP expiry must match:
- * supabase/config.toml `[auth.email] otp_expiry = INVITE_LIFETIME_DAYS * 86400` locally, and the
- * same value in the hosted dashboard (Authentication, Email, "Email OTP expiration") for
- * production. Hosted Auth defaults to 1 hour, so raise it before inviting real students.
+ * How long an invite link works, in hours. The mail template states it, and the Auth OTP expiry
+ * must match: supabase/config.toml `[auth.email] otp_expiry = INVITE_LIFETIME_HOURS * 3600`
+ * locally, and the same value in the hosted dashboard (Authentication, Email, "Email OTP
+ * expiration") for production. Hosted Auth allows at most 86400 seconds (24 hours) and defaults
+ * to 1 hour, so set it to 86400 before inviting real students. After that, staff use "Resend
+ * invite" on the student page.
  */
-export const INVITE_LIFETIME_DAYS = 7;
+export const INVITE_LIFETIME_HOURS = 24;
 
 export type InviteLinkResult = { ok: true; link: string } | { ok: false };
 

@@ -6,7 +6,7 @@ test.beforeEach(async () => {
   await seed();
 });
 
-const INVALID = "This link is no longer valid. Ask your trainer to send you a new one.";
+const INVALID = "This link is no longer valid. Ask your trainer to send you a new invite.";
 
 async function trySignIn(page: Page, username: string, password: string) {
   await page.goto("/login");

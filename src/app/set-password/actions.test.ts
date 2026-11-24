@@ -24,7 +24,7 @@ const anon = () => createClient(URL, ANON, { auth: { persistSession: false, auto
 
 const username = `t7.${randomUUID().slice(0, 8)}`;
 const oldPassword = `old-${randomUUID()}`;
-const GENERIC = "This link is no longer valid. Ask your trainer to send you a new one.";
+const GENERIC = "This link is no longer valid. Ask your trainer to send you a new invite.";
 let userId = "";
 
 async function freshToken(): Promise<string> {
@@ -94,5 +94,19 @@ describe("setPasswordAction", () => {
     // The old session's refresh token no longer works.
     const { error } = await other.auth.refreshSession();
     expect(error).not.toBeNull();
+  });
+
+  it("when the password was saved but the other sessions could not be ended, says the password was saved", async () => {
+    const client = anon();
+    client.auth.signOut = (async (opts?: { scope?: string }) =>
+      opts?.scope === "others"
+        ? { error: { message: "injected", status: 500, code: "unexpected_failure" } }
+        : { error: null }) as typeof client.auth.signOut;
+    session.makeClient = () => client;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const good = `new-${randomUUID()}`;
+    const result = await setPasswordAction({ tokenHash: await freshToken(), password: good });
+    expect(result).toEqual({ ok: false, saved: true, message: expect.stringMatching(/password was saved.*sign in/i) });
+    expect(await canSignIn(good)).toBe(true);
   });
 });

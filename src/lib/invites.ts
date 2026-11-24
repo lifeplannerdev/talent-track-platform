@@ -2,9 +2,9 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendMail } from "@/lib/mail";
 import { buildInviteMail } from "@/lib/mail/invite-template";
-import { INVITE_LIFETIME_DAYS, buildInviteLink, type InviteLinkResult } from "@/lib/invite-link";
+import { INVITE_LIFETIME_HOURS, buildInviteLink, type InviteLinkResult } from "@/lib/invite-link";
 
-export { INVITE_LIFETIME_DAYS };
+export { INVITE_LIFETIME_HOURS };
 
 /** A one-time set-password link for `studentId` (service role). See buildInviteLink. */
 export async function createInviteLink(studentId: string): Promise<InviteLinkResult> {

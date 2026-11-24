@@ -1,6 +1,6 @@
 import "server-only";
 import type { MailMessage } from "./transports";
-import { INVITE_LIFETIME_DAYS } from "../invite-link";
+import { INVITE_LIFETIME_HOURS } from "../invite-link";
 
 const BRAND = "#2346a0"; // Königsblau, DESIGN.md
 const SANS = "'Source Sans 3', 'Segoe UI', Helvetica, Arial, sans-serif";
@@ -39,7 +39,7 @@ export function buildInviteMail({
     "",
     `Username: ${username}`,
     "",
-    `Open this link to choose your own password (it works once and expires in ${INVITE_LIFETIME_DAYS} days):`,
+    `Open this link to choose your own password (it can be used once, within ${INVITE_LIFETIME_HOURS} hours):`,
     link,
     "",
     "Then sign in with your username and the password you chose.",
@@ -57,7 +57,7 @@ export function buildInviteMail({
 <p style="margin:0 0 16px;">Your Talent Track Platform account is ready.</p>
 <p style="margin:0 0 24px;">Username: <strong>${esc(username)}</strong></p>
 <p style="margin:0 0 24px;"><a href="${esc(link)}" style="display:inline-block;background:${BRAND};color:#ffffff;text-decoration:none;font-weight:600;padding:14px 24px;border-radius:6px;">Choose your password</a></p>
-<p style="margin:0 0 8px;font-size:15px;color:#475066;">The link works once and expires in ${INVITE_LIFETIME_DAYS} days. If the button does not work, copy this address into your browser:</p>
+<p style="margin:0 0 8px;font-size:15px;color:#475066;">The link can be used once, within ${INVITE_LIFETIME_HOURS} hours. If the button does not work, copy this address into your browser:</p>
 <p style="margin:0 0 24px;font-size:15px;word-break:break-all;"><a href="${esc(link)}" style="color:${BRAND};">${esc(link)}</a></p>
 <p style="margin:0 0 32px;font-size:15px;color:#475066;">Then sign in with your username and the password you chose. If you did not expect this email, you can ignore it.</p>
 <p style="margin:0;font-size:14px;color:#475066;border-top:1px solid #d9dde6;padding-top:16px;">Talent Track Platform, powered by F.L.A.G.</p>
