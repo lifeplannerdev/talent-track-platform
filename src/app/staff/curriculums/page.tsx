@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { LibraryIcon } from "lucide-react";
 import Link from "next/link";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireAdmin } from "@/lib/auth/require-role";
 import { formatDuration } from "@/lib/duration";
 import { curriculumWarnings, poolWarning } from "@/lib/exam-set-fields";
 import { listCurriculumsWithSets } from "@/lib/staff-manage";
@@ -18,7 +18,7 @@ import { CurriculumNameForm } from "./curriculum-name-form";
 export const metadata: Metadata = { title: "Curriculums | Talent Track Platform" };
 
 async function CurriculumList() {
-  await requireRole("staff");
+  await requireAdmin();
   const curriculums = await listCurriculumsWithSets();
 
   return (

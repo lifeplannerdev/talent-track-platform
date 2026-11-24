@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireAdmin } from "@/lib/auth/require-role";
 import { isUuid } from "@/lib/attempts";
 import { curriculumWarnings, examSetSummary, examSetWarnings, formatTopicMix } from "@/lib/exam-set-fields";
 import { listCurriculumsWithSets } from "@/lib/staff-manage";
@@ -21,7 +21,7 @@ import { ExamSetForm, NEW_EXAM_SET } from "./exam-set-form";
 export const metadata: Metadata = { title: "Curriculum | Talent Track Platform" };
 
 async function CurriculumDetail({ params }: { params: Promise<{ id: string }> }) {
-  await requireRole("staff");
+  await requireAdmin();
   const { id } = await params;
   if (!isUuid(id)) notFound();
   const curriculum = (await listCurriculumsWithSets()).find((c) => c.id === id);

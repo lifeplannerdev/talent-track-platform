@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireAdmin, requireRole } from "@/lib/auth/require-role";
 import { findOpenAttemptId, isUuid } from "@/lib/attempts";
 import { checkPassword, parseStudentsCsvWithRows, validateStudentFields, type StudentFields } from "@/lib/csv/students";
 import { STUDENT_CSV_MAX_BYTES, utf8Bytes } from "@/lib/csv/limits";
@@ -23,6 +23,8 @@ export type ImportStudentsResult =
   | { ok: true; created: { row: number; username: string }[]; failed: { row: number; username: string; message: string }[] }
   | { ok: false; message: string; errors: { row: number; message: string }[] };
 
+
+const NOT_YOUR_STUDENT = "This student is not one of your students";
 
 function asText(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -195,6 +197,7 @@ export async function removeCurriculum(
   });
   if (error) {
     if (error.message === "not_assigned") return { ok: false, message: "This curriculum is not assigned" };
+    if (error.message === "not_your_student") return { ok: false, message: NOT_YOUR_STUDENT };
     if (error.message === "in_progress") {
       return { ok: false, code: "in_progress", message: "This student is taking an exam in this curriculum right now. Try again after it ends." };
     }
@@ -231,6 +234,7 @@ export async function reorderCurriculums(studentId: string, curriculumIds: strin
     p_curriculum_ids: curriculumIds,
   });
   if (error) {
+    if (error.message === "not_your_student") return { ok: false, message: NOT_YOUR_STUDENT };
     if (error.message === "order_mismatch") {
       return { ok: false, message: "The list does not match the student's curriculums. Reload the page and try again." };
     }
@@ -249,7 +253,7 @@ export async function reorderCurriculums(studentId: string, curriculumIds: strin
  * closed first). Staff accounts are not deleted here.
  */
 export async function deleteStudent(studentId: string, opts: { confirmUsername?: string } = {}): Promise<ActionResult> {
-  await requireRole("staff");
+  await requireAdmin();
   const client = await createClient();
   if (!isUuid(studentId)) return { ok: false, message: "Student not found" };
   const { data: student } = await client

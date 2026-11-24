@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireAdmin } from "@/lib/auth/require-role";
 import { fetchAll, isUuid } from "@/lib/attempts";
 import { parseQuestionsCsvWithRows } from "@/lib/csv/questions";
 import { withoutRow } from "@/lib/csv/rows";
@@ -11,7 +11,7 @@ import { OPTION_IDS, validateQuestionFields, type QuestionFields } from "@/lib/q
 import { createClient } from "@/lib/supabase/server";
 import type { NewQuestion, QuestionStatus } from "@/lib/types";
 
-// Staff question management. Each action authenticates itself with requireRole('staff'); writes
+// Staff question management. Each action authenticates itself with requireAdmin(); writes
 // run under the staff session (RLS). Manual entry and CSV import share validateQuestionFields.
 // Editing a question never changes stored results: scoring keeps its own snapshot (0007).
 
@@ -94,7 +94,7 @@ export async function saveQuestion(input: {
   fields: QuestionFields;
   status: QuestionStatus;
 }): Promise<SaveQuestionResult> {
-  await requireRole("staff");
+  await requireAdmin();
   if (typeof input !== "object" || input === null) return { ok: false, message: "Invalid request" };
   if (!isStatus(input.status)) return { ok: false, message: "Choose draft or approved" };
   const checked = validateQuestionFields(readFields(input.fields));
@@ -140,7 +140,7 @@ export async function saveQuestion(input: {
 
 /** Approve (eligible for new papers) or set back to draft (no longer drawn). */
 export async function setQuestionStatus(questionId: string, status: QuestionStatus): Promise<StatusResult> {
-  await requireRole("staff");
+  await requireAdmin();
   if (!isStatus(status)) return { ok: false, message: "Choose draft or approved" };
   if (!isUuid(questionId)) return { ok: false, message: "Question not found" };
   const client = await createClient();
@@ -168,7 +168,7 @@ async function checkQuestionsCsv(client: SupabaseClient, examSetId: string, csvT
 }
 
 export async function previewQuestionsImport(examSetId: string, csvText: string): Promise<QuestionsImportPreview> {
-  await requireRole("staff");
+  await requireAdmin();
   const csv = text(csvText);
   if (utf8Bytes(csv) > QUESTION_CSV_MAX_BYTES) return { ok: false, message: "The file is too large (at most 2 MB)." };
   const client = await createClient();
@@ -190,7 +190,7 @@ export async function importQuestions(input: {
   status: QuestionStatus;
   onlyValid: boolean;
 }): Promise<ImportQuestionsResult> {
-  await requireRole("staff");
+  await requireAdmin();
   if (typeof input !== "object" || input === null) return { ok: false, message: "Invalid request", errors: [] };
   if (!isStatus(input.status)) return { ok: false, message: "Choose draft or approved", errors: [] };
   const csv = text(input.csvText);

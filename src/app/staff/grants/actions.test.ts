@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => ({
-  profile: { id: "11111111-1111-4111-8111-111111111111", role: "staff" as string, consent_at: null },
+  profile: { id: "11111111-1111-4111-8111-111111111111", role: "admin" as string, consent_at: null, trainer_id: null, active: true },
   signedIn: true,
   calls: [] as unknown[][],
 }));
@@ -45,7 +45,7 @@ const input = { studentId: STUDENT, curriculumId: CURRICULUM, n: 2, allowRepeats
 beforeEach(() => {
   fake.calls = [];
   fake.signedIn = true;
-  fake.profile.role = "staff";
+  fake.profile.role = "trainer";
 });
 
 describe("giveExtraAttemptsAction", () => {

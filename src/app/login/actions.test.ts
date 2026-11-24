@@ -9,6 +9,7 @@ const fake = vi.hoisted(() => ({
   signOutCalls: [] as SignOutArgs[],
   signOutErrors: {} as Partial<Record<"global" | "local" | "others", { message: string }>>,
   signInError: null as { message: string; status?: number } | null,
+  role: "student",
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -23,7 +24,7 @@ vi.mock("@/lib/supabase/server", () => ({
       getUser: async () => ({ data: { user: { id: "user-1" } } }),
     },
     from: () => ({
-      select: () => ({ eq: () => ({ single: async () => ({ data: { role: "student", consent_at: null } }) }) }),
+      select: () => ({ eq: () => ({ single: async () => ({ data: { role: fake.role, consent_at: null } }) }) }),
     }),
   }),
 }));
@@ -46,12 +47,18 @@ beforeEach(() => {
   fake.signOutCalls = [];
   fake.signOutErrors = {};
   fake.signInError = null;
+  fake.role = "student";
 });
 
 describe("login", () => {
   it("ends the other sessions and goes to the role's home", async () => {
     await expect(login({ error: null }, form("anna.k", "test-pass-anna"))).rejects.toThrow("REDIRECT /consent");
     expect(fake.signOutCalls).toEqual([{ scope: "others" }]);
+  });
+
+  it.each(["admin", "trainer"])("sends a %s to the staff area", async (role) => {
+    fake.role = role;
+    await expect(login({ error: null }, form("anna.k", "test-pass-anna"))).rejects.toThrow("REDIRECT /staff");
   });
 
   it("does not complete when the other sessions could not be ended", async () => {

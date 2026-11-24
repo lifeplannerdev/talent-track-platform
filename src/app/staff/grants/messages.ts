@@ -8,6 +8,7 @@ export const MAX_EXTRA_ATTEMPTS = 10;
 const REFUSALS: Record<string, string> = {
   already_passed: "Nothing was given: this student has already passed this curriculum.",
   not_assigned: "Nothing was given: this curriculum is no longer assigned to this student. Reload the page.",
+  not_your_student: "Nothing was given: this student is not one of your students.",
   invalid_n: `Give from 1 to ${MAX_EXTRA_ATTEMPTS} extra attempts.`,
   invalid_request: "Nothing was given: the student or curriculum was not found. Reload the page.",
 };

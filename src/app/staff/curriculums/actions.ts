@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireAdmin } from "@/lib/auth/require-role";
 import { fetchAll, isUuid } from "@/lib/attempts";
 import {
   examSetWarnings,
@@ -13,7 +13,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 // Staff curriculum and exam set management. Each action authenticates itself with
-// requireRole('staff'); writes run under the staff session (RLS).
+// requireAdmin(); writes run under the staff session (RLS).
 
 export type SaveCurriculumResult =
   | { ok: true; id: string }
@@ -28,7 +28,7 @@ export type SaveExamSetResult =
  * it keeps the current value.
  */
 export async function saveCurriculum(input: { id?: string; name: string; maxAttempts?: number | string }): Promise<SaveCurriculumResult> {
-  await requireRole("staff");
+  await requireAdmin();
   if (typeof input !== "object" || input === null) return { ok: false, message: "Invalid request" };
   const checked = validateCurriculumFields({ name: input.name, maxAttempts: input.maxAttempts });
   if (!checked.ok) {
@@ -79,7 +79,7 @@ function revalidateCurriculums(curriculumId?: string) {
  * pool (topics of the mix without enough approved questions, fewer approved questions than one paper).
  */
 export async function saveExamSet(input: ExamSetFields & { id?: string; curriculumId: string }): Promise<SaveExamSetResult> {
-  await requireRole("staff");
+  await requireAdmin();
   if (typeof input !== "object" || input === null) return { ok: false, message: "Invalid request" };
   const checked = validateExamSetFields(input);
   if (!checked.ok) return { ok: false, errors: checked.errors };

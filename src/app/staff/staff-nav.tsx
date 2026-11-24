@@ -4,21 +4,27 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
+import type { Role } from "@/lib/auth/roles";
 
-export const STAFF_LINKS = [
+export const STAFF_NAV: readonly { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/staff", label: "Dashboard" },
   { href: "/staff/review", label: "Attempts" },
   { href: "/staff/blocked", label: "Blocked" },
   { href: "/staff/grants", label: "Extra attempts" },
   { href: "/staff/students", label: "Students" },
-  { href: "/staff/curriculums", label: "Curriculums" },
-  { href: "/staff/questions", label: "Questions" },
-] as const;
+  { href: "/staff/curriculums", label: "Curriculums", adminOnly: true },
+  { href: "/staff/questions", label: "Questions", adminOnly: true },
+];
 
-function currentHref(pathname: string | null): string | null {
+/** The sections a role sees: a trainer does not get the admin-only ones. */
+export function visibleNav(role: Role) {
+  return STAFF_NAV.filter((l) => !l.adminOnly || role === "admin");
+}
+
+function currentHref(links: readonly { href: string }[], pathname: string | null): string | null {
   if (!pathname) return null;
   // Longest matching prefix wins, so /staff/students/[id] marks Students, not Dashboard.
-  const match = [...STAFF_LINKS]
+  const match = [...links]
     .filter((l) => pathname === l.href || (l.href !== "/staff" && pathname.startsWith(`${l.href}/`)))
     .sort((a, b) => b.href.length - a.href.length)[0];
   return match?.href ?? null;
@@ -29,8 +35,9 @@ function currentHref(pathname: string | null): string | null {
  * and an ink underline. On narrow screens the row scrolls sideways and keeps the current
  * section in view, also after the row is resized (rotation).
  */
-export function StaffNav() {
-  const current = currentHref(usePathname());
+export function StaffNav({ role }: { role: Role }) {
+  const links = visibleNav(role);
+  const current = currentHref(links, usePathname());
   const activeRef = useRef<HTMLAnchorElement | null>(null);
 
   useEffect(() => {
@@ -52,7 +59,7 @@ export function StaffNav() {
   return (
     <nav aria-label="Staff">
       <ul className="flex snap-x gap-1 overflow-x-auto px-3 [scrollbar-width:none] sm:px-5 lg:px-0 [&::-webkit-scrollbar]:hidden">
-        {STAFF_LINKS.map((l) => {
+        {links.map((l) => {
           const active = l.href === current;
           return (
             <li key={l.href} className="shrink-0 snap-start">

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { isStaffRole } from "@/lib/auth/roles";
 import { usernameToEmail } from "@/lib/auth/username";
 import { createClient } from "@/lib/supabase/server";
 
@@ -59,7 +60,7 @@ export async function login(
   }
   // Go straight to the role's home (the proxy enforces the same rules on every request).
   redirect(
-    profile.role === "staff"
+    isStaffRole(profile.role)
       ? "/staff"
       : profile.consent_at
         ? "/exam/start"

@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Reads after the give_extra_attempts call fail while this is set (the rpc itself still runs).
-const readFailure = vi.hoisted(() => ({ on: false }));
+const readFailure = vi.hoisted(() => ({ on: false, rpcError: null as string | null }));
 vi.mock("@/lib/supabase/admin", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/supabase/admin")>();
   const failing = (): unknown =>
@@ -22,6 +22,9 @@ vi.mock("@/lib/supabase/admin", async (importOriginal) => {
       return new Proxy(client, {
         get(target, prop, receiver) {
           if (prop === "from" && readFailure.on) return () => failing();
+          if (prop === "rpc" && readFailure.rpcError) {
+            return async () => ({ data: null, error: { message: readFailure.rpcError } });
+          }
           const value = Reflect.get(target, prop, receiver);
           return typeof value === "function" ? value.bind(target) : value;
         },
@@ -206,6 +209,18 @@ describe("giveExtraAttempts", () => {
     }
     await expect(giveExtraAttempts(staffId, "nope", curriculumId, 1, false)).rejects.toMatchObject({ code: "not_assigned" });
     expect(await assignment(student)).toMatchObject({ extra_attempts: 0 });
+  });
+
+  it("maps the database refusal not_your_student (a trainer acting on another trainer's student) to an ExtraAttemptsError", async () => {
+    readFailure.rpcError = "not_your_student";
+    try {
+      await expect(giveExtraAttempts(staffId, randomUUID(), curriculumId, 1, false)).rejects.toMatchObject({
+        name: "ExtraAttemptsError",
+        code: "not_your_student",
+      });
+    } finally {
+      readFailure.rpcError = null;
+    }
   });
 
   it("refuses a non-staff giver, a curriculum that is not assigned and a passed curriculum", async () => {

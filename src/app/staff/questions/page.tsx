@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { FileStackIcon, ListPlusIcon } from "lucide-react";
 import Link from "next/link";
-import { requireRole } from "@/lib/auth/require-role";
+import { requireAdmin } from "@/lib/auth/require-role";
 import { poolWarning } from "@/lib/exam-set-fields";
 import { getQuestion, listCurriculumsWithSets, listQuestions, type QuestionFilters } from "@/lib/staff-manage";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
@@ -29,7 +29,7 @@ function first(v: string | string[] | undefined): string {
 }
 
 async function QuestionsContent({ searchParams }: { searchParams: SearchParams }) {
-  await requireRole("staff");
+  await requireAdmin();
   const sp = await searchParams;
   const filters: QuestionFilters = {
     curriculum: first(sp.curriculum),

@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isPublicPath } from "@/lib/auth/public-paths";
+import { isStaffRole, type Role } from "@/lib/auth/roles";
 
 type PendingCookie = { name: string; value: string; options: CookieOptions }[];
 
@@ -47,15 +48,18 @@ export async function proxy(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, consent_at")
+    .select("role, consent_at, active")
     .eq("id", user.id)
     .single();
-  if (!profile) {
+  // A deactivated account is treated like a missing profile: the guards send it to /login too, so
+  // /login must not bounce it back to /staff.
+  if (!profile || !profile.active) {
     return isPublicPath(path) ? finish(NextResponse.next({ request })) : redirectTo("/login");
   }
 
+  const staff = isStaffRole(profile.role as Role);
   const home =
-    profile.role === "staff"
+    staff
       ? "/staff"
       : profile.consent_at
         ? "/exam/start"
@@ -63,7 +67,7 @@ export async function proxy(request: NextRequest) {
 
   if (path === "/" || path === "/login") return redirectTo(home);
 
-  if (profile.role === "staff") {
+  if (staff) {
     if (!inArea("/staff")) return redirectTo(home);
   } else if (!profile.consent_at) {
     if (!inArea("/consent")) return redirectTo(home);

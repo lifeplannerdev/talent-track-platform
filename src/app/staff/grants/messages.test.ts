@@ -9,6 +9,9 @@ describe("extraAttemptsMessage", () => {
     expect(extraAttemptsMessage({ ok: false, error: "not_assigned" })).toBe(
       "Nothing was given: this curriculum is no longer assigned to this student. Reload the page.",
     );
+    expect(extraAttemptsMessage({ ok: false, error: "not_your_student" })).toBe(
+      "Nothing was given: this student is not one of your students.",
+    );
     expect(extraAttemptsMessage({ ok: false, error: "invalid_n" })).toBe("Give from 1 to 10 extra attempts.");
     expect(extraAttemptsMessage({ ok: false, error: "invalid_request" })).toBe(
       "Nothing was given: the student or curriculum was not found. Reload the page.",

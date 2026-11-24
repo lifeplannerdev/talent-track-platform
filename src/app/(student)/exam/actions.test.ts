@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => ({
-  profile: { id: "11111111-1111-4111-8111-111111111111", role: "student", consent_at: null as string | null },
+  profile: { id: "11111111-1111-4111-8111-111111111111", role: "student", consent_at: null as string | null, active: true },
   calls: [] as string[],
   startError: null as string | null,
 }));

@@ -7,9 +7,9 @@ import { isUuid } from "./attempts";
 // lifts a block. The check and the write run atomically in the SQL function
 // public.give_extra_attempts (migration 0021, service role only).
 
-export type ExtraAttemptsErrorCode = "not_staff" | "invalid_n" | "not_assigned" | "already_passed";
+export type ExtraAttemptsErrorCode = "not_staff" | "invalid_n" | "not_assigned" | "already_passed" | "not_your_student";
 
-const CODES = new Set<string>(["not_staff", "invalid_n", "not_assigned", "already_passed"]);
+const CODES = new Set<string>(["not_staff", "invalid_n", "not_assigned", "already_passed", "not_your_student"]);
 
 export class ExtraAttemptsError extends Error {
   code: ExtraAttemptsErrorCode;

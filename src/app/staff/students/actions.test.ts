@@ -109,7 +109,7 @@ async function makeUser(role: "staff" | "student") {
     email,
     password,
     email_confirm: true,
-    app_metadata: { role, username, full_name: `T8 ${role} ${counter}` },
+    app_metadata: { role: role === "staff" ? "admin" : role, username, full_name: `T8 ${role} ${counter}` },
   });
   if (error) throw error;
   userIds.push(data.user.id);
