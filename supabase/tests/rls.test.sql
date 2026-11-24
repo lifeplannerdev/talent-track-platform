@@ -61,8 +61,8 @@ insert into public.answers (attempt_question_id, option_id) values ('50000000-00
 -- ---------------------------------------------------------------------------
 -- Profile trigger (as postgres)
 -- ---------------------------------------------------------------------------
-select is((select role from public.profiles where id = '00000000-0000-0000-0000-0000000000a1'), 'staff',
-  'trigger creates a staff profile from app metadata');
+select is((select role from public.profiles where id = '00000000-0000-0000-0000-0000000000a1'), 'admin',
+  'trigger creates an admin profile from legacy staff app metadata');
 select is((select role from public.profiles where id = '00000000-0000-0000-0000-0000000000b1'), 'student',
   'user metadata cannot make a student staff');
 select is((select role || '/' || username from public.profiles where id = '00000000-0000-0000-0000-0000000000b2'), 'student/ben',
