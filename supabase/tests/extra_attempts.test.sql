@@ -1,11 +1,20 @@
 -- give_extra_attempts and remove_curriculum without grants (0021, pgTAP). Run: npm run db:test
 begin;
-select plan(32);
+select plan(38);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
   ('00000000-0000-0000-0000-0000000021a1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
    'xa-staff@staff.test', '{"role":"staff","username":"xa.staff"}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-0000000021a2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+   'xa-t1@staff.test', '{"role":"trainer","username":"xa.t1"}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-0000000021a3', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+   'xa-t2@staff.test', '{"role":"trainer","username":"xa.t2"}', '{}', now(), now());
+set constraints all immediate;
+set constraints all deferred;
+
+insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values
   ('00000000-0000-0000-0000-0000000021b1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
    'xa-anna@students.test', '{"role":"student","username":"xa.anna"}', '{}', now(), now()),
   ('00000000-0000-0000-0000-0000000021b2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
@@ -13,7 +22,9 @@ values
   ('00000000-0000-0000-0000-0000000021b3', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
    'xa-cara@students.test', '{"role":"student","username":"xa.cara"}', '{}', now(), now()),
   ('00000000-0000-0000-0000-0000000021b4', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-   'xa-dan@students.test', '{"role":"student","username":"xa.dan"}', '{}', now(), now());
+   'xa-dan@students.test', '{"role":"student","username":"xa.dan"}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-0000000021b5', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+   'xa-eve@students.test', '{"role":"student","username":"xa.eve","trainer_id":"00000000-0000-0000-0000-0000000021a2"}', '{}', now(), now());
 set constraints all immediate;
 set constraints all deferred;
 
@@ -33,7 +44,8 @@ from generate_series(1, 3) n;
 insert into public.assignments (student_id, curriculum_id, position, status) values
   ('00000000-0000-0000-0000-0000000021b1', '10000000-0000-0000-0000-0000000021c1', 1, 'open'),
   ('00000000-0000-0000-0000-0000000021b2', '10000000-0000-0000-0000-0000000021c1', 1, 'passed'),
-  ('00000000-0000-0000-0000-0000000021b3', '10000000-0000-0000-0000-0000000021c1', 1, 'open');
+  ('00000000-0000-0000-0000-0000000021b3', '10000000-0000-0000-0000-0000000021c1', 1, 'open'),
+  ('00000000-0000-0000-0000-0000000021b5', '10000000-0000-0000-0000-0000000021c1', 1, 'open');
 
 create function pg_temp.snap(p_attempt uuid, p_awarded int[]) returns jsonb language sql as $f$
   select jsonb_agg(jsonb_build_object(
@@ -132,6 +144,22 @@ select ok((select prosrc !~* 'attempt_grants' from pg_proc where oid = 'public.r
   'remove_curriculum no longer touches attempt_grants');
 select is(public.remove_curriculum('00000000-0000-0000-0000-0000000021a1', '00000000-0000-0000-0000-0000000021b3', '10000000-0000-0000-0000-0000000021c1', false),
   '{"ok": true}'::jsonb, 'remove_curriculum still removes an assignment without attempts');
+
+
+-- Ownership (0027) ------------------------------------------------------------------------------
+select throws_ok($$select public.give_extra_attempts('00000000-0000-0000-0000-0000000021a3', '00000000-0000-0000-0000-0000000021b5', '10000000-0000-0000-0000-0000000021c1', 1, false)$$,
+  'P0001', 'not_your_student', 'a trainer cannot give extra attempts to another trainer''s student');
+select throws_ok($$select public.give_extra_attempts('00000000-0000-0000-0000-0000000021a1', '00000000-0000-0000-0000-0000000021a2', '10000000-0000-0000-0000-0000000021c1', 1, false)$$,
+  'P0001', 'not_your_student', 'an admin cannot give extra attempts to a non-student id');
+select is(pg_temp.state('00000000-0000-0000-0000-0000000021b5'), 'open/0/false', 'refused ownership calls change nothing');
+select lives_ok($$select public.give_extra_attempts('00000000-0000-0000-0000-0000000021a2', '00000000-0000-0000-0000-0000000021b5', '10000000-0000-0000-0000-0000000021c1', 1, false)$$,
+  'a trainer gives extra attempts to their own student');
+select is(pg_temp.state('00000000-0000-0000-0000-0000000021b5'), 'open/1/false', 'the trainer''s extra attempt is counted');
+reset role;
+update public.profiles set active = false where id = '00000000-0000-0000-0000-0000000021a2';
+set local role service_role;
+select throws_ok($$select public.give_extra_attempts('00000000-0000-0000-0000-0000000021a2', '00000000-0000-0000-0000-0000000021b5', '10000000-0000-0000-0000-0000000021c1', 1, false)$$,
+  'P0001', 'not_staff', 'a deactivated trainer is not staff');
 
 reset role;
 select * from finish();

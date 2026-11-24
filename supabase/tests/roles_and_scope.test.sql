@@ -1,7 +1,7 @@
 -- v2 Phase 1, migration 0026: roles (admin, trainer, student), trainer scope and student_details (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(51);
+select plan(73);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Ids: a1 admin, a2 trainer T1, a3 trainer T2, a4 legacy 'staff' metadata,
@@ -212,6 +212,85 @@ reset role;
 set local role anon;
 select throws_ok($$select count(*) from public.student_details$$, '42501', null, 'anon cannot read student_details');
 select throws_ok($$select count(*) from public.profiles$$, '42501', null, 'anon cannot read profiles');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 0027 hardening: manages_student only for real students, student_details column limits,
+-- staff_manages_student, deactivated staff, trainer limits
+-- ---------------------------------------------------------------------------
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000026a1","role":"authenticated"}', true);
+set local role authenticated;
+select ok(not (select private.manages_student('00000000-0000-0000-0000-0000000026a2')),
+  'admin does not manage a staff profile (manages_student is false for a non-student id)');
+select throws_ok(
+  $$insert into public.student_details (student_id, contact_email) values ('00000000-0000-0000-0000-0000000026a2', 'trainer@example.test')$$,
+  '42501', null, 'admin cannot attach student details to a staff profile');
+select throws_ok(
+  $$update public.student_details set student_id = '00000000-0000-0000-0000-0000000026b5' where student_id = '00000000-0000-0000-0000-0000000026b1'$$,
+  '42501', null, 'student_details.student_id cannot be changed');
+select throws_ok(
+  $$update public.student_details set created_at = now() - interval '1 year' where student_id = '00000000-0000-0000-0000-0000000026b1'$$,
+  '42501', null, 'student_details.created_at cannot be changed');
+select throws_ok(
+  $$update public.student_details set updated_at = now() - interval '1 year' where student_id = '00000000-0000-0000-0000-0000000026b1'$$,
+  '42501', null, 'student_details.updated_at cannot be changed');
+select lives_ok(
+  $$update public.student_details set phone = '+91 3', notes = 'n', status = 'on_hold' where student_id = '00000000-0000-0000-0000-0000000026b1'$$,
+  'the editable student_details columns can still be updated');
+reset role;
+
+select ok((select private.staff_manages_student('00000000-0000-0000-0000-0000000026a2', '00000000-0000-0000-0000-0000000026b1')),
+  'staff_manages_student: a trainer manages their own student');
+select ok(not (select private.staff_manages_student('00000000-0000-0000-0000-0000000026a2', '00000000-0000-0000-0000-0000000026b2')),
+  'staff_manages_student: a trainer does not manage another trainer''s student');
+select ok((select private.staff_manages_student('00000000-0000-0000-0000-0000000026a1', '00000000-0000-0000-0000-0000000026b3')),
+  'staff_manages_student: an admin manages any student');
+select ok(not (select private.staff_manages_student('00000000-0000-0000-0000-0000000026a1', '00000000-0000-0000-0000-0000000026a2')),
+  'staff_manages_student: an admin does not manage a staff profile');
+select ok(not (select private.staff_manages_student('00000000-0000-0000-0000-0000000026b1', '00000000-0000-0000-0000-0000000026b1')),
+  'staff_manages_student: a student manages nobody');
+select ok(not has_function_privilege('authenticated', 'private.staff_manages_student(uuid, uuid)', 'execute'),
+  'authenticated cannot execute staff_manages_student');
+select ok(not has_function_privilege('anon', 'private.staff_manages_student(uuid, uuid)', 'execute'),
+  'anon cannot execute staff_manages_student');
+select ok(has_function_privilege('service_role', 'private.staff_manages_student(uuid, uuid)', 'execute')
+  and has_schema_privilege('service_role', 'private', 'usage'),
+  'service_role can execute staff_manages_student');
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000026a2","role":"authenticated"}', true);
+set local role authenticated;
+select is((select count(*)::int from public.profiles where id in ('00000000-0000-0000-0000-0000000026a1', '00000000-0000-0000-0000-0000000026a4')), 0,
+  'trainer cannot read admin profiles');
+select throws_ok(
+  $$update public.assignments set status = 'passed' where student_id = '00000000-0000-0000-0000-0000000026b1'$$,
+  '42501', null, 'trainer cannot update assignments');
+reset role;
+
+-- Deactivated staff lose access (profiles.active = false)
+update public.profiles set active = false
+where id in ('00000000-0000-0000-0000-0000000026a3', '00000000-0000-0000-0000-0000000026a4');
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000026a3","role":"authenticated"}', true);
+set local role authenticated;
+select ok(not (select private.is_staff()), 'a deactivated trainer is not staff');
+select ok(not (select private.manages_student('00000000-0000-0000-0000-0000000026b2')),
+  'a deactivated trainer manages no student');
+select is((select count(*)::int from public.profiles where role = 'student')
+  + (select count(*)::int from public.student_details)
+  + (select count(*)::int from public.attempts)
+  + (select count(*)::int from public.assignments), 0,
+  'a deactivated trainer reads no student data');
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000026a4","role":"authenticated"}', true);
+set local role authenticated;
+select ok(not (select private.is_staff()) and not (select private.is_admin()), 'a deactivated admin is neither staff nor admin');
+select is((select count(*)::int from public.profiles where role = 'student')
+  + (select count(*)::int from public.student_details)
+  + (select count(*)::int from public.attempts)
+  + (select count(*)::int from public.assignments), 0,
+  'a deactivated admin reads no student data');
+select is((select count(*)::int from public.questions), 0, 'a deactivated admin reads no questions');
 reset role;
 
 select * from finish();
