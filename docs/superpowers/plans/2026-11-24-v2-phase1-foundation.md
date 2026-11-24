@@ -140,7 +140,7 @@
 - [ ] **Step 1: Write failing tests**: unit: `sendInvite` is `skipped` with no contact email, `failed` when `sendMail` fails (student still exists), never returns the link; e2e: opening `/set-password?token_hash=...` with GET does NOT consume the token (a second GET and the later submit still work), a weak password shows the `checkPassword` message, a good password signs in with the username, a used or garbage token shows a safe expired message.
 - [ ] **Step 2: Run** `npm test -- invites` and `npm run test:e2e -- set-password`. Expected: FAIL.
 - [ ] **Step 3: Implement.** The page only renders the form (the token is a hidden field); verification happens in the server action. Rate-limit by relying on Auth; show one generic error for every failure. Trainer resend works only for managed students (RLS read first).
-- [ ] **Step 4: Run** the same commands plus `npm test`. Expected: PASS. Note in the PR that the Auth OTP expiry must be raised to 7 days in the dashboard for production.
+- [ ] **Step 4: Run** the same commands plus `npm test`. Expected: PASS. Note in the PR that the Auth OTP expiry must be set to 86400 (24 hours, the hosted maximum) in the dashboard for production.
 - [ ] **Step 5: Commit** `feat: emailed set-your-password invites`.
 
 ### Task 8: Student form, student page and CSV import UI
@@ -180,7 +180,7 @@
 **Files:**
 - Modify: `CLAUDE.md`, `DESIGN.md`, `.env.example`, `scripts/demo-seed.mjs`, `e2e/seed.ts`, `e2e/fixtures.ts`, `docs/superpowers/specs/2026-11-24-v2-roadmap-and-foundation-design.md` (status line)
 
-- [ ] **Step 1: Update docs** (Haiku is enough): CLAUDE.md gets the roles section, `student_details`, `manages_student`, the admin-only list, invite flow, mail env vars, new migration numbers 0026 and 0027 in the production checklist (mail domain, Auth OTP expiry 7 days, create first trainer); DESIGN.md gets the new pages. Check every file path named in the docs exists.
+- [ ] **Step 1: Update docs** (Haiku is enough): CLAUDE.md gets the roles section, `student_details`, `manages_student`, the admin-only list, invite flow, mail env vars, new migration numbers 0026 and 0027 in the production checklist (mail domain, Auth OTP expiry 86400 s, create first trainer); DESIGN.md gets the new pages. Check every file path named in the docs exists.
 - [ ] **Step 2: Seed** a demo admin, a demo trainer (`demo-trainer@example.test`) with `demo.student` assigned to them, TEST credentials only; update `e2e/seed.ts` helpers to create trainer users.
 - [ ] **Step 3: Run the whole gate**: `npm run db:reset && npm run db:test && npm run db:lint && npm test && npm run lint && npm run build && npm run test:e2e`. Expected: all PASS. Run `security-review` on the branch and CodeRabbit per the global rules if the repo is configured.
 - [ ] **Step 4: Log to the Monday board** (when the connector can write) and commit `docs: v2 phase 1 roles, details and invites`.
