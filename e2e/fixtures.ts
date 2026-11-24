@@ -37,3 +37,5 @@ export const STUDENT_OF_ONE = { username: "e2e.ofone", password: "e2e-ofone-pass
 export const STUDENT_OF_TWO = { username: "e2e.oftwo", password: "e2e-oftwo-pass-1", fullName: "E2E Student Of Two", contactEmail: "oftwo@example.test" };
 // A student a trainer adds through the form (deleted again by the spec).
 export const STUDENT_BY_TRAINER = { username: "e2e.bytrainer", password: "e2e-bytrainer-pass-1", fullName: "E2E Von Trainer", contactEmail: "bytrainer@example.test" };
+// A trainer an admin adds through the Team page (deleted again by the spec).
+export const TRAINER_ADDED = { username: "e2e.trainer3", email: "e2e-trainer3@example.test", fullName: "E2E Trainer Three" };

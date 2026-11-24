@@ -24,6 +24,15 @@ describe("buildInviteMail", () => {
     expect(mail.text.toLowerCase()).not.toMatch(/password:|your password is/);
   });
 
+  it("can tell a trainer to sign in with the email address instead of a username", () => {
+    const m = buildInviteMail({ fullName: "Tara", username: "tara", link, signIn: { label: "Email address", value: "tara@example.org" } });
+    for (const body of [m.html, m.text]) {
+      expect(body).toContain("tara@example.org");
+      expect(body.toLowerCase()).toContain("sign in with your email address");
+      expect(body.toLowerCase()).not.toContain("sign in with your username");
+    }
+  });
+
   it("escapes the name and username in html", () => {
     const evil = buildInviteMail({ fullName: `<script>alert("x")</script> & Co`, username: `a"><img src=x>`, link });
     expect(evil.html).not.toContain("<script>");

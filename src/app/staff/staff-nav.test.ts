@@ -14,6 +14,7 @@ describe("staff navigation", () => {
       ["/staff/students", "Students"],
       ["/staff/curriculums", "Curriculums"],
       ["/staff/questions", "Questions"],
+      ["/staff/team", "Team"],
     ]);
   });
 
@@ -21,7 +22,7 @@ describe("staff navigation", () => {
     expect(visibleNav("admin")).toHaveLength(STAFF_NAV.length);
   });
 
-  it("hides the admin-only sections (Curriculums, Questions) from a trainer", () => {
+  it("hides the admin-only sections (Curriculums, Questions, Team) from a trainer", () => {
     expect(visibleNav("trainer").map((l) => l.label)).toEqual([
       "Dashboard", "Attempts", "Blocked", "Extra attempts", "Students",
     ]);

@@ -50,11 +50,13 @@ export async function login(
   const { data: profile } = userData.user
     ? await supabase
         .from("profiles")
-        .select("role, consent_at")
+        .select("role, consent_at, active")
         .eq("id", userData.user.id)
         .single()
     : { data: null };
-  if (!profile) {
+  // A deactivated account looks exactly like a wrong password: no hint that it exists. The
+  // session it just got is ended (the proxy would bounce it anyway, but must not leave it alive).
+  if (!profile || !profile.active) {
     await supabase.auth.signOut();
     return { error: GENERIC_ERROR };
   }

@@ -31,6 +31,27 @@ export async function findActiveTrainer(client: SupabaseClient, id: unknown): Pr
   return data?.id ?? null;
 }
 
+type AuthUserError = { code?: string; status?: number } | null;
+
+/**
+ * The one place that calls the Auth admin createUser for app accounts (students and trainers):
+ * the email is confirmed at once and `appMetadata` is what the on_auth_user_created trigger
+ * reads. The password goes straight to the Auth server and is never logged or returned.
+ */
+export async function createAuthUser(
+  admin: SupabaseClient,
+  input: { email: string; password: string; appMetadata: Record<string, unknown> },
+): Promise<{ ok: true; id: string } | { ok: false; error: AuthUserError }> {
+  const { data, error } = await admin.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    app_metadata: input.appMetadata,
+  });
+  if (error || !data.user) return { ok: false, error: error ?? null };
+  return { ok: true, id: data.user.id };
+}
+
 export type CreateAccountResult = { ok: true; studentId: string } | { ok: false; message: string };
 
 export function takenMessage(username: string) {
@@ -98,11 +119,10 @@ export async function createStudentAccount(
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.createUser({
+  const created = await createAuthUser(admin, {
     email: usernameToEmail(student.username),
     password: student.password,
-    email_confirm: true,
-    app_metadata: {
+    appMetadata: {
       role: "student",
       username: student.username,
       full_name: student.fullName,
@@ -111,7 +131,8 @@ export async function createStudentAccount(
       ...(owner.trainerId ? { trainer_id: owner.trainerId } : {}),
     },
   });
-  if (error || !data.user) {
+  if (!created.ok) {
+    const error = created.error;
     // A concurrent create (same email, or a profile username clash raised by the trigger).
     if ((await existingUsernames(staff, [student.username])).has(student.username) || error?.code === "email_exists") {
       return { ok: false, message: takenMessage(student.username) };
@@ -120,7 +141,7 @@ export async function createStudentAccount(
     return { ok: false, message: GENERIC_CREATE_FAILURE };
   }
 
-  const studentId = data.user.id;
+  const studentId = created.id;
   const rollback = async (step: string, code: string | undefined): Promise<CreateAccountResult> => {
     console.error(`createStudentAccount: ${step} failed, removing the new user`, code ?? "unknown");
     const { error: deleteError } = await admin.auth.admin.deleteUser(studentId);

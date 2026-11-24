@@ -1,12 +1,12 @@
 // One-off: creates a staff account (the first one in production, or any later one) with the
-// Auth admin API. Public sign-up is off, so this is how the first staff member gets in; after
-// that staff manage students in the app. The on_auth_user_created trigger builds the profile
-// from app_metadata { role: 'staff', username, full_name }.
+// Auth admin API. Public sign-up is off, so this is how the first admin gets in; after that
+// admins add trainers in the app (Team) too. The on_auth_user_created trigger builds the profile
+// from app_metadata { role, username, full_name }. STAFF_ROLE is "admin" (default) or "trainer".
 //
 // Run (Node 22.18+ runs TypeScript directly), with the values in the environment, never as
 // arguments (they would land in shell history):
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... STAFF_EMAIL=... STAFF_USERNAME=... \
-//   STAFF_FULL_NAME=... STAFF_PASSWORD=... node scripts/create-staff.ts
+//   STAFF_FULL_NAME=... STAFF_PASSWORD=... [STAFF_ROLE=admin|trainer] node scripts/create-staff.ts
 // The password and the service role key are never printed. Staff sign in with the email.
 import { createClient } from "@supabase/supabase-js";
 import { pathToFileURL } from "node:url";
@@ -17,7 +17,7 @@ export type StaffUser = {
   email: string;
   password: string;
   email_confirm: true;
-  app_metadata: { role: "staff"; username: string; full_name: string };
+  app_metadata: { role: "admin" | "trainer"; username: string; full_name: string };
 };
 
 export type StaffAccount =
@@ -41,6 +41,10 @@ export function staffAccountFromEnv(env: Env): StaffAccount {
   const fullName = need("STAFF_FULL_NAME").trim();
   const password = need("STAFF_PASSWORD");
 
+  const roleValue = env.STAFF_ROLE ?? "";
+  const role = roleValue === "" ? "admin" : roleValue;
+  if (role !== "admin" && role !== "trainer") errors.push("STAFF_ROLE must be admin or trainer");
+
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("STAFF_EMAIL must be an email address");
   if (username && !/^[a-z0-9._-]+$/.test(username)) errors.push("STAFF_USERNAME may only contain a-z, 0-9, dot, dash and underscore");
   if (password) {
@@ -52,7 +56,7 @@ export function staffAccountFromEnv(env: Env): StaffAccount {
     ok: true,
     url,
     serviceRoleKey,
-    user: { email, password, email_confirm: true, app_metadata: { role: "staff", username, full_name: fullName } },
+    user: { email, password, email_confirm: true, app_metadata: { role: role as "admin" | "trainer", username, full_name: fullName } },
   };
 }
 
@@ -77,7 +81,7 @@ export async function createStaff(env: Env, admin?: Admin, log: (line: string) =
     log(`error: the staff account could not be created (${error?.code ?? "unknown"})`);
     return 1;
   }
-  log(`Created staff account ${account.user.app_metadata.username} <${account.user.email}> (id ${data.user.id}).`);
+  log(`Created ${account.user.app_metadata.role} account ${account.user.app_metadata.username} <${account.user.email}> (id ${data.user.id}).`);
   return 0;
 }
 

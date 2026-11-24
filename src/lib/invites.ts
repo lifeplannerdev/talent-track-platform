@@ -45,3 +45,36 @@ export async function sendInvite(studentId: string): Promise<"sent" | "failed" |
     return "failed";
   }
 }
+
+/**
+ * Emails a trainer (or any account whose contact is its Auth email) a link to choose a password.
+ * The address is the Auth user's email, which is also what they sign in with. "failed" on any
+ * problem (the account exists already; an admin can resend). Never throws, never logs the link.
+ */
+export async function sendAccountInvite(userId: string): Promise<"sent" | "failed"> {
+  try {
+    const admin = createAdminClient();
+    const { data: found } = await admin.auth.admin.getUserById(userId);
+    const to = found?.user?.email?.trim();
+    if (!to) return "failed";
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("full_name, username")
+      .eq("id", userId)
+      .maybeSingle<{ full_name: string | null; username: string }>();
+    if (!profile) return "failed";
+    const link = await createInviteLink(userId);
+    if (!link.ok) return "failed";
+    const mail = buildInviteMail({
+      fullName: profile.full_name ?? profile.username,
+      username: profile.username,
+      link: link.link,
+      signIn: { label: "Email address", value: to },
+    });
+    const sent = await sendMail({ ...mail, to });
+    return sent.ok ? "sent" : "failed";
+  } catch {
+    console.error("[invite] sending the account invite failed");
+    return "failed";
+  }
+}

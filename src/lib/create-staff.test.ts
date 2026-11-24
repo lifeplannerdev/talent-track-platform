@@ -22,7 +22,7 @@ describe("staffAccountFromEnv", () => {
         email: "trainer@example.org",
         password: ENV.STAFF_PASSWORD,
         email_confirm: true,
-        app_metadata: { role: "staff", username: "trainer.one", full_name: "Trainer One" },
+        app_metadata: { role: "admin", username: "trainer.one", full_name: "Trainer One" },
       },
     });
   });
@@ -42,6 +42,21 @@ describe("staffAccountFromEnv", () => {
     if (!missing.ok) expect(missing.errors).toContain("SUPABASE_SERVICE_ROLE_KEY is required");
   });
 
+  it("STAFF_ROLE=trainer creates a trainer, admin is the default and an empty value means admin", () => {
+    const trainer = staffAccountFromEnv({ ...ENV, STAFF_ROLE: "trainer" });
+    expect(trainer.ok && trainer.user.app_metadata.role).toBe("trainer");
+    const admin = staffAccountFromEnv({ ...ENV, STAFF_ROLE: "admin" });
+    expect(admin.ok && admin.user.app_metadata.role).toBe("admin");
+    const blank = staffAccountFromEnv({ ...ENV, STAFF_ROLE: "" });
+    expect(blank.ok && blank.user.app_metadata.role).toBe("admin");
+  });
+
+  it.each(["staff", "student", "Trainer", "root"])("rejects STAFF_ROLE=%s without echoing the password", (role) => {
+    const result = staffAccountFromEnv({ ...ENV, STAFF_ROLE: role });
+    expect(result).toEqual({ ok: false, errors: ["STAFF_ROLE must be admin or trainer"] });
+    expect(JSON.stringify(result)).not.toContain(ENV.STAFF_PASSWORD);
+  });
+
   it("needs a password of at least 12 characters", () => {
     const result = staffAccountFromEnv({ ...ENV, STAFF_PASSWORD: "test-short" });
     expect(result).toMatchObject({ ok: false, errors: ["STAFF_PASSWORD must be at least 12 characters"] });
@@ -57,6 +72,17 @@ describe("createStaff", () => {
     expect(createUser).toHaveBeenCalledTimes(1);
     const output = JSON.stringify(log.mock.calls);
     expect(output).toContain("u-1");
+    expect(output).not.toContain(ENV.STAFF_PASSWORD);
+    expect(output).not.toContain(ENV.SUPABASE_SERVICE_ROLE_KEY);
+  });
+
+  it("a trainer run sends role trainer and prints neither the password nor the key", async () => {
+    const createUser = vi.fn(async (...args: unknown[]) => ({ data: { user: { id: String(args.length) + "-u-2" } }, error: null }));
+    const log = vi.fn();
+    expect(await createStaff({ ...ENV, STAFF_ROLE: "trainer" }, { createUser }, log)).toBe(0);
+    expect(createUser.mock.calls[0]?.[0]).toMatchObject({ app_metadata: { role: "trainer" } });
+    const output = JSON.stringify(log.mock.calls);
+    expect(output).toContain("trainer account");
     expect(output).not.toContain(ENV.STAFF_PASSWORD);
     expect(output).not.toContain(ENV.SUPABASE_SERVICE_ROLE_KEY);
   });

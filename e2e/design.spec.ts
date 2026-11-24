@@ -174,7 +174,7 @@ test("student screens: login, consent, empty start, curriculum cards, exam, subm
   finish(info, findings);
 });
 
-test("staff screens: dashboard, attempts, evaluation, blocked, extra attempts, students, student detail, curriculums, curriculum, questions", async ({
+test("staff screens: dashboard, attempts, evaluation, blocked, extra attempts, students, student detail, curriculums, curriculum, questions, team", async ({
   page,
 }, info) => {
   const findings: Finding[] = [];
@@ -241,6 +241,9 @@ test("staff screens: dashboard, attempts, evaluation, blocked, extra attempts, s
   const { data: set } = await db.from("exam_sets").select("id").eq("curriculum_id", cId).single();
   await page.goto(`/staff/questions?examSet=${set!.id}`);
   await review(page, info, "20-staff-questions", findings);
+  await page.goto("/staff/team");
+  await expect(page.getByTestId("team-table")).toBeVisible();
+  await review(page, info, "21-staff-team", findings);
 
   finish(info, findings);
 });

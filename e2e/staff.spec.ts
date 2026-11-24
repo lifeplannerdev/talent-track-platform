@@ -11,6 +11,7 @@ import {
   STUDENT_CREATED,
   STUDENT_OF_ONE,
   STUDENT_OF_TWO,
+  TRAINER_ADDED,
   TRAINER_ONE,
   TRAINER_TWO,
 } from "./fixtures";
@@ -397,4 +398,70 @@ test("the CSV import shows which rows get an invite, reports the invite counts, 
   await expect(page.getByTestId("students-import-invites")).toContainText("1 sent, 1 without email (no invite)");
   const { data: second } = await adminDb().from("profiles").select("id").eq("username", "e2e.bytrainer2").single();
   await adminDb().auth.admin.deleteUser(second!.id);
+});
+
+async function removeAddedTrainer() {
+  const db = adminDb();
+  const { data } = await db.from("profiles").select("id").eq("username", TRAINER_ADDED.username).maybeSingle();
+  if (data) {
+    await db.from("profiles").update({ trainer_id: null }).eq("trainer_id", data.id);
+    await db.auth.admin.deleteUser(data.id);
+  }
+}
+
+test("a trainer cannot open the Team page and has no Team link", async ({ page }) => {
+  await signIn(page, TRAINER_ONE.email, TRAINER_ONE.password, /\/staff$/);
+  await expect(page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
+  await page.goto("/staff/team");
+  await expect(page).toHaveURL(/\/staff$/);
+  await expect(page.getByTestId("team-table")).toHaveCount(0);
+});
+
+function trainerRow(page: import("@playwright/test").Page, username: string) {
+  // By the username cell, not by name: other rows list this name in their reassign dropdown.
+  return page.getByTestId("trainer-row").filter({ has: page.getByText(username, { exact: true }) });
+}
+
+test("an admin adds a trainer, moves a trainer's students away and deactivates the trainer", async ({ page }) => {
+  await removeAddedTrainer();
+  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
+  await page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Team", exact: true }).click();
+  await expect(page).toHaveURL(/\/staff\/team$/);
+  await expect(page.getByTestId("team-table")).toBeVisible();
+  await expect(trainerRow(page, TRAINER_ONE.username)).toContainText("1");
+
+  // Add a trainer: no password field, the row appears.
+  const form = page.getByRole("form", { name: "Add trainer" });
+  await expect(form.getByLabel("Password")).toHaveCount(0);
+  await form.getByLabel("Full name").fill(TRAINER_ADDED.fullName);
+  await form.getByLabel("Email").fill(TRAINER_ADDED.email);
+  await form.getByLabel("Username").fill(TRAINER_ADDED.username);
+  await form.getByRole("button", { name: "Add trainer" }).click();
+  await expect(page.getByTestId("trainer-success")).toContainText(TRAINER_ADDED.fullName);
+  const added = trainerRow(page, TRAINER_ADDED.username);
+  await expect(added).toContainText(TRAINER_ADDED.email);
+  await expect(added).toContainText("Not signed in yet");
+  await expectNoHorizontalOverflow(page);
+
+  // A trainer with students cannot be deactivated; reassign first (to the new trainer), then deactivate.
+  const one = trainerRow(page, TRAINER_ONE.username);
+  await expect(one.getByRole("button", { name: /Deactivate/ })).toBeDisabled();
+  await one.getByTestId("reassign-select").selectOption({ label: TRAINER_ADDED.fullName });
+  await one.getByRole("button", { name: "Reassign students" }).click();
+  await expect(one.getByTestId("trainer-action-message")).toHaveText("1 student moved.");
+  await expect(added.getByTestId("trainer-students")).toHaveText("1");
+  await expect(one.getByTestId("trainer-students")).toHaveText("0");
+  await one.getByRole("button", { name: /Deactivate/ }).click();
+  await expect(one.getByTestId("trainer-action-message")).toContainText("deactivated");
+  await expect(one).toContainText("Inactive");
+
+  // The deactivated trainer can no longer sign in (same message as a wrong password).
+  await page.context().clearCookies();
+  await page.goto("/login");
+  await page.getByLabel(/username|email/i).fill(TRAINER_ONE.email);
+  await page.getByLabel("Password").fill(TRAINER_ONE.password);
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByText("Incorrect username or password")).toBeVisible();
+
+  await removeAddedTrainer();
 });

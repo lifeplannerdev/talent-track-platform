@@ -10,6 +10,7 @@ const fake = vi.hoisted(() => ({
   signOutErrors: {} as Partial<Record<"global" | "local" | "others", { message: string }>>,
   signInError: null as { message: string; status?: number } | null,
   role: "student",
+  active: true,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -24,7 +25,7 @@ vi.mock("@/lib/supabase/server", () => ({
       getUser: async () => ({ data: { user: { id: "user-1" } } }),
     },
     from: () => ({
-      select: () => ({ eq: () => ({ single: async () => ({ data: { role: fake.role, consent_at: null } }) }) }),
+      select: () => ({ eq: () => ({ single: async () => ({ data: { role: fake.role, consent_at: null, active: fake.active } }) }) }),
     }),
   }),
 }));
@@ -48,6 +49,7 @@ beforeEach(() => {
   fake.signOutErrors = {};
   fake.signInError = null;
   fake.role = "student";
+  fake.active = true;
 });
 
 describe("login", () => {
@@ -67,6 +69,18 @@ describe("login", () => {
     expect(result.error).toMatch(/could not sign you in/i);
     // The new session is dropped locally too, so nothing stays signed in half-way.
     expect(fake.signOutCalls).toEqual([{ scope: "others" }, { scope: "local" }]);
+  });
+});
+
+describe("deactivated accounts", () => {
+  it("signs a deactivated profile out and answers like a wrong password", async () => {
+    fake.role = "trainer";
+    fake.active = false;
+    const result = await login({ error: null }, form("old.trainer@example.test", "test-pass-anna"));
+    expect(result.error).toBe("Incorrect username or password. Please try again.");
+    // The session is ended (global sign-out), nothing redirects.
+    expect(fake.signOutCalls.at(-1)).toBeUndefined();
+    expect(fake.signOutCalls.length).toBeGreaterThanOrEqual(2);
   });
 });
 
