@@ -65,9 +65,10 @@ describe("sendMail", () => {
   });
 
   it("returns ok false for an unknown transport name or a malformed recipient", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv("MAIL_TRANSPORT", "carrier-pigeon");
     expect(await sendMail(message)).toEqual({ ok: false });
+    expect(JSON.stringify(spy.mock.calls)).not.toContain("carrier-pigeon");
     vi.stubEnv("MAIL_TRANSPORT", "log");
     expect(await sendMail({ ...message, to: "not-an-email" })).toEqual({ ok: false });
   });

@@ -16,7 +16,7 @@ function esc(value: string): string {
 
 /**
  * The invite carries the username and a one-time link to choose a password, never a password.
- * `to` is left empty: the caller sets the contact address before sending.
+ * It has no recipient: callers do `sendMail({ ...buildInviteMail(...), to })`.
  */
 export function buildInviteMail({
   fullName,
@@ -26,7 +26,10 @@ export function buildInviteMail({
   fullName: string;
   username: string;
   link: string;
-}): MailMessage {
+}): Omit<MailMessage, "to"> {
+  if (!/^https?:\/\//i.test(link)) {
+    throw new Error("buildInviteMail: link must start with http:// or https:// (check APP_URL)");
+  }
   const subject = "Your Talent Track Platform account";
   const text = [
     `Hello ${fullName},`,
@@ -59,5 +62,5 @@ export function buildInviteMail({
 <p style="margin:0;font-size:14px;color:#475066;border-top:1px solid #d9dde6;padding-top:16px;">Talent Track Platform, powered by F.L.A.G.</p>
 </div></body></html>`;
 
-  return { to: "", subject, text, html };
+  return { subject, text, html };
 }

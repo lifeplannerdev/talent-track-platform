@@ -28,7 +28,7 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
     if (name === "resend") return await resendTransport(message);
     console.error(
       name
-        ? `[mail] unknown MAIL_TRANSPORT "${name}", recipient domain ${recipientDomain(message.to)}`
+        ? `[mail] unknown MAIL_TRANSPORT value, recipient domain ${recipientDomain(message.to)}`
         : `[mail] MAIL_TRANSPORT is not set in production, recipient domain ${recipientDomain(message.to)}`,
     );
     return { ok: false };

@@ -58,6 +58,28 @@ describe("resendTransport", () => {
     expect(JSON.stringify(spy.mock.calls)).not.toContain("SECRETTOKEN");
   });
 
+  it("gives up on a fetch that never resolves and passes an abort signal", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_key");
+    vi.stubEnv("MAIL_FROM", "a@b.c");
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const pending = resendTransport(message);
+      await vi.advanceTimersByTimeAsync(8001);
+      expect(await pending).toEqual({ ok: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("maps a thrown fetch to ok false", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_key");
     vi.stubEnv("MAIL_FROM", "a@b.c");

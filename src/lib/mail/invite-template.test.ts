@@ -38,7 +38,11 @@ describe("buildInviteMail", () => {
     expect(m.html).not.toContain(`"><b>`);
   });
 
-  it("leaves `to` empty for the caller to set", () => {
-    expect(mail.to).toBe("");
+  it("has no recipient field", () => {
+    expect("to" in mail).toBe(false);
+  });
+
+  it.each(["javascript:alert(1)", "/set-password?x=1", ""])("throws for a link that is not http(s): %s", (bad) => {
+    expect(() => buildInviteMail({ fullName: "A", username: "a", link: bad })).toThrow(/http/);
   });
 });
