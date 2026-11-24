@@ -1,13 +1,41 @@
 import { isValidUsername } from '../auth/username'
 import { readCsvRows, withoutRow, type CsvError } from './rows'
+import { isValidContactEmail, validateStudentDetails, type StudentDetails, type StudentDetailsInput } from '../student-details'
 
 export type Track = 'nursing' | 'other'
 export const TRACKS: readonly Track[] = ['nursing', 'other']
 export const MIN_PASSWORD_LENGTH = 8
 
-export type NewStudent = { username: string; fullName: string; batch: string; track: Track; password: string }
+export type NewStudent = {
+  username: string
+  fullName: string
+  batch: string
+  track: Track
+  password: string
+  /** Lower-case contact email, '' when none was given. */
+  contactEmail: string
+  /** Present whenever a contact email was given (the table needs it); undefined otherwise. */
+  details?: StudentDetails
+}
 
-export type StudentFields = { username: string; fullName: string; batch: string; track: string; password: string }
+export type StudentFields = {
+  username: string
+  fullName: string
+  batch: string
+  track: string
+  password: string
+  contactEmail?: string
+  /** Raw detail fields (everything except contactEmail, which is the field above). */
+  details?: StudentDetailsInput
+}
+
+const DETAIL_COLUMNS: Record<string, keyof StudentDetails> = {
+  phone: 'phone',
+  passport_number: 'passportNumber',
+  destination_country: 'destinationCountry',
+  german_level: 'germanLevel',
+  programme_start: 'programmeStart',
+}
 
 const REQUIRED_COLUMNS = ['username', 'full_name', 'batch', 'track', 'password']
 
@@ -29,6 +57,7 @@ export function checkPassword(password: string): string | null {
  */
 export function validateStudentFields(
   fields: StudentFields,
+  opts: { requireContactEmail?: boolean; now?: Date } = {},
 ): { ok: true; student: NewStudent } | { ok: false; message: string } {
   const fail = (message: string) => ({ ok: false as const, message })
   const username = fields.username.trim().toLowerCase()
@@ -48,11 +77,24 @@ export function validateStudentFields(
   const passwordProblem = checkPassword(password)
   if (passwordProblem) return fail(passwordProblem)
 
-  return { ok: true, student: { username, fullName, batch, track: track as Track, password } }
+  const contactEmail = (fields.contactEmail ?? '').trim().toLowerCase()
+  if (!contactEmail && opts.requireContactEmail) return fail('Missing contact email')
+  if (contactEmail && !isValidContactEmail(contactEmail)) return fail('Contact email is not a valid email address')
+
+  const student: NewStudent = { username, fullName, batch, track: track as Track, password, contactEmail }
+  const given = Object.values(fields.details ?? {}).some((v) => typeof v === 'string' && v.trim())
+  if (given && !contactEmail) return fail('Missing contact email (needed to save student details)')
+  if (contactEmail) {
+    const checked = validateStudentDetails({ ...fields.details, contactEmail }, opts.now)
+    if (!checked.ok) return checked
+    student.details = checked.details
+  }
+  return { ok: true, student }
 }
 
 /**
- * Parses a staff CSV of new students (columns username, full_name, batch, track, password).
+ * Parses a staff CSV of new students (columns username, full_name, batch, track, password; optional contact_email, phone, passport_number,
+ * destination_country, german_level, programme_start).
  * Same conventions as parseQuestionsCsv (see readCsvRows). Duplicate usernames within the file
  * (first occurrence wins) and usernames in `existingUsernames` are reported per row.
  */
@@ -75,12 +117,16 @@ export function parseStudentsCsvWithRows(
   const firstRow = new Map<string, number>()
 
   for (const { row, cell, rawCell } of rows) {
+    const details: StudentDetailsInput = {}
+    for (const [column, key] of Object.entries(DETAIL_COLUMNS)) details[key] = cell(column)
     const result = validateStudentFields({
       username: cell('username'),
       fullName: cell('full_name'),
       batch: cell('batch'),
       track: cell('track'),
       password: rawCell('password'),
+      contactEmail: cell('contact_email'),
+      details,
     })
     if (!result.ok) {
       errors.push({ row, message: result.message })
