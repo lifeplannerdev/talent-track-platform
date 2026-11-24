@@ -9,9 +9,9 @@ export type SetPasswordResult = { ok: false; message: string; saved?: true };
 
 // One message for every token problem (used, expired, garbage, empty), so the page tells an
 // outsider nothing about which tokens exist.
-const INVALID_LINK = "This link is no longer valid. Ask your trainer to send you a new invite.";
-const SAVED_BUT = "Your password was saved and you can sign in with it now. Your other sessions could not be ended, so ask your trainer if you notice anything odd.";
-const NOT_SAVED = "Your password could not be saved. Ask your trainer to send you a new link.";
+const INVALID_LINK = "This link is no longer valid. Ask the person who invited you for a new invite.";
+const SAVED_BUT = "Your password was saved and you can sign in with it now. Your other sessions could not be ended, so tell the person who invited you if you notice anything odd.";
+const NOT_SAVED = "Your password could not be saved. Ask the person who invited you for a new invite.";
 
 /**
  * Sets the account's password from an invite link. This is the only place the one-time token is

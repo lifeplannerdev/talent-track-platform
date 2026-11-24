@@ -19,6 +19,8 @@ import { ImportStudents } from "./import-students";
 import { linkClass, statusVariant, trackLabel } from "./ui";
 
 export const metadata: Metadata = { title: "Students | Talent Track Platform" };
+// Server actions on this page (the CSV import sends up to 200 invite mails) get this limit, not the platform default (Next: maxDuration goes on the page).
+export const maxDuration = 300;
 
 type Search = { q?: string; batch?: string; track?: string };
 

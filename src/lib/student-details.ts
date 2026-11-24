@@ -64,10 +64,13 @@ export function isValidContactEmail(value: string): boolean {
  * Validates and normalises the raw (string) fields. Blank optional fields become null, the
  * contact email is required (the table says not null), the status defaults to 'active'.
  * `now` supplies "today" (the Asia/Kolkata calendar date) for the passport and birth-date checks.
+ * `keepExpiry` is the passport expiry already stored: submitting that same value again is not
+ * refused for being in the past (the rule applies to new or changed values only).
  */
 export function validateStudentDetails(
   input: StudentDetailsInput,
   now: Date = new Date(),
+  opts: { keepExpiry?: string | null } = {},
 ): { ok: true; details: StudentDetails } | { ok: false; message: string } {
   const fail = (message: string) => ({ ok: false as const, message })
   const text = (key: keyof StudentDetails): string | null => {
@@ -99,7 +102,7 @@ export function validateStudentDetails(
     if (v !== null && !isRealIsoDate(v)) return fail(`${dateLabels[key]} must be a real date written yyyy-mm-dd`)
     dates[key] = v
   }
-  if (dates.passportExpiry && dates.passportExpiry < today) {
+  if (dates.passportExpiry && dates.passportExpiry < today && dates.passportExpiry !== opts.keepExpiry) {
     return fail(`Passport expiry ${dates.passportExpiry} is in the past`)
   }
   if (dates.dateOfBirth && dates.dateOfBirth > today) return fail('Date of birth is in the future')

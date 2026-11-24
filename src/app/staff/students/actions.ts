@@ -93,7 +93,7 @@ export async function createStudent(input: CreateStudentInput): Promise<CreateSt
     password: asText(input?.password),
     contactEmail: asText(input?.contactEmail),
     details: asDetails(input?.details),
-  });
+  }, { requireContactEmail: true });
   if (!checked.ok) return checked;
   const client = await createClient();
   const owner = await resolveOwner(client, caller, input?.trainerId, "Choose an active trainer for this student");

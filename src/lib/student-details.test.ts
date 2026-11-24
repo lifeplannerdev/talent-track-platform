@@ -71,6 +71,21 @@ describe('validateStudentDetails', () => {
     expect(validateStudentDetails({ contactEmail: 'a@b.co', passportExpiry: '2030-01-01' }, NOW)).toMatchObject({ ok: true })
   })
 
+  it('keeps a stored passport expiry that has since passed, but still refuses a new or changed past date', () => {
+    const base = { contactEmail: 'a@b.co', passportExpiry: '2026-01-01' }
+    expect(validateStudentDetails(base, NOW, { keepExpiry: '2026-01-01' })).toMatchObject({
+      ok: true,
+      details: { passportExpiry: '2026-01-01' },
+    })
+    // A different past date, a first entry (nothing stored) and a null stored value are all checked.
+    expect(validateStudentDetails({ ...base, passportExpiry: '2026-02-02' }, NOW, { keepExpiry: '2026-01-01' })).toMatchObject({ ok: false })
+    expect(validateStudentDetails(base, NOW, { keepExpiry: null })).toMatchObject({ ok: false })
+    expect(validateStudentDetails(base, NOW, {})).toMatchObject({ ok: false })
+    expect(validateStudentDetails(base, NOW)).toMatchObject({ ok: false })
+    // The kept date must still be a real date.
+    expect(validateStudentDetails({ ...base, passportExpiry: '2026-13-01' }, NOW, { keepExpiry: '2026-13-01' })).toMatchObject({ ok: false })
+  })
+
   it('requires ISO yyyy-mm-dd dates that exist on the calendar', () => {
     for (const programmeStart of ['24/11/2026', '2026-1-5', '2026-02-30', '2026-13-01', 'tomorrow', '2026-11-24T00:00']) {
       const r = validateStudentDetails({ contactEmail: 'a@b.co', programmeStart }, NOW)

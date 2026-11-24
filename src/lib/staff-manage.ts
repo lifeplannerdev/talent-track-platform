@@ -8,7 +8,7 @@ import { effectiveStatus } from "@/lib/staff-overview-core";
 import { rowToDetails, type StudentDetails } from "@/lib/student-details";
 
 // Readers for the staff management pages (students, curriculums, exam sets, questions). They use
-// the staff session (RLS: staff read everything); callers authenticate with requireRole('staff').
+// the staff session (reads are scoped by role through RLS: admin sees all, a trainer only their own students); callers authenticate with requireRole('staff').
 
 type AssignmentStatus = "open" | "passed" | "blocked";
 

@@ -25,7 +25,7 @@ async function SetPasswordCard({ searchParams }: { searchParams: PageProps<"/set
           <h1 className="text-xl font-semibold">Choose your password</h1>
         </CardTitle>
         <CardDescription>
-          Pick a password for your Talent Track Platform account. You will sign in with your username and this password.
+          Pick a password for your Talent Track Platform account. Sign in with the username or email address named in your invite email.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -34,7 +34,7 @@ async function SetPasswordCard({ searchParams }: { searchParams: PageProps<"/set
         ) : (
           <div className="flex flex-col gap-3" data-testid="set-password-invalid">
             <p role="alert" className="rounded-md bg-destructive-muted px-3 py-2 text-sm font-semibold text-destructive">
-              This link is no longer valid. Ask your trainer to send you a new invite.
+              This link is no longer valid. Ask the person who invited you for a new invite.
             </p>
             <Link href="/login" className={linkClass}>
               Go to sign in

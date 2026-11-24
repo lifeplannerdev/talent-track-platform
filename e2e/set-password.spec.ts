@@ -6,7 +6,7 @@ test.beforeEach(async () => {
   await seed();
 });
 
-const INVALID = "This link is no longer valid. Ask your trainer to send you a new invite.";
+const INVALID = "This link is no longer valid. Ask the person who invited you for a new invite.";
 
 async function trySignIn(page: Page, username: string, password: string) {
   await page.goto("/login");
@@ -29,6 +29,7 @@ test("opening the link (even twice) does not use it up; a weak password is refus
   await page.goto(link);
   await page.goto(link);
   await expect(page.getByRole("heading", { name: "Choose your password" })).toBeVisible();
+  await expect(page.getByText("Sign in with the username or email address named in your invite email.")).toBeVisible();
 
   await submit(page, "short");
   await expect(page.locator("#set-password-error")).toContainText("at least 8 characters");

@@ -76,6 +76,23 @@ describe("saveStudentDetails", () => {
     expect(await detailsRow(student.id)).toMatchObject({ phone: null });
   });
 
+  it("keeps an expired stored passport expiry when other fields change, but refuses a new or changed past date", async () => {
+    const admin = await makeUser("admin");
+    const student = await makeUser("student");
+    session.client = admin.client;
+    // An expiry that has since passed, stored directly (the form would have refused it today).
+    await db.from("student_details").insert({ student_id: student.id, contact_email: "kid@example.test", passport_expiry: "2020-01-01", status: "active" });
+    const unchanged = { contactEmail: "kid@example.test", passportExpiry: "2020-01-01", status: "on_hold", notes: "Waiting for renewal" };
+    expect(await saveStudentDetails({ studentId: student.id, details: unchanged })).toEqual({ ok: true });
+    expect(await detailsRow(student.id)).toMatchObject({ passport_expiry: "2020-01-01", status: "on_hold", notes: "Waiting for renewal" });
+    expect(await saveStudentDetails({ studentId: student.id, details: { ...unchanged, passportExpiry: "2021-01-01" } })).toMatchObject({ ok: false });
+    expect(await detailsRow(student.id)).toMatchObject({ passport_expiry: "2020-01-01" });
+    // A student with no stored details: a past date is refused and nothing is created.
+    const fresh = await makeUser("student");
+    expect(await saveStudentDetails({ studentId: fresh.id, details: unchanged })).toMatchObject({ ok: false });
+    expect(await detailsRow(fresh.id)).toBeNull();
+  });
+
   it("a trainer cannot save details of another trainer's student: refused and nothing is written", async () => {
     const trainer = await makeUser("trainer");
     const other = await makeUser("trainer");

@@ -24,7 +24,7 @@ const anon = () => createClient(URL, ANON, { auth: { persistSession: false, auto
 
 const username = `t7.${randomUUID().slice(0, 8)}`;
 const oldPassword = `old-${randomUUID()}`;
-const GENERIC = "This link is no longer valid. Ask your trainer to send you a new invite.";
+const GENERIC = "This link is no longer valid. Ask the person who invited you for a new invite.";
 let userId = "";
 
 async function freshToken(): Promise<string> {

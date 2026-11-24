@@ -211,7 +211,7 @@ describe("createStudent", () => {
     asStaff();
     const username = `${prefix}.nurse`;
     const password = testPassword();
-    const result = await createStudent({ username: username.toUpperCase(), fullName: "Nina Nurse", batch: "B7", track: "nursing", password });
+    const result = await createStudent({ contactEmail: "t@example.test", username: username.toUpperCase(), fullName: "Nina Nurse", batch: "B7", track: "nursing", password });
     expect(result).toMatchObject({ ok: true });
     expect(JSON.stringify(result)).not.toContain(password);
 
@@ -233,7 +233,7 @@ describe("createStudent", () => {
     asStaff();
     const username = `${prefix}.other`;
     const password = testPassword();
-    expect(await createStudent({ username, fullName: "Otto Other", batch: " ", track: "other", password })).toMatchObject({ ok: true });
+    expect(await createStudent({ contactEmail: "t@example.test", username, fullName: "Otto Other", batch: " ", track: "other", password })).toMatchObject({ ok: true });
     const id = (await profileId(username))!;
     expect(await assignmentsOf(id)).toEqual([[LIFE, 1]]);
     const profile = await must(db.from("profiles").select("batch").eq("id", id).single());
@@ -245,9 +245,9 @@ describe("createStudent", () => {
     asStaff();
     const username = `${prefix}.dup`;
     const first = testPassword();
-    expect(await createStudent({ username, fullName: "First", batch: "", track: "other", password: first })).toMatchObject({ ok: true });
+    expect(await createStudent({ contactEmail: "t@example.test", username, fullName: "First", batch: "", track: "other", password: first })).toMatchObject({ ok: true });
     const second = testPassword();
-    const result = await createStudent({ username, fullName: "Second", batch: "", track: "nursing", password: second });
+    const result = await createStudent({ contactEmail: "t@example.test", username, fullName: "Second", batch: "", track: "nursing", password: second });
     expect(result).toEqual({ ok: false, message: `Username "${username}" is already taken` });
     expect(JSON.stringify(result)).not.toContain(second);
 
@@ -262,7 +262,7 @@ describe("createStudent", () => {
   it("refuses a username already used by staff (profile clash) without creating an auth user", async () => {
     asStaff();
     const { data: staffProfile } = await db.from("profiles").select("username").eq("id", staffId).single();
-    const result = await createStudent({ username: staffProfile!.username, fullName: "Clash", batch: "", track: "other", password: testPassword() });
+    const result = await createStudent({ contactEmail: "t@example.test", username: staffProfile!.username, fullName: "Clash", batch: "", track: "other", password: testPassword() });
     expect(result).toEqual({ ok: false, message: `Username "${staffProfile!.username}" is already taken` });
     const { data: list } = await db.auth.admin.listUsers({ perPage: 1000 });
     expect(list.users.some((u) => u.email === usernameToEmail(staffProfile!.username))).toBe(false);
@@ -271,12 +271,12 @@ describe("createStudent", () => {
   it("rejects invalid input and creates nothing", async () => {
     asStaff();
     const username = `${prefix}.short`;
-    expect(await createStudent({ username, fullName: "Short", batch: "", track: "other", password: "short" })).toEqual({
+    expect(await createStudent({ contactEmail: "t@example.test", username, fullName: "Short", batch: "", track: "other", password: "short" })).toEqual({
       ok: false,
       message: "Password must be at least 8 characters",
     });
-    expect(await createStudent({ username, fullName: "Bad", batch: "", track: "medicine", password: testPassword() })).toMatchObject({ ok: false });
-    expect(await createStudent({ username: "bad name", fullName: "Bad", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: false });
+    expect(await createStudent({ contactEmail: "t@example.test", username, fullName: "Bad", batch: "", track: "medicine", password: testPassword() })).toMatchObject({ ok: false });
+    expect(await createStudent({ contactEmail: "t@example.test", username: "bad name", fullName: "Bad", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: false });
     expect(await createStudent(null as never)).toMatchObject({ ok: false });
     expect(await profileId(username)).toBeNull();
   });
@@ -288,7 +288,7 @@ describe("createStudent", () => {
     const { error } = await db.from("curriculums").update({ name: renamed }).eq("name", LIFE);
     if (error) throw error;
     try {
-      expect(await createStudent({ username, fullName: "Renamed", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: true });
+      expect(await createStudent({ contactEmail: "t@example.test", username, fullName: "Renamed", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: true });
       expect(await assignmentsOf((await profileId(username))!)).toEqual([[renamed, 1]]);
     } finally {
       await db.from("curriculums").update({ name: LIFE }).eq("name", renamed);
@@ -298,7 +298,7 @@ describe("createStudent", () => {
   it("refuses a password with leading or trailing spaces", async () => {
     asStaff();
     const username = `${prefix}.spaces`;
-    expect(await createStudent({ username, fullName: "Spaces", batch: "", track: "other", password: ` ${testPassword()}` })).toEqual({
+    expect(await createStudent({ contactEmail: "t@example.test", username, fullName: "Spaces", batch: "", track: "other", password: ` ${testPassword()}` })).toEqual({
       ok: false,
       message: "Password must not start or end with a space",
     });
@@ -332,7 +332,7 @@ async function trainerIdOf(username: string): Promise<string | null> {
 }
 
 describe("createStudent: owner and details", () => {
-  const base = (username: string) => ({ username, fullName: "Owned Student", batch: "B1", track: "other", password: testPassword() });
+  const base = (username: string) => ({ username, fullName: "Owned Student", batch: "B1", track: "other", password: testPassword(), contactEmail: "owned@example.test" });
 
   it("a trainer-created student belongs to that trainer, gets assignments, and the result has no password", async () => {
     const trainer = await makeUser("trainer");
@@ -340,7 +340,7 @@ describe("createStudent: owner and details", () => {
     const username = `${prefix}.own1`;
     const input = base(username);
     const result = await createStudent(input);
-    expect(result).toEqual({ ok: true, studentId: expect.any(String), invite: "skipped" });
+    expect(result).toEqual({ ok: true, studentId: expect.any(String), invite: "sent" });
     expect(JSON.stringify(result)).not.toContain(input.password);
     expect(await trainerIdOf(username)).toBe(trainer.id);
     expect(await assignmentsOf((result as { studentId: string }).studentId)).toEqual([[LIFE, 1]]);
@@ -400,7 +400,7 @@ describe("createStudent: owner and details", () => {
     }
   });
 
-  it("saves the details row with the owning trainer's session, and none without a contact email", async () => {
+  it("saves the details row with the owning trainer's session, and a minimal row with just the contact email", async () => {
     const trainer = await makeUser("trainer");
     asTrainer(trainer.client);
     const username = `${prefix}.det1`;
@@ -427,13 +427,16 @@ describe("createStudent: owner and details", () => {
     const plain = `${prefix}.det2`;
     const second = await createStudent(base(plain));
     expect(second).toMatchObject({ ok: true });
-    expect(await must(db.from("student_details").select("student_id").eq("student_id", (second as { studentId: string }).studentId))).toEqual([]);
+    // The contact email is required now, so even a student without other details has a row.
+    expect(await must(db.from("student_details").select("contact_email").eq("student_id", (second as { studentId: string }).studentId))).toEqual([
+      { contact_email: "owned@example.test" },
+    ]);
   });
 
   it("refuses details without a contact email or with bad values, creating nothing", async () => {
     asStaff();
     const noEmail = `${prefix}.det3`;
-    expect(await createStudent({ ...base(noEmail), details: { phone: "+91 98765 43210" } })).toMatchObject({ ok: false });
+    expect(await createStudent({ ...base(noEmail), contactEmail: "", details: { phone: "+91 98765 43210" } })).toMatchObject({ ok: false });
     expect(await profileId(noEmail)).toBeNull();
     const badPhone = `${prefix}.det4`;
     expect(await createStudent({ ...base(badPhone), contactEmail: "a@example.test", details: { phone: "call me" } })).toMatchObject({ ok: false });
@@ -831,7 +834,7 @@ describe("a student session cannot use any student management action", () => {
     asStudent();
     const username = `${prefix}.bystudent`;
     const pw = testPassword();
-    await expect(createStudent({ username, fullName: "X", batch: "", track: "other", password: pw })).rejects.toThrow(/REDIRECT/);
+    await expect(createStudent({ contactEmail: "t@example.test", username, fullName: "X", batch: "", track: "other", password: pw })).rejects.toThrow(/REDIRECT/);
     await expect(importStudents(`username,full_name,batch,track,password\n${username},X,,other,${pw}`)).rejects.toThrow(/REDIRECT/);
     await expect(previewStudentsImport("username,full_name,batch,track,password")).rejects.toThrow(/REDIRECT/);
     await expect(resetPassword(studentId, pw)).rejects.toThrow(/REDIRECT/);
@@ -877,11 +880,11 @@ describe("createStudent: duplicate username across trainers", () => {
     const intruder = await makeUser("trainer");
     asTrainer(owner.client);
     const username = `${prefix}.x1`;
-    expect(await createStudent({ username, fullName: "Mine", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: true });
+    expect(await createStudent({ contactEmail: "t@example.test", username, fullName: "Mine", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: true });
     // The second trainer cannot see that profile through RLS, so the duplicate is caught by Auth.
     asTrainer(intruder.client);
     const second = testPassword();
-    const result = await createStudent({ username, fullName: "Yours", batch: "", track: "other", password: second });
+    const result = await createStudent({ contactEmail: "t@example.test", username, fullName: "Yours", batch: "", track: "other", password: second });
     expect(result).toEqual({ ok: false, message: `Username "${username}" is already taken` });
     const rows = await must(db.from("profiles").select("id, full_name, trainer_id").eq("username", username));
     expect(rows).toEqual([{ id: expect.any(String), full_name: "Mine", trainer_id: owner.id }]);
@@ -919,7 +922,7 @@ describe("createStudentAccount: a throw after the user exists also rolls back", 
 });
 
 describe("invites from createStudent and resendInvite", () => {
-  const base = (username: string) => ({ username, fullName: "Invited Student", batch: "", track: "other", password: testPassword() });
+  const base = (username: string) => ({ username, fullName: "Invited Student", batch: "", track: "other", password: testPassword(), contactEmail: "invited@example.test" });
 
   it("createStudent sends the invite to the contact email and says only 'sent'", async () => {
     asStaff();
@@ -935,9 +938,13 @@ describe("invites from createStudent and resendInvite", () => {
     expect(JSON.stringify(result)).not.toContain("token_hash");
   });
 
-  it("no contact email means no mail and 'skipped'", async () => {
+  it("createStudent without a contact email is refused: no account, no mail", async () => {
     asStaff();
-    expect(await createStudent(base(`${prefix}.inv2`))).toMatchObject({ ok: true, invite: "skipped" });
+    const username = `${prefix}.inv2`;
+    for (const contactEmail of [undefined, "", "   "]) {
+      expect(await createStudent({ ...base(username), contactEmail: contactEmail as never })).toEqual({ ok: false, message: "Missing contact email" });
+    }
+    expect(await profileId(username)).toBeNull();
     expect(mailSpy.sent).toHaveLength(0);
   });
 
@@ -978,8 +985,9 @@ describe("invites from createStudent and resendInvite", () => {
 
   it("resendInvite tells staff when there is no contact email or the mail failed", async () => {
     asStaff();
-    const plain = await createStudent(base(`${prefix}.inv6`));
-    expect(await resendInvite((plain as { studentId: string }).studentId)).toEqual({
+    // An account without a contact email (e.g. from the CSV import or an older student).
+    const plain = await makeUser("student");
+    expect(await resendInvite(plain.id)).toEqual({
       ok: false,
       message: "This student has no contact email, so no invite can be sent.",
     });

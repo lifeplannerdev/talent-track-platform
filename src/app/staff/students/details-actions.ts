@@ -43,7 +43,10 @@ export async function saveStudentDetails(input: { studentId: string; details: St
   const { data: student } = await client.from("profiles").select("id").eq("id", studentId).eq("role", "student").maybeSingle();
   if (!student) return { ok: false, message: NOT_FOUND };
 
-  const checked = validateStudentDetails(asDetails(input.details));
+  // An expiry already stored may be resubmitted even if it has passed since; only new or changed
+  // values are checked against today.
+  const { data: stored } = await client.from("student_details").select("passport_expiry").eq("student_id", studentId).maybeSingle();
+  const checked = validateStudentDetails(asDetails(input.details), new Date(), { keepExpiry: (stored?.passport_expiry as string | null | undefined) ?? null });
   if (!checked.ok) return checked;
 
   // student_id and the timestamps are not updatable by a session (0027), so no upsert: update the
