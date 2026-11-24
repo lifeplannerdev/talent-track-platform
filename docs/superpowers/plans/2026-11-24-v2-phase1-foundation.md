@@ -17,7 +17,7 @@
 - `private.is_staff()` keeps meaning "admin or trainer". Admin-only: creating trainers, deleting students, writing curriculums, exam sets and questions.
 - Trainer scope: sees and manages only students whose `profiles.trainer_id` is theirs; unassigned students are admin-only; curriculums, exam sets and questions are readable by all staff.
 - Passport and other details live in `student_details` (admin and the student's trainer only; students and anon nothing). Notes are visible to admin and that trainer.
-- Mail failure never blocks creating a student. Invite lifetime follows the Auth OTP expiry setting. Mail contains the username and a link, never a password.
+- Mail failure never blocks creating a student. Invite lifetime is 24 hours and follows the Auth OTP expiry setting. Mail contains the username and a link, never a password.
 - UI: tokens from `DESIGN.md`/`globals.css` only, light theme only, 44 px touch targets, `requireRole` inside `<Suspense>`, role locators in e2e.
 - Reuse, do not duplicate: extend `createStudentAccount`, `validateStudentFields`, `parseStudentsCsv`, `requireRole`, `usernameToEmail`, `scripts/create-staff.ts`, `revoke_user_sessions`.
 - Commits carry no attribution lines. Model use: Sonnet for tasks, Haiku only for the docs-only steps, Opus only if a task blocks.
