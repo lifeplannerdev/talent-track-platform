@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { STUDENT_CSV_MAX_ROWS } from './limits'
 import { parseStudentsCsv, validateStudentFields } from './students'
 
 // TEST-ONLY passwords (never real credentials).
@@ -262,3 +263,18 @@ describe('parseStudentsCsv optional detail columns', () => {
 function parseStudentsCsvHeader(header: string) {
   return parseStudentsCsv([header, anna].join('\n'))
 }
+
+describe('parseStudentsCsv row cap', () => {
+  const file = (n: number) =>
+    ['username,full_name,batch,track,password', ...Array.from({ length: n }, (_, i) => `cap.user${i},Cap ${i},B1,other,password-${i}-ok`)].join('\n')
+
+  it('allows exactly the cap and refuses one more as a whole, before any row is checked', () => {
+    expect(STUDENT_CSV_MAX_ROWS).toBe(200)
+    expect(parseStudentsCsv(file(200))).toMatchObject({ errors: [] })
+    expect(parseStudentsCsv(file(200)).valid).toHaveLength(200)
+    expect(parseStudentsCsv(file(201))).toEqual({
+      valid: [],
+      errors: [{ row: 0, message: 'This file has 201 students; import at most 200 at a time, split the file.' }],
+    })
+  })
+})

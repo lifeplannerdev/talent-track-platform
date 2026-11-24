@@ -623,6 +623,22 @@ describe("importStudents: invites", () => {
   });
 });
 
+describe("student import row cap", () => {
+  const big = (n: number) =>
+    ["username,full_name,batch,track,password", ...Array.from({ length: n }, (_, i) => `${prefix}.cap${i},Cap ${i},B1,other,${testPassword()}`)].join("\n");
+  const capCount = async () => (await must(db.from("profiles").select("id").like("username", `${prefix}.cap%`))).length;
+  const MESSAGE = "This file has 201 students; import at most 200 at a time, split the file.";
+
+  it("preview and import refuse 201 rows with the same message and create nothing", async () => {
+    asStaff();
+    const csv = big(201);
+    expect(await previewStudentsImport(csv)).toEqual({ ok: true, rows: [], errors: [{ row: 0, message: MESSAGE }] });
+    expect(await importStudents(csv)).toEqual({ ok: false, message: "Nothing was created. Fix the rows below and import again.", errors: [{ row: 0, message: MESSAGE }] });
+    expect(await capCount()).toBe(0);
+    expect(mailSpy.sent).toEqual([]);
+  });
+});
+
 describe("resetPassword", () => {
   it("changes the password, ends every existing session of the student, and the old password stops working", async () => {
     asStaff();

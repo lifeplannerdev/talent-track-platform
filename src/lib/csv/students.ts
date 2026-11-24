@@ -1,4 +1,5 @@
 import { isValidUsername } from '../auth/username'
+import { STUDENT_CSV_MAX_ROWS } from './limits'
 import { readCsvRows, withoutRow, type CsvError } from './rows'
 import { isValidContactEmail, validateStudentDetails, type StudentDetails, type StudentDetailsInput } from '../student-details'
 
@@ -113,6 +114,13 @@ export function parseStudentsCsvWithRows(
 ): { valid: (NewStudent & { row: number })[]; errors: CsvError[] } {
   const valid: (NewStudent & { row: number })[] = []
   const { rows, errors } = readCsvRows(text, REQUIRED_COLUMNS)
+  // Refused as a whole, before any row is looked at (and so before any account is created).
+  if (rows.length > STUDENT_CSV_MAX_ROWS) {
+    return {
+      valid,
+      errors: [{ row: 0, message: `This file has ${rows.length} students; import at most ${STUDENT_CSV_MAX_ROWS} at a time, split the file.` }],
+    }
+  }
   const existing = new Set([...(opts.existingUsernames ?? [])].map((u) => u.toLowerCase()))
   const firstRow = new Map<string, number>()
 
