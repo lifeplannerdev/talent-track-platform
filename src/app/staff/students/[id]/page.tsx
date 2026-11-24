@@ -19,6 +19,7 @@ import { ExtraAttemptsButton } from "../../grants/extra-attempts-button";
 import { linkClass, statusVariant, trackLabel } from "../ui";
 import { AddCurriculumForm, MoveButtons, RemoveCurriculumButton } from "./assignment-controls";
 import { DeleteStudentForm } from "./delete-student-form";
+import { ResendInviteCard } from "./resend-invite-card";
 import { ResetPasswordForm } from "./reset-password-form";
 
 export const metadata: Metadata = { title: "Student | Talent Track Platform" };
@@ -203,6 +204,7 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
         )}
       </section>
 
+      <ResendInviteCard studentId={s.id} studentName={s.fullName} />
       <ResetPasswordForm studentId={s.id} studentName={s.fullName} />
       <DeleteStudentForm studentId={s.id} studentName={s.fullName} username={s.username} />
     </div>

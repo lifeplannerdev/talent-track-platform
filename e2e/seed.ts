@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { assertLocalUrl } from "../scripts/local-url.mjs";
 import { usernameToEmail } from "../src/lib/auth/username";
+import { buildInviteLink } from "../src/lib/invite-link";
 import {
   BLOCK_CURRICULUM,
   BLOCK_OTHER_CURRICULUM,
@@ -173,4 +174,17 @@ export async function seed() {
     },
     { name: BLOCK_OTHER_CURRICULUM, sets: [{ name: "Andere 1", questionCount: 2 }] },
   ]);
+}
+
+/**
+ * Test-only: a fresh invite link for an existing user, made by the same code createInviteLink
+ * uses, with the local service role. It is never served over HTTP and never logged.
+ */
+export async function inviteLinkFor(username: string): Promise<string> {
+  const db = adminDb();
+  const { data, error } = await db.from("profiles").select("id").eq("username", username).single();
+  if (error) throw error;
+  const made = await buildInviteLink(db, data.id, "http://localhost:3000");
+  if (!made.ok) throw new Error("could not make an invite link");
+  return made.link;
 }

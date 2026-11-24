@@ -9,6 +9,7 @@ import { STUDENT_CSV_MAX_BYTES, utf8Bytes } from "@/lib/csv/limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { createStudentAccount, existingUsernames } from "@/lib/staff-students";
+import { sendInvite } from "@/lib/invites";
 import type { StudentDetailsInput } from "@/lib/student-details";
 
 // Staff student management. Every action authenticates itself with requireRole('staff') (a
@@ -17,7 +18,7 @@ import type { StudentDetailsInput } from "@/lib/student-details";
 // Passwords are never logged and never part of a returned value.
 
 export type ActionResult = { ok: true } | { ok: false; message: string; code?: string };
-/** `invite` is always "skipped" until email invites are wired in. */
+/** `invite`: "skipped" without a contact email, "failed" when the mail could not be sent (staff can resend). */
 export type CreateStudentResult = { ok: true; studentId: string; invite: "sent" | "failed" | "skipped" } | { ok: false; message: string };
 /** `trainerId` only counts for an admin (null or absent = no trainer); a trainer is always the owner. */
 export type CreateStudentInput = StudentFields & { trainerId?: string | null };
@@ -100,7 +101,8 @@ export async function createStudent(input: CreateStudentInput): Promise<CreateSt
   const result = await createStudentAccount(client, checked.student, { trainerId: owner.trainerId });
   if (!result.ok) return result;
   revalidateStudents();
-  return { ok: true, studentId: result.studentId, invite: "skipped" };
+  const invite = await sendInvite(result.studentId);
+  return { ok: true, studentId: result.studentId, invite };
 }
 
 /** Parses the CSV and checks usernames against existing accounts. Returns no passwords. */
@@ -153,6 +155,21 @@ export async function importStudents(csvText: string, opts: { trainerId?: string
   }
   if (created.length > 0) revalidateStudents();
   return { ok: true, created, failed };
+}
+
+/**
+ * Emails the student a fresh set-your-password link (each call makes a new one). The student must
+ * be one of the caller's own (RLS decides what a trainer can read).
+ */
+export async function resendInvite(studentId: string): Promise<ActionResult> {
+  await requireRole("staff");
+  const client = await createClient();
+  const id = await findStudent(client, studentId);
+  if (!id) return { ok: false, message: "Student not found" };
+  const invite = await sendInvite(id);
+  if (invite === "sent") return { ok: true };
+  if (invite === "skipped") return { ok: false, message: "This student has no contact email, so no invite can be sent." };
+  return { ok: false, message: "The invite could not be sent. Please try again." };
 }
 
 export async function resetPassword(studentId: string, newPassword: string): Promise<ActionResult> {

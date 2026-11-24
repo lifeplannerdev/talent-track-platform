@@ -18,6 +18,14 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// No mail leaves the tests; the messages are recorded so they can be inspected.
+const mailSpy = vi.hoisted(() => ({ sent: [] as { to: string; subject: string; text: string; html: string }[], ok: true }));
+vi.mock("@/lib/mail", () => ({
+  sendMail: async (m: { to: string; subject: string; text: string; html: string }) => {
+    mailSpy.sent.push(m);
+    return { ok: mailSpy.ok };
+  },
+}));
 // The real service-role client, with its RPC calls observable (and one failure injectable).
 const adminSpy = vi.hoisted(() => ({ rpcCalls: [] as { fn: string; args: unknown }[], failRevoke: false, failDelete: false }));
 vi.mock("@/lib/supabase/admin", async () => {
@@ -56,8 +64,10 @@ import {
   previewStudentsImport,
   removeCurriculum,
   reorderCurriculums,
+  resendInvite,
   resetPassword,
 } from "./actions";
+import { createStudentAccount } from "@/lib/staff-students";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -179,6 +189,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   const created = await must(db.from("profiles").select("id").like("username", `${prefix}%`));
   for (const { id } of created) await db.auth.admin.deleteUser(id);
   for (const id of userIds) await db.auth.admin.deleteUser(id);
@@ -186,6 +197,9 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubEnv("APP_URL", "http://localhost:3000");
+  mailSpy.sent.length = 0;
+  mailSpy.ok = true;
   session.client = null;
   adminSpy.rpcCalls.length = 0;
   adminSpy.failRevoke = false;
@@ -788,5 +802,152 @@ describe("a student session cannot use any student management action", () => {
   it("anonymous callers are redirected to login", async () => {
     session.client = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
     await expect(resetPassword(studentId, testPassword())).rejects.toThrow(/REDIRECT \/login/);
+  });
+});
+
+/** A staff session where inserting into `table` throws (not returns an error). */
+function withThrowingInsert(client: SupabaseClient, table: string): SupabaseClient {
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === "from") {
+        return (name: string) =>
+          name === table
+            ? {
+                insert: async () => {
+                  throw new Error("injected throw");
+                },
+              }
+            : target.from(name);
+      }
+      const value = (target as unknown as Record<string | symbol, unknown>)[prop];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+describe("createStudent: duplicate username across trainers", () => {
+  it("a username that belongs to another trainer's student gets the friendly message and leaves no auth user", async () => {
+    const owner = await makeUser("trainer");
+    const intruder = await makeUser("trainer");
+    asTrainer(owner.client);
+    const username = `${prefix}.x1`;
+    expect(await createStudent({ username, fullName: "Mine", batch: "", track: "other", password: testPassword() })).toMatchObject({ ok: true });
+    // The second trainer cannot see that profile through RLS, so the duplicate is caught by Auth.
+    asTrainer(intruder.client);
+    const second = testPassword();
+    const result = await createStudent({ username, fullName: "Yours", batch: "", track: "other", password: second });
+    expect(result).toEqual({ ok: false, message: `Username "${username}" is already taken` });
+    const rows = await must(db.from("profiles").select("id, full_name, trainer_id").eq("username", username));
+    expect(rows).toEqual([{ id: expect.any(String), full_name: "Mine", trainer_id: owner.id }]);
+    const { data: list } = await db.auth.admin.listUsers({ perPage: 1000 });
+    expect(list.users.filter((u) => u.email === usernameToEmail(username))).toHaveLength(1);
+    expect(await signIn(usernameToEmail(username), second)).toBeNull();
+  });
+});
+
+describe("createStudentAccount: a throw after the user exists also rolls back", () => {
+  it.each(["student_details", "assignments"])("removes the new user when the %s insert throws", async (table) => {
+    const username = `${prefix}.thr.${table.slice(0, 3)}`;
+    const checked = {
+      username,
+      fullName: "Thrown",
+      batch: "",
+      track: "other" as const,
+      password: testPassword(),
+      contactEmail: "a@example.test",
+      details: {
+        contactEmail: "a@example.test",
+        phone: null, guardianName: null, guardianPhone: null, dateOfBirth: null, gender: null, address: null,
+        passportNumber: null, passportExpiry: null, destinationCountry: null, targetIntake: null, germanLevel: null,
+        qualification: null, joinedOn: null, programmeStart: null, status: "active" as const, notes: null,
+      },
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await createStudentAccount(withThrowingInsert(staffClient, table), checked, { trainerId: null });
+    spy.mockRestore();
+    expect(result).toEqual({ ok: false, message: "The student could not be created. Please try again." });
+    expect(await profileId(username)).toBeNull();
+    const { data: list } = await db.auth.admin.listUsers({ perPage: 1000 });
+    expect(list.users.some((u) => u.email === usernameToEmail(username))).toBe(false);
+  });
+});
+
+describe("invites from createStudent and resendInvite", () => {
+  const base = (username: string) => ({ username, fullName: "Invited Student", batch: "", track: "other", password: testPassword() });
+
+  it("createStudent sends the invite to the contact email and says only 'sent'", async () => {
+    asStaff();
+    const username = `${prefix}.inv1`;
+    const input = { ...base(username), contactEmail: "Invitee@Example.test" };
+    const result = await createStudent(input);
+    expect(result).toEqual({ ok: true, studentId: expect.any(String), invite: "sent" });
+    expect(mailSpy.sent).toHaveLength(1);
+    expect(mailSpy.sent[0].to).toBe("invitee@example.test");
+    expect(mailSpy.sent[0].text).toContain("http://localhost:3000/set-password?token_hash=");
+    expect(mailSpy.sent[0].text).toContain(username);
+    expect(mailSpy.sent[0].text).not.toContain(input.password);
+    expect(JSON.stringify(result)).not.toContain("token_hash");
+  });
+
+  it("no contact email means no mail and 'skipped'", async () => {
+    asStaff();
+    expect(await createStudent(base(`${prefix}.inv2`))).toMatchObject({ ok: true, invite: "skipped" });
+    expect(mailSpy.sent).toHaveLength(0);
+  });
+
+  it("a failing mail or a bad APP_URL gives invite 'failed' and the student still exists", async () => {
+    asStaff();
+    const a = `${prefix}.inv3`;
+    mailSpy.ok = false;
+    expect(await createStudent({ ...base(a), contactEmail: "a@example.test" })).toMatchObject({ ok: true, invite: "failed" });
+    expect(await profileId(a)).not.toBeNull();
+    mailSpy.ok = true;
+    vi.stubEnv("APP_URL", "not-a-url");
+    const b = `${prefix}.inv4`;
+    expect(await createStudent({ ...base(b), contactEmail: "b@example.test" })).toMatchObject({ ok: true, invite: "failed" });
+    expect(await profileId(b)).not.toBeNull();
+  });
+
+  it("resendInvite sends a fresh link for a student of the caller, and refuses others", async () => {
+    const trainer = await makeUser("trainer");
+    const other = await makeUser("trainer");
+    asTrainer(trainer.client);
+    const username = `${prefix}.inv5`;
+    const created = await createStudent({ ...base(username), contactEmail: "r@example.test" });
+    const id = (created as { studentId: string }).studentId;
+    mailSpy.sent.length = 0;
+    expect(await resendInvite(id)).toEqual({ ok: true });
+    expect(mailSpy.sent).toHaveLength(1);
+    expect(mailSpy.sent[0].to).toBe("r@example.test");
+
+    asTrainer(other.client);
+    mailSpy.sent.length = 0;
+    expect(await resendInvite(id)).toEqual({ ok: false, message: "Student not found" });
+    expect(await resendInvite("nope")).toEqual({ ok: false, message: "Student not found" });
+    expect(mailSpy.sent).toHaveLength(0);
+
+    asStaff();
+    expect(await resendInvite(id)).toEqual({ ok: true });
+  });
+
+  it("resendInvite tells staff when there is no contact email or the mail failed", async () => {
+    asStaff();
+    const plain = await createStudent(base(`${prefix}.inv6`));
+    expect(await resendInvite((plain as { studentId: string }).studentId)).toEqual({
+      ok: false,
+      message: "This student has no contact email, so no invite can be sent.",
+    });
+    const withMail = await createStudent({ ...base(`${prefix}.inv7`), contactEmail: "m@example.test" });
+    mailSpy.ok = false;
+    expect(await resendInvite((withMail as { studentId: string }).studentId)).toEqual({
+      ok: false,
+      message: "The invite could not be sent. Please try again.",
+    });
+  });
+
+  it("a student session cannot resend invites", async () => {
+    asStudent();
+    await expect(resendInvite(studentId)).rejects.toThrow(/REDIRECT/);
+    expect(mailSpy.sent).toHaveLength(0);
   });
 });

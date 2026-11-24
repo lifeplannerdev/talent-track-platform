@@ -126,16 +126,21 @@ export async function createStudentAccount(
     return { ok: false, message: GENERIC_CREATE_FAILURE };
   };
 
-  if (student.details) {
-    const { error: detailsError } = await staff
-      .from("student_details")
-      .insert({ student_id: studentId, ...detailsToRow(student.details) });
-    if (detailsError) return rollback("details", detailsError.code);
-  }
+  // A thrown error (not just a returned one) must also remove the new user.
+  try {
+    if (student.details) {
+      const { error: detailsError } = await staff
+        .from("student_details")
+        .insert({ student_id: studentId, ...detailsToRow(student.details) });
+      if (detailsError) return await rollback("details", detailsError.code);
+    }
 
-  const { error: assignError } = await staff.from("assignments").insert(
-    curriculums.ids.map((curriculumId, i) => ({ student_id: studentId, curriculum_id: curriculumId, position: i + 1 })),
-  );
-  if (assignError) return rollback("assignments", assignError.code);
+    const { error: assignError } = await staff.from("assignments").insert(
+      curriculums.ids.map((curriculumId, i) => ({ student_id: studentId, curriculum_id: curriculumId, position: i + 1 })),
+    );
+    if (assignError) return await rollback("assignments", assignError.code);
+  } catch {
+    return rollback("unexpected error", undefined);
+  }
   return { ok: true, studentId };
 }
