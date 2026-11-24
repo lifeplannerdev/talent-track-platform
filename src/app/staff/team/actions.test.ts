@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- the postgrest builder proxy that injects failures is untyped on purpose */
 // Integration tests for the admin team actions against the LOCAL Supabase stack. Sessions are
 // real (password sign-in with the anon key); only the Next.js plumbing is replaced. Passwords
 // here are TEST values generated per run.
@@ -25,7 +26,14 @@ vi.mock("@/lib/mail", () => ({
   },
 }));
 // The real service-role client, with failures injectable at the three deactivation steps.
-const adminSpy = vi.hoisted(() => ({ failBan: false, failRevoke: false, calls: [] as string[] }));
+const adminSpy = vi.hoisted(() => ({
+  failBan: false,
+  failRevoke: false,
+  failActivate: false,
+  /** Runs right after the `active = false` write completes (a student sneaking in). */
+  afterDeactivateFlag: null as null | (() => Promise<void>),
+  calls: [] as string[],
+}));
 vi.mock("@/lib/supabase/admin", async () => {
   const { createClient: create } = await import("@supabase/supabase-js");
   return {
@@ -33,6 +41,40 @@ vi.mock("@/lib/supabase/admin", async () => {
       const client = create(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
+      // Wraps a postgrest builder chain so a hook runs after the awaited write completes.
+      const after = (q: any, hook: () => Promise<void>): any =>
+        new Proxy(q, {
+          get(target, prop) {
+            const v = target[prop];
+            if (prop === "then") {
+              return (res: any, rej: any) =>
+                target.then(async (r: unknown) => {
+                  await hook();
+                  return r;
+                }).then(res, rej);
+            }
+            if (typeof v !== "function") return v;
+            return (...a: unknown[]) => {
+              const out = v.apply(target, a);
+              return out && typeof out.then === "function" ? after(out, hook) : out;
+            };
+          },
+        });
+      const from = client.from.bind(client);
+      (client as any).from = (table: string) => {
+        const b: any = from(table);
+        if (table !== "profiles") return b;
+        const upd = b.update.bind(b);
+        b.update = (vals: { active?: boolean }) => {
+          if (vals.active === true && adminSpy.failActivate) {
+            adminSpy.calls.push("activate");
+            return { eq: () => ({ eq: () => Promise.resolve({ error: { code: "XX000" } }) }) };
+          }
+          const q = upd(vals);
+          return vals.active === false && adminSpy.afterDeactivateFlag ? after(q, adminSpy.afterDeactivateFlag) : q;
+        };
+        return b;
+      };
       const rpc = client.rpc.bind(client);
       (client as { rpc: unknown }).rpc = (fn: string, args?: Record<string, unknown>) => {
         adminSpy.calls.push(`rpc:${fn}`);
@@ -121,6 +163,8 @@ beforeEach(() => {
   mailSpy.ok = true;
   adminSpy.failBan = false;
   adminSpy.failRevoke = false;
+  adminSpy.failActivate = false;
+  adminSpy.afterDeactivateFlag = null;
   adminSpy.calls = [];
   session.client = admin.client;
 });
@@ -185,6 +229,14 @@ describe("createTrainer", () => {
     expect(sameEmail).toMatchObject({ ok: false });
     const { data } = await db.from("profiles").select("id").in("username", [`${prefix}.bad1`, `${prefix}.bad2`, `${prefix}.dup3`]);
     expect(data).toEqual([]);
+  });
+
+  it("does not mail a deactivated trainer", async () => {
+    const t = await makeUser("trainer");
+    expect(await setTrainerActive(t.id, false)).toEqual({ ok: true });
+    mailSpy.sent = [];
+    expect(await resendTrainerInvite(t.id)).toMatchObject({ ok: false });
+    expect(mailSpy.sent).toEqual([]);
   });
 
   it("cannot resend to someone who is not a trainer", async () => {
@@ -270,6 +322,35 @@ describe("setTrainerActive", () => {
     expect(r).toMatchObject({ ok: false });
     expect((await profile(t.id))?.active).toBe(false);
     expect(await signIn(t.email, t.password)).toBeNull();
+  });
+
+  it("a student arriving mid-deactivation undoes the flag and no ban or revoke happens", async () => {
+    const t = await makeUser("trainer");
+    adminSpy.afterDeactivateFlag = async () => {
+      adminSpy.afterDeactivateFlag = null;
+      await makeUser("student", t.id);
+    };
+    const r = await setTrainerActive(t.id, false);
+    expect(r).toEqual({ ok: false, message: "A student was just assigned to this trainer. Reassign them first." });
+    expect((await profile(t.id))?.active).toBe(true);
+    expect(adminSpy.calls).toEqual([]);
+  });
+
+  it("when that undo write fails the admin is told plainly, and nothing is banned or revoked", async () => {
+    const t = await makeUser("trainer");
+    adminSpy.afterDeactivateFlag = async () => {
+      adminSpy.afterDeactivateFlag = null;
+      await makeUser("student", t.id);
+      adminSpy.failActivate = true;
+    };
+    const r = await setTrainerActive(t.id, false);
+    expect(r).toEqual({
+      ok: false,
+      message:
+        "A student was just assigned to this trainer, and the trainer is marked inactive but has students. Reactivate the trainer or reassign the students, then try again.",
+    });
+    expect((await profile(t.id))?.active).toBe(false);
+    expect(adminSpy.calls).toEqual(["activate"]);
   });
 
   it("only trainers can be switched: an admin, a student or a bad id is refused", async () => {

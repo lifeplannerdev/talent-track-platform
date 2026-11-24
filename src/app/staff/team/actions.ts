@@ -87,6 +87,7 @@ export async function resendTrainerInvite(trainerId: string): Promise<TeamResult
   await requireAdmin();
   const trainer = await findTrainer(createAdminClient(), trainerId);
   if (!trainer) return { ok: false, message: NOT_FOUND };
+  if (!trainer.active) return { ok: false, message: "This trainer is deactivated. Reactivate them before sending an invite." };
   if ((await sendAccountInvite(trainer.id)) === "sent") return { ok: true };
   return { ok: false, message: "The invite could not be sent. Please try again." };
 }
@@ -135,7 +136,16 @@ export async function setTrainerActive(trainerId: string, active: boolean): Prom
   // A student could have been assigned between the check and the flag: undo rather than orphan them.
   const late = await countStudents(admin, trainer.id);
   if (late > 0) {
-    await admin.from("profiles").update({ active: true }).eq("id", trainer.id).eq("role", "trainer");
+    const { error: undoError } = await admin.from("profiles").update({ active: true }).eq("id", trainer.id).eq("role", "trainer");
+    if (undoError) {
+      console.error("setTrainerActive: undoing the deactivation failed", undoError.code ?? "unknown");
+      revalidateTeam();
+      return {
+        ok: false,
+        message:
+          "A student was just assigned to this trainer, and the trainer is marked inactive but has students. Reactivate the trainer or reassign the students, then try again.",
+      };
+    }
     return { ok: false, message: "A student was just assigned to this trainer. Reassign them first." };
   }
   const { error: banError } = await admin.auth.admin.updateUserById(trainer.id, { ban_duration: BAN_DURATION });
