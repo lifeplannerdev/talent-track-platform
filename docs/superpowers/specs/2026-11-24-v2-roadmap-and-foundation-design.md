@@ -1,6 +1,18 @@
 # Talent Track Platform v2: roadmap and Phase 1 (Foundation) design
 
-Status: draft for owner approval, 2026-11-24. Amends `2026-11-13-talenttrackplatform-design.md` and `2026-11-18-immediate-marks-attempts-design.md`. Only Phase 1 is designed in detail here; Phases 2 to 5 get their own design docs when they start.
+Status: Phase 1 (Foundation) implemented on branch `v2-phase1-foundation`, 2026-11-24 (migrations 0026 and 0027). Phases 2 to 5 are not started. Amends `2026-11-13-talenttrackplatform-design.md` and `2026-11-18-immediate-marks-attempts-design.md`. Only Phase 1 is designed in detail here; Phases 2 to 5 get their own design docs when they start.
+
+### Known gaps after Phase 1 (deferred on purpose)
+
+- No database guard against assigning a student to an inactive trainer (the app checks; an admin-only race remains).
+- `resendInvite` has no rate limit and does not check that the account is active; invite status is not stored (the page cannot tell whether a student has chosen a password).
+- The invite mail is English only.
+- `student_details.updated_at` has no trigger, and `profiles.trainer_id` has no foreign-key guarantee that it points at a staff profile (the trigger and the app check it).
+- Student counts on the Team page are capped at 1000 rows by PostgREST; `listTrainers` reads each trainer's Auth user one by one (N+1).
+- Trainers cannot read their assigned trainer's name on a student; the student page shows no trainer name to trainers.
+- `previewStudentsImport` is not exact for trainers (RLS hides other trainers' usernames until import); the import itself catches duplicates.
+- `createStudent` (server action) accepts no contact email although the form requires one; the details card can show stale state after a reassignment.
+- Login rate limit and IP handling are still open (see the production checklist in `CLAUDE.md`).
 
 ## Intent and why
 

@@ -3,8 +3,10 @@
 //   node scripts/demo-seed.mjs        (after `npm run db:reset`; reads .env.local)
 //
 // Creates (again, if they exist):
-// - staff  demo-staff@example.test / demo-staff-pass-1
-// - student demo.student / demo-student-pass-1 (nursing track, consent given) with the two default
+// - admin   demo-staff@example.test / demo-staff-pass-1 (signs in with the email)
+// - trainer demo-trainer@example.test / demo-trainer-pass-1 (signs in with the email)
+// - student demo.student / demo-student-pass-1 (nursing track, consent given, belongs to the demo
+//   trainer, with contact email demo.student@example.test) with the two default
 //   curriculums (Pflege Ausbildung, Life in Germany; migration 0010), each with two exam sets of
 //   3 questions drawn from 6 German/English questions (correct option b = "Nein"), pass mark 90 %.
 // TEST credentials only; passwords and keys are never printed.
@@ -15,6 +17,7 @@ import { assertLocalUrl } from "./local-url.mjs";
 export { assertLocalUrl };
 
 export const DEMO_STAFF = { email: "demo-staff@example.test", password: "demo-staff-pass-1", username: "demo.staff", fullName: "Demo Staff" };
+export const DEMO_TRAINER = { email: "demo-trainer@example.test", password: "demo-trainer-pass-1", username: "demo.trainer", fullName: "Demo Trainer" };
 export const DEMO_STUDENT = { username: "demo.student", password: "demo-student-pass-1", fullName: "Demo Student" };
 
 // Fixed ids from migration 0010.
@@ -57,7 +60,11 @@ async function main() {
 
   const studentEmail = `${DEMO_STUDENT.username}@students.talenttrack.internal`;
   const { users } = await must(db.auth.admin.listUsers({ perPage: 1000 }), "list users");
-  for (const u of users.filter((u) => u.email === DEMO_STAFF.email || u.email === studentEmail)) {
+  for (const u of users.filter((u) => u.email === studentEmail)) {
+    await must(db.auth.admin.deleteUser(u.id), "delete old demo user");
+  }
+  // The student goes first: profiles.trainer_id keeps a trainer who still has students.
+  for (const u of users.filter((u) => u.email === DEMO_STAFF.email || u.email === DEMO_TRAINER.email)) {
     await must(db.auth.admin.deleteUser(u.id), "delete old demo user");
   }
 
@@ -66,18 +73,31 @@ async function main() {
       email: DEMO_STAFF.email,
       password: DEMO_STAFF.password,
       email_confirm: true,
-      app_metadata: { role: "staff", username: DEMO_STAFF.username, full_name: DEMO_STAFF.fullName },
+      app_metadata: { role: "admin", username: DEMO_STAFF.username, full_name: DEMO_STAFF.fullName },
     }),
-    "create demo staff",
+    "create demo admin",
+  );
+  const { user: trainer } = await must(
+    db.auth.admin.createUser({
+      email: DEMO_TRAINER.email,
+      password: DEMO_TRAINER.password,
+      email_confirm: true,
+      app_metadata: { role: "trainer", username: DEMO_TRAINER.username, full_name: DEMO_TRAINER.fullName },
+    }),
+    "create demo trainer",
   );
   const { user: student } = await must(
     db.auth.admin.createUser({
       email: studentEmail,
       password: DEMO_STUDENT.password,
       email_confirm: true,
-      app_metadata: { role: "student", username: DEMO_STUDENT.username, full_name: DEMO_STUDENT.fullName, track: "nursing" },
+      app_metadata: { role: "student", username: DEMO_STUDENT.username, full_name: DEMO_STUDENT.fullName, track: "nursing", trainer_id: trainer.id },
     }),
     "create demo student",
+  );
+  await must(
+    db.from("student_details").insert({ student_id: student.id, contact_email: `${DEMO_STUDENT.username}@example.test` }),
+    "create demo student details",
   );
   await must(db.from("profiles").update({ consent_at: new Date().toISOString() }).eq("id", student.id), "record consent");
 
@@ -117,7 +137,7 @@ async function main() {
     );
   }
 
-  console.log("Demo data ready: staff demo-staff@example.test and student demo.student (passwords in scripts/demo-seed.mjs).");
+  console.log("Demo data ready: admin demo-staff@example.test, trainer demo-trainer@example.test and student demo.student (passwords in scripts/demo-seed.mjs).");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

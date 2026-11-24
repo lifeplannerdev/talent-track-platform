@@ -151,7 +151,7 @@ export async function seed() {
     }
   };
 
-  await create(STAFF.email, STAFF.password, { role: "staff", username: "e2e.staff", full_name: STAFF.fullName });
+  await create(STAFF.email, STAFF.password, { role: "admin", username: "e2e.staff", full_name: STAFF.fullName });
   await student(STUDENT_CONSENTED, true);
 
   const trainer = async (t: { username: string; email: string; password: string; fullName: string }) =>
