@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { usernameToEmail } from "@/lib/auth/username";
 import type { NewStudent, Track } from "@/lib/csv/students";
+import { detailsToRow } from "@/lib/student-details";
 
 // Student accounts are created only here, by staff (public sign-up is off). The auth user is
 // created with the Auth admin API (service role); app_metadata carries exactly what the
@@ -64,13 +65,23 @@ export async function defaultCurriculumIds(
   return { ok: true, ids };
 }
 
+const GENERIC_CREATE_FAILURE = "The student could not be created. Please try again.";
+
 /**
- * Creates the auth user (and, through the trigger, the profile) and assigns the default
- * curriculums for the track. `staff` is the staff session client (assignments are written under
- * staff RLS). If the assignments cannot be written the new user is deleted again, so there is
- * never a half-created student.
+ * Creates the auth user (and, through the trigger, the profile) with its owner, saves the
+ * details row when there is one, and assigns the default curriculums for the track. `staff` is
+ * the staff session client: details and assignments are written under staff RLS, which needs the
+ * owner to be in place already, so the owner (`trainerId`, or null for an unowned student) goes
+ * into the createUser app_metadata that the on_auth_user_created trigger reads. Callers decide
+ * and validate the owner (see resolveOwner in the student actions). If the details or the
+ * assignments cannot be written the new user is deleted again (the cascades remove profile and
+ * details), so there is never a half-created student.
  */
-export async function createStudentAccount(staff: SupabaseClient, student: NewStudent): Promise<CreateAccountResult> {
+export async function createStudentAccount(
+  staff: SupabaseClient,
+  student: NewStudent,
+  owner: { trainerId: string | null },
+): Promise<CreateAccountResult> {
   const curriculums = await defaultCurriculumIds(staff, student.track);
   if (!curriculums.ok) return curriculums;
 
@@ -89,6 +100,7 @@ export async function createStudentAccount(staff: SupabaseClient, student: NewSt
       full_name: student.fullName,
       ...(student.batch ? { batch: student.batch } : {}),
       track: student.track,
+      ...(owner.trainerId ? { trainer_id: owner.trainerId } : {}),
     },
   });
   if (error || !data.user) {
@@ -97,15 +109,12 @@ export async function createStudentAccount(staff: SupabaseClient, student: NewSt
       return { ok: false, message: takenMessage(student.username) };
     }
     console.error("createStudentAccount: createUser failed", error?.code ?? "unknown", error?.status ?? "");
-    return { ok: false, message: "The student could not be created. Please try again." };
+    return { ok: false, message: GENERIC_CREATE_FAILURE };
   }
 
   const studentId = data.user.id;
-  const { error: assignError } = await staff.from("assignments").insert(
-    curriculums.ids.map((curriculumId, i) => ({ student_id: studentId, curriculum_id: curriculumId, position: i + 1 })),
-  );
-  if (assignError) {
-    console.error("createStudentAccount: assignments failed, removing the new user", assignError.code);
+  const rollback = async (step: string, code: string | undefined): Promise<CreateAccountResult> => {
+    console.error(`createStudentAccount: ${step} failed, removing the new user`, code ?? "unknown");
     const { error: deleteError } = await admin.auth.admin.deleteUser(studentId);
     if (deleteError) {
       console.error("createStudentAccount: cleanup failed", deleteError.code ?? deleteError.status ?? "unknown");
@@ -114,7 +123,19 @@ export async function createStudentAccount(staff: SupabaseClient, student: NewSt
         message: `The student could not be created, and the cleanup failed, contact admin: an incomplete account "${student.username}" may exist.`,
       };
     }
-    return { ok: false, message: "The student could not be created. Please try again." };
+    return { ok: false, message: GENERIC_CREATE_FAILURE };
+  };
+
+  if (student.details) {
+    const { error: detailsError } = await staff
+      .from("student_details")
+      .insert({ student_id: studentId, ...detailsToRow(student.details) });
+    if (detailsError) return rollback("details", detailsError.code);
   }
+
+  const { error: assignError } = await staff.from("assignments").insert(
+    curriculums.ids.map((curriculumId, i) => ({ student_id: studentId, curriculum_id: curriculumId, position: i + 1 })),
+  );
+  if (assignError) return rollback("assignments", assignError.code);
   return { ok: true, studentId };
 }

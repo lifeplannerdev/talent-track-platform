@@ -100,10 +100,10 @@ async function signIn(email: string, password: string): Promise<SupabaseClient |
 }
 
 let counter = 0;
-async function makeUser(role: "staff" | "student") {
+async function makeUser(role: "staff" | "trainer" | "student") {
   counter += 1;
   const username = `${prefix}.${role}${counter}`;
-  const email = role === "staff" ? `${username}@staff.test` : usernameToEmail(username);
+  const email = role === "student" ? usernameToEmail(username) : `${username}@staff.test`;
   const password = testPassword();
   const { data, error } = await db.auth.admin.createUser({
     email,
@@ -289,6 +289,235 @@ describe("createStudent", () => {
       message: "Password must not start or end with a space",
     });
     expect(await profileId(username)).toBeNull();
+  });
+});
+
+function asTrainer(client: SupabaseClient) {
+  session.client = client;
+}
+
+/** The staff session with the student_details insert failing (everything else is real). */
+function withFailingDetailsInsert(client: SupabaseClient): SupabaseClient {
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === "from") {
+        return (table: string) =>
+          table === "student_details"
+            ? { insert: async () => ({ data: null, error: { code: "XX000", message: "injected" } }) }
+            : target.from(table);
+      }
+      const value = (target as unknown as Record<string | symbol, unknown>)[prop];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+async function trainerIdOf(username: string): Promise<string | null> {
+  const { data } = await db.from("profiles").select("trainer_id").eq("username", username).maybeSingle();
+  return data?.trainer_id ?? null;
+}
+
+describe("createStudent: owner and details", () => {
+  const base = (username: string) => ({ username, fullName: "Owned Student", batch: "B1", track: "other", password: testPassword() });
+
+  it("a trainer-created student belongs to that trainer, gets assignments, and the result has no password", async () => {
+    const trainer = await makeUser("trainer");
+    asTrainer(trainer.client);
+    const username = `${prefix}.own1`;
+    const input = base(username);
+    const result = await createStudent(input);
+    expect(result).toEqual({ ok: true, studentId: expect.any(String), invite: "skipped" });
+    expect(JSON.stringify(result)).not.toContain(input.password);
+    expect(await trainerIdOf(username)).toBe(trainer.id);
+    expect(await assignmentsOf((result as { studentId: string }).studentId)).toEqual([[LIFE, 1]]);
+  });
+
+  it("a trainer cannot choose another owner: a passed trainer id is ignored", async () => {
+    const trainer = await makeUser("trainer");
+    const other = await makeUser("trainer");
+    asTrainer(trainer.client);
+    const username = `${prefix}.own2`;
+    expect(await createStudent({ ...base(username), trainerId: other.id })).toMatchObject({ ok: true });
+    expect(await trainerIdOf(username)).toBe(trainer.id);
+    // Not even null: a trainer is always the owner.
+    const username2 = `${prefix}.own2b`;
+    expect(await createStudent({ ...base(username2), trainerId: null })).toMatchObject({ ok: true });
+    expect(await trainerIdOf(username2)).toBe(trainer.id);
+  });
+
+  it("an admin chooses a trainer, or none", async () => {
+    const trainer = await makeUser("trainer");
+    asStaff();
+    const chosen = `${prefix}.own3`;
+    const first = await createStudent({ ...base(chosen), trainerId: trainer.id });
+    expect(first).toMatchObject({ ok: true });
+    expect(await trainerIdOf(chosen)).toBe(trainer.id);
+    expect(await assignmentsOf((first as { studentId: string }).studentId)).toEqual([[LIFE, 1]]);
+
+    const unowned = `${prefix}.own3b`;
+    const second = await createStudent({ ...base(unowned), trainerId: null });
+    expect(second).toMatchObject({ ok: true });
+    expect(await trainerIdOf(unowned)).toBeNull();
+    expect(await assignmentsOf((second as { studentId: string }).studentId)).toEqual([[LIFE, 1]]);
+    const third = `${prefix}.own3c`;
+    expect(await createStudent(base(third))).toMatchObject({ ok: true });
+    expect(await trainerIdOf(third)).toBeNull();
+  });
+
+  it("an admin-supplied trainer id must be an active trainer, otherwise nothing is created", async () => {
+    asStaff();
+    const gone = await makeUser("trainer");
+    await db.from("profiles").update({ active: false }).eq("id", gone.id);
+    const adminUser = await makeUser("staff");
+    const bad: { label: string; trainerId: string }[] = [
+      { label: "deactivated trainer", trainerId: gone.id },
+      { label: "an admin", trainerId: adminUser.id },
+      { label: "a student", trainerId: studentId },
+      { label: "unknown uuid", trainerId: randomUUID() },
+      { label: "not a uuid", trainerId: "nope" },
+    ];
+    for (const [i, { trainerId }] of bad.entries()) {
+      const username = `${prefix}.own4${i}`;
+      const input = base(username);
+      const result = await createStudent({ ...input, trainerId });
+      expect(result).toEqual({ ok: false, message: "Choose an active trainer for this student" });
+      expect(JSON.stringify(result)).not.toContain(input.password);
+      expect(await profileId(username)).toBeNull();
+    }
+  });
+
+  it("saves the details row with the owning trainer's session, and none without a contact email", async () => {
+    const trainer = await makeUser("trainer");
+    asTrainer(trainer.client);
+    const username = `${prefix}.det1`;
+    const result = await createStudent({
+      ...base(username),
+      contactEmail: "Det.One@Example.test",
+      details: { phone: "+91 98765 43210", passportNumber: "P1234567", germanLevel: "b1", programmeStart: "2027-01-10" },
+    });
+    expect(result).toMatchObject({ ok: true });
+    const id = (result as { studentId: string }).studentId;
+    const row = await must(db.from("student_details").select("*").eq("student_id", id).single());
+    expect(row).toMatchObject({
+      contact_email: "det.one@example.test",
+      phone: "+91 98765 43210",
+      passport_number: "P1234567",
+      german_level: "B1",
+      programme_start: "2027-01-10",
+      status: "active",
+    });
+    // The trainer reads it back through RLS.
+    const { data: own } = await trainer.client.from("student_details").select("contact_email").eq("student_id", id);
+    expect(own).toEqual([{ contact_email: "det.one@example.test" }]);
+
+    const plain = `${prefix}.det2`;
+    const second = await createStudent(base(plain));
+    expect(second).toMatchObject({ ok: true });
+    expect(await must(db.from("student_details").select("student_id").eq("student_id", (second as { studentId: string }).studentId))).toEqual([]);
+  });
+
+  it("refuses details without a contact email or with bad values, creating nothing", async () => {
+    asStaff();
+    const noEmail = `${prefix}.det3`;
+    expect(await createStudent({ ...base(noEmail), details: { phone: "+91 98765 43210" } })).toMatchObject({ ok: false });
+    expect(await profileId(noEmail)).toBeNull();
+    const badPhone = `${prefix}.det4`;
+    expect(await createStudent({ ...base(badPhone), contactEmail: "a@example.test", details: { phone: "call me" } })).toMatchObject({ ok: false });
+    expect(await profileId(badPhone)).toBeNull();
+    // Non-string detail values from a hand-made call are ignored, never thrown on.
+    const odd = `${prefix}.det5`;
+    expect(await createStudent({ ...base(odd), contactEmail: "a@example.test", details: { phone: 5 as never } })).toMatchObject({ ok: true });
+  });
+
+  it("removes the new user again when the details cannot be saved, with the generic message", async () => {
+    const username = `${prefix}.det6`;
+    const input = { ...base(username), contactEmail: "a@example.test", details: { phone: "+91 98765 43210" } };
+    session.client = withFailingDetailsInsert(staffClient);
+    const result = await createStudent(input);
+    expect(result).toEqual({ ok: false, message: "The student could not be created. Please try again." });
+    expect(JSON.stringify(result)).not.toContain(input.password);
+    expect(await profileId(username)).toBeNull();
+    const { data: list } = await db.auth.admin.listUsers({ perPage: 1000 });
+    expect(list.users.some((u) => u.email === usernameToEmail(username))).toBe(false);
+    expect(await signIn(usernameToEmail(username), input.password)).toBeNull();
+  });
+
+  it("tells staff when the cleanup after a failed details save also failed", async () => {
+    const username = `${prefix}.det7`;
+    const input = { ...base(username), contactEmail: "a@example.test", details: { notes: "n" } };
+    session.client = withFailingDetailsInsert(staffClient);
+    adminSpy.failDelete = true;
+    const result = await createStudent(input);
+    expect(result).toMatchObject({ ok: false, message: expect.stringContaining("cleanup failed") });
+    expect(JSON.stringify(result)).not.toContain(input.password);
+    adminSpy.failDelete = false;
+    const id = await profileId(username);
+    if (id) await db.auth.admin.deleteUser(id);
+  });
+
+  it("deleting a student also removes the details row (admin only)", async () => {
+    const trainer = await makeUser("trainer");
+    asTrainer(trainer.client);
+    const username = `${prefix}.det8`;
+    const created = await createStudent({ ...base(username), contactEmail: "a@example.test", details: { passportNumber: "P7654321" } });
+    const id = (created as { studentId: string }).studentId;
+    expect(await must(db.from("student_details").select("student_id").eq("student_id", id))).toHaveLength(1);
+    // A trainer is sent away and nothing is deleted.
+    await expect(deleteStudent(id, { confirmUsername: username })).rejects.toThrow(/REDIRECT/);
+    expect(await profileId(username)).toBe(id);
+    asStaff();
+    expect(await deleteStudent(id, { confirmUsername: username })).toEqual({ ok: true });
+    expect(await must(db.from("student_details").select("student_id").eq("student_id", id))).toEqual([]);
+  });
+});
+
+describe("importStudents: owner and details", () => {
+  it("a trainer's import makes them the owner of every row and saves the details", async () => {
+    const trainer = await makeUser("trainer");
+    const other = await makeUser("trainer");
+    asTrainer(trainer.client);
+    const pw1 = testPassword();
+    const pw2 = testPassword();
+    const csv = [
+      "username,full_name,batch,track,password,contact_email,phone,german_level",
+      `${prefix}.ti1,Imp One,B1,nursing,${pw1},ti1@example.test,+91 98765 43210,A2`,
+      `${prefix}.ti2,Imp Two,B1,other,${pw2},,,`,
+    ].join("\n");
+    // A passed trainer id is ignored for a trainer.
+    const result = await importStudents(csv, { trainerId: other.id });
+    expect(result).toEqual({
+      ok: true,
+      created: [
+        { row: 1, username: `${prefix}.ti1` },
+        { row: 2, username: `${prefix}.ti2` },
+      ],
+      failed: [],
+    });
+    expect(JSON.stringify(result)).not.toContain(pw1);
+    expect(await trainerIdOf(`${prefix}.ti1`)).toBe(trainer.id);
+    expect(await trainerIdOf(`${prefix}.ti2`)).toBe(trainer.id);
+    const id1 = (await profileId(`${prefix}.ti1`))!;
+    const id2 = (await profileId(`${prefix}.ti2`))!;
+    expect(await assignmentsOf(id1)).toEqual([
+      [PFLEGE, 1],
+      [LIFE, 2],
+    ]);
+    expect(await must(db.from("student_details").select("contact_email, phone, german_level").eq("student_id", id1))).toEqual([
+      { contact_email: "ti1@example.test", phone: "+91 98765 43210", german_level: "A2" },
+    ]);
+    expect(await must(db.from("student_details").select("student_id").eq("student_id", id2))).toEqual([]);
+  });
+
+  it("an admin's import uses the chosen active trainer; an invalid one creates nothing", async () => {
+    const trainer = await makeUser("trainer");
+    asStaff();
+    const pw = testPassword();
+    const csv = `username,full_name,batch,track,password\n${prefix}.ai1,Adm One,B1,other,${pw}`;
+    const refused = await importStudents(csv, { trainerId: randomUUID() });
+    expect(refused).toEqual({ ok: false, message: "Choose an active trainer for these students", errors: [] });
+    expect(await profileId(`${prefix}.ai1`)).toBeNull();
+    expect(await importStudents(csv, { trainerId: trainer.id })).toMatchObject({ ok: true, created: [{ row: 1, username: `${prefix}.ai1` }] });
+    expect(await trainerIdOf(`${prefix}.ai1`)).toBe(trainer.id);
   });
 });
 

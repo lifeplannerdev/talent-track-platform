@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireAdmin, requireRole } from "@/lib/auth/require-role";
+import { requireAdmin, requireRole, type Profile } from "@/lib/auth/require-role";
 import { findOpenAttemptId, isUuid } from "@/lib/attempts";
 import { checkPassword, parseStudentsCsvWithRows, validateStudentFields, type StudentFields } from "@/lib/csv/students";
 import { STUDENT_CSV_MAX_BYTES, utf8Bytes } from "@/lib/csv/limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { createStudentAccount, existingUsernames } from "@/lib/staff-students";
+import type { StudentDetailsInput } from "@/lib/student-details";
 
 // Staff student management. Every action authenticates itself with requireRole('staff') (a
 // student or anonymous caller is redirected and nothing changes). Writes run under the staff
@@ -16,7 +17,10 @@ import { createStudentAccount, existingUsernames } from "@/lib/staff-students";
 // Passwords are never logged and never part of a returned value.
 
 export type ActionResult = { ok: true } | { ok: false; message: string; code?: string };
-export type CreateStudentResult = { ok: true; studentId: string } | { ok: false; message: string };
+/** `invite` is always "skipped" until email invites are wired in. */
+export type CreateStudentResult = { ok: true; studentId: string; invite: "sent" | "failed" | "skipped" } | { ok: false; message: string };
+/** `trainerId` only counts for an admin (null or absent = no trainer); a trainer is always the owner. */
+export type CreateStudentInput = StudentFields & { trainerId?: string | null };
 export type ImportPreviewRow = { row: number; username: string; fullName: string; batch: string; track: string };
 export type ImportPreview = { ok: true; rows: ImportPreviewRow[]; errors: { row: number; message: string }[] };
 export type ImportStudentsResult =
@@ -45,19 +49,58 @@ async function findStudent(client: SupabaseClient, id: unknown): Promise<string 
   return data?.id ?? null;
 }
 
-export async function createStudent(input: StudentFields): Promise<CreateStudentResult> {
-  await requireRole("staff");
+/** Only string values of a hand-made `details` object (anything else is ignored, never thrown on). */
+function asDetails(v: unknown): StudentDetailsInput {
+  const out: Record<string, string> = {};
+  if (v && typeof v === "object") {
+    for (const [key, value] of Object.entries(v)) if (typeof value === "string") out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Who owns the students being created. A trainer is always the owner (any passed id is ignored).
+ * An admin passes the chosen trainer's id, or null/nothing for no trainer; the id must belong to
+ * an active trainer.
+ */
+async function resolveOwner(
+  client: SupabaseClient,
+  caller: Profile,
+  requested: unknown,
+  message: string,
+): Promise<{ ok: true; trainerId: string | null } | { ok: false; message: string }> {
+  if (caller.role === "trainer") return { ok: true, trainerId: caller.id };
+  if (requested === null || requested === undefined || requested === "") return { ok: true, trainerId: null };
+  if (!isUuid(requested)) return { ok: false, message };
+  const { data } = await client
+    .from("profiles")
+    .select("id")
+    .eq("id", requested)
+    .eq("role", "trainer")
+    .eq("active", true)
+    .maybeSingle();
+  return data ? { ok: true, trainerId: data.id } : { ok: false, message };
+}
+
+export async function createStudent(input: CreateStudentInput): Promise<CreateStudentResult> {
+  const caller = await requireRole("staff");
   const checked = validateStudentFields({
     username: asText(input?.username),
     fullName: asText(input?.fullName),
     batch: asText(input?.batch),
     track: asText(input?.track),
     password: asText(input?.password),
+    contactEmail: asText(input?.contactEmail),
+    details: asDetails(input?.details),
   });
   if (!checked.ok) return checked;
-  const result = await createStudentAccount(await createClient(), checked.student);
-  if (result.ok) revalidateStudents();
-  return result;
+  const client = await createClient();
+  const owner = await resolveOwner(client, caller, input?.trainerId, "Choose an active trainer for this student");
+  if (!owner.ok) return owner;
+  const result = await createStudentAccount(client, checked.student, { trainerId: owner.trainerId });
+  if (!result.ok) return result;
+  revalidateStudents();
+  return { ok: true, studentId: result.studentId, invite: "skipped" };
 }
 
 /** Parses the CSV and checks usernames against existing accounts. Returns no passwords. */
@@ -88,11 +131,13 @@ export async function previewStudentsImport(csvText: string): Promise<ImportPrev
  * username taken in the meantime) is reported in `failed` and the others are still created.
  * Re-running the same file is safe: rows created before are reported as taken, never doubled.
  */
-export async function importStudents(csvText: string): Promise<ImportStudentsResult> {
-  await requireRole("staff");
+export async function importStudents(csvText: string, opts: { trainerId?: string | null } = {}): Promise<ImportStudentsResult> {
+  const caller = await requireRole("staff");
   const text = asText(csvText);
   if (tooLong(text)) return { ok: false, message: "The file is too large (at most 1 MB).", errors: [] };
   const client = await createClient();
+  const owner = await resolveOwner(client, caller, opts?.trainerId, "Choose an active trainer for these students");
+  if (!owner.ok) return { ok: false, message: owner.message, errors: [] };
   const parsed = await checkStudentsCsv(client, text);
   if (parsed.errors.length > 0) {
     return { ok: false, message: "Nothing was created. Fix the rows below and import again.", errors: parsed.errors };
@@ -102,7 +147,7 @@ export async function importStudents(csvText: string): Promise<ImportStudentsRes
   const created: { row: number; username: string }[] = [];
   const failed: { row: number; username: string; message: string }[] = [];
   for (const { row, ...student } of parsed.valid) {
-    const result = await createStudentAccount(client, student);
+    const result = await createStudentAccount(client, student, { trainerId: owner.trainerId });
     if (result.ok) created.push({ row, username: student.username });
     else failed.push({ row, username: student.username, message: result.message });
   }

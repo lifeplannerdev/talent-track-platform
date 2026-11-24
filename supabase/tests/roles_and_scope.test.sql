@@ -1,7 +1,7 @@
 -- v2 Phase 1, migration 0026: roles (admin, trainer, student), trainer scope and student_details (pgTAP).
 -- Run: npm run db:test   (needs the local stack: npm run db:start)
 begin;
-select plan(73);
+select plan(75);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres). Ids: a1 admin, a2 trainer T1, a3 trainer T2, a4 legacy 'staff' metadata,
@@ -292,6 +292,15 @@ select is((select count(*)::int from public.profiles where role = 'student')
   'a deactivated admin reads no student data');
 select is((select count(*)::int from public.questions), 0, 'a deactivated admin reads no questions');
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- Deleting a student (auth user) removes their student_details row by cascade (DPDP erasure).
+-- ---------------------------------------------------------------------------
+select is((select count(*)::int from public.student_details where student_id = '00000000-0000-0000-0000-0000000026b3'), 1,
+  'the unassigned student has a details row before deletion');
+delete from auth.users where id = '00000000-0000-0000-0000-0000000026b3';
+select is((select count(*)::int from public.student_details where student_id = '00000000-0000-0000-0000-0000000026b3'), 0,
+  'deleting a student also deletes their student_details row');
 
 select * from finish();
 rollback;
