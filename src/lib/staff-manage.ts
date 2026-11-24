@@ -5,6 +5,7 @@ import type { QuestionOption, QuestionStatus } from "@/lib/types";
 import type { TopicMix } from "@/lib/exam-set-fields";
 import { canFillPaper } from "@/lib/exam-set-choice";
 import { effectiveStatus } from "@/lib/staff-overview-core";
+import { rowToDetails, type StudentDetails } from "@/lib/student-details";
 
 // Readers for the staff management pages (students, curriculums, exam sets, questions). They use
 // the staff session (RLS: staff read everything); callers authenticate with requireRole('staff').
@@ -17,6 +18,8 @@ export type StudentListRow = {
   fullName: string;
   batch: string | null;
   track: string | null;
+  /** The student's trainer (name; null = none, or not readable by this session). */
+  trainerName: string | null;
   /** Per curriculum: the stored status and the effective one staff see (same rule as the Blocked page). */
   assignments: { name: string; status: AssignmentStatus; effectiveStatus: AssignmentStatus; position: number }[];
 };
@@ -25,11 +28,21 @@ export type StudentFilters = { q?: string; batch?: string; track?: string };
 
 export async function listStudents(filters: StudentFilters): Promise<{ rows: StudentListRow[]; batches: string[] }> {
   const db = await createClient();
-  const [profiles, assignments, examSets, attempts] = await Promise.all([
+  const [profiles, staffProfiles, assignments, examSets, attempts] = await Promise.all([
     fetchAll(
       (from, to) =>
-        db.from("profiles").select("id, username, full_name, batch, track").eq("role", "student").order("username").range(from, to),
+        db
+          .from("profiles")
+          .select("id, username, full_name, batch, track, trainer_id")
+          .eq("role", "student")
+          .order("username")
+          .range(from, to),
       "Could not read students",
+    ),
+    // Only an admin can read other staff profiles (RLS); a trainer gets just their own row here.
+    fetchAll(
+      (from, to) => db.from("profiles").select("id, username, full_name").in("role", ["admin", "trainer"]).order("id").range(from, to),
+      "Could not read trainers",
     ),
     fetchAll(
       (from, to) =>
@@ -77,6 +90,9 @@ export async function listStudents(filters: StudentFilters): Promise<{ rows: Stu
     byStudent.set(a.student_id, list);
   }
   const batches = [...new Set(profiles.map((p) => p.batch as string | null).filter((b): b is string => Boolean(b)))].sort();
+  const trainerNames = new Map(
+    staffProfiles.map((t) => [t.id as string, ((t.full_name as string | null) ?? (t.username as string)) as string]),
+  );
   const q = (filters.q ?? "").trim().toLowerCase();
   const rows = profiles
     .map((p) => ({
@@ -85,6 +101,7 @@ export async function listStudents(filters: StudentFilters): Promise<{ rows: Stu
       fullName: (p.full_name as string | null) ?? p.username,
       batch: p.batch as string | null,
       track: p.track as string | null,
+      trainerName: trainerNames.get(p.trainer_id as string) ?? null,
       assignments: (byStudent.get(p.id) ?? []).sort((x, y) => x.position - y.position),
     }))
     .filter((r) => !q || r.username.includes(q) || r.fullName.toLowerCase().includes(q))
@@ -99,6 +116,9 @@ export type StudentDetail = {
   fullName: string;
   batch: string | null;
   track: string | null;
+  trainerId: string | null;
+  /** The details row (null until the first save: older students have none). */
+  details: StudentDetails | null;
   assignments: {
     curriculumId: string;
     name: string;
@@ -139,12 +159,14 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
   const db = await createClient();
   const { data: profile, error: pError } = await db
     .from("profiles")
-    .select("id, username, full_name, batch, track")
+    .select("id, username, full_name, batch, track, trainer_id")
     .eq("id", id)
     .eq("role", "student")
     .maybeSingle();
   if (pError) throw new Error(`Could not read the student: ${pError.message}`);
   if (!profile) return null;
+  const { data: detailsRow, error: dError } = await db.from("student_details").select("*").eq("student_id", id).maybeSingle();
+  if (dError) throw new Error("Could not read the student details");
 
   const [{ data: assignments, error: aError }, { data: curriculums, error: cError }, { data: attempts, error: tError }] = await Promise.all([
     db.from("assignments").select("curriculum_id, position, status, extra_attempts, allow_repeats").eq("student_id", id).order("position"),
@@ -190,6 +212,8 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
     fullName: profile.full_name ?? profile.username,
     batch: profile.batch,
     track: profile.track,
+    trainerId: profile.trainer_id as string | null,
+    details: detailsRow ? rowToDetails(detailsRow as Record<string, unknown>) : null,
     assignments: (assignments ?? []).map((a) => {
       const c = all.find((x) => x.id === a.curriculum_id);
       const mine = (attempts ?? []).filter((t) => curriculumOfSet.get(t.exam_set_id) === a.curriculum_id);
@@ -233,6 +257,14 @@ export async function getStudentDetail(id: string): Promise<StudentDetail | null
         passed: t.passed as boolean | null,
       })),
   };
+}
+
+/** Active trainers for the admin's trainer picker (an admin session reads every profile). */
+export async function listActiveTrainers(): Promise<{ id: string; name: string }[]> {
+  const db = await createClient();
+  const { data, error } = await db.from("profiles").select("id, username, full_name").eq("role", "trainer").eq("active", true).order("username");
+  if (error) throw new Error(`Could not read trainers: ${error.message}`);
+  return (data ?? []).map((t) => ({ id: t.id as string, name: (t.full_name as string | null) ?? (t.username as string) }));
 }
 
 export type ExamSetSummary = {

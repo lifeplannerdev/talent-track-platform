@@ -506,7 +506,12 @@ describe("importStudents: owner and details", () => {
         { row: 2, username: `${prefix}.ti2` },
       ],
       failed: [],
+      invites: { invited: 1, noEmail: 1, failed: 0, failedUsernames: [] },
     });
+    // Only the row with a contact email got a mail; its text has the username, no password.
+    expect(mailSpy.sent.map((m) => m.to)).toEqual(["ti1@example.test"]);
+    expect(mailSpy.sent[0].text).toContain(`${prefix}.ti1`);
+    expect(mailSpy.sent[0].text).not.toContain(pw1);
     expect(JSON.stringify(result)).not.toContain(pw1);
     expect(await trainerIdOf(`${prefix}.ti1`)).toBe(trainer.id);
     expect(await trainerIdOf(`${prefix}.ti2`)).toBe(trainer.id);
@@ -549,7 +554,7 @@ describe("importStudents", () => {
     const preview = await previewStudentsImport(csv);
     expect(preview).toEqual({
       ok: true,
-      rows: [{ row: 1, username: `${prefix}.imp1`, fullName: "Imp One", batch: "B1", track: "nursing" }],
+      rows: [{ row: 1, username: `${prefix}.imp1`, fullName: "Imp One", batch: "B1", track: "nursing", willInvite: false }],
       errors: [
         { row: 2, message: `Username "${existing!.username}" is already taken` },
         { row: 3, message: 'Unknown track "weird" (must be nursing or other)' },
@@ -577,6 +582,7 @@ describe("importStudents", () => {
         { row: 3, username: `${prefix}.bulk2` },
       ],
       failed: [],
+      invites: { invited: 0, noEmail: 2, failed: 0, failedUsernames: [] },
     });
     expect(JSON.stringify(result)).not.toContain(pw1);
     expect(await assignmentsOf((await profileId(`${prefix}.bulk1`))!)).toEqual([
@@ -590,6 +596,30 @@ describe("importStudents", () => {
     const again = await importStudents(csv);
     expect(again).toMatchObject({ ok: false });
     expect((again as { errors: unknown[] }).errors).toHaveLength(2);
+  });
+});
+
+describe("importStudents: invites", () => {
+  const header = "username,full_name,batch,track,password,contact_email";
+
+  it("the preview marks which rows will get an invite", async () => {
+    asStaff();
+    const csv = [header, `${prefix}.pv1,Pv One,B1,other,${testPassword()},pv1@example.test`, `${prefix}.pv2,Pv Two,B1,other,${testPassword()},`].join("\n");
+    const preview = await previewStudentsImport(csv);
+    expect(preview).toMatchObject({ ok: true, rows: [{ username: `${prefix}.pv1`, willInvite: true }, { username: `${prefix}.pv2`, willInvite: false }] });
+  });
+
+  it("counts invited, no-email and failed invites; a failed mail does not undo the student", async () => {
+    asStaff();
+    mailSpy.ok = false;
+    const csv = [header, `${prefix}.iv1,Iv One,B1,other,${testPassword()},iv1@example.test`, `${prefix}.iv2,Iv Two,B1,other,${testPassword()},`].join("\n");
+    const result = await importStudents(csv);
+    expect(result).toMatchObject({
+      ok: true,
+      created: [{ username: `${prefix}.iv1` }, { username: `${prefix}.iv2` }],
+      invites: { invited: 0, noEmail: 1, failed: 1, failedUsernames: [`${prefix}.iv1`] },
+    });
+    expect(await profileId(`${prefix}.iv1`)).not.toBeNull();
   });
 });
 

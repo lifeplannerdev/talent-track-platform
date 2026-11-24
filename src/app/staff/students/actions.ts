@@ -8,7 +8,7 @@ import { checkPassword, parseStudentsCsvWithRows, validateStudentFields, type St
 import { STUDENT_CSV_MAX_BYTES, utf8Bytes } from "@/lib/csv/limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { createStudentAccount, existingUsernames } from "@/lib/staff-students";
+import { createStudentAccount, existingUsernames, findActiveTrainer } from "@/lib/staff-students";
 import { sendInvite } from "@/lib/invites";
 import type { StudentDetailsInput } from "@/lib/student-details";
 
@@ -22,10 +22,17 @@ export type ActionResult = { ok: true } | { ok: false; message: string; code?: s
 export type CreateStudentResult = { ok: true; studentId: string; invite: "sent" | "failed" | "skipped" } | { ok: false; message: string };
 /** `trainerId` only counts for an admin (null or absent = no trainer); a trainer is always the owner. */
 export type CreateStudentInput = StudentFields & { trainerId?: string | null };
-export type ImportPreviewRow = { row: number; username: string; fullName: string; batch: string; track: string };
+export type ImportPreviewRow = { row: number; username: string; fullName: string; batch: string; track: string; willInvite: boolean };
+/** How the invites of an import went: mailed, skipped (no contact email) and failed (staff can resend). */
+export type ImportInvites = { invited: number; noEmail: number; failed: number; failedUsernames: string[] };
 export type ImportPreview = { ok: true; rows: ImportPreviewRow[]; errors: { row: number; message: string }[] };
 export type ImportStudentsResult =
-  | { ok: true; created: { row: number; username: string }[]; failed: { row: number; username: string; message: string }[] }
+  | {
+      ok: true;
+      created: { row: number; username: string }[];
+      failed: { row: number; username: string; message: string }[];
+      invites: ImportInvites;
+    }
   | { ok: false; message: string; errors: { row: number; message: string }[] };
 
 
@@ -72,15 +79,8 @@ async function resolveOwner(
 ): Promise<{ ok: true; trainerId: string | null } | { ok: false; message: string }> {
   if (caller.role === "trainer") return { ok: true, trainerId: caller.id };
   if (requested === null || requested === undefined || requested === "") return { ok: true, trainerId: null };
-  if (!isUuid(requested)) return { ok: false, message };
-  const { data } = await client
-    .from("profiles")
-    .select("id")
-    .eq("id", requested)
-    .eq("role", "trainer")
-    .eq("active", true)
-    .maybeSingle();
-  return data ? { ok: true, trainerId: data.id } : { ok: false, message };
+  const trainerId = await findActiveTrainer(client, requested);
+  return trainerId ? { ok: true, trainerId } : { ok: false, message };
 }
 
 export async function createStudent(input: CreateStudentInput): Promise<CreateStudentResult> {
@@ -123,7 +123,7 @@ export async function previewStudentsImport(csvText: string): Promise<ImportPrev
   if (tooLong(text)) return { ok: false, message: "The file is too large (at most 1 MB)." };
   const parsed = await checkStudentsCsv(await createClient(), text);
   // Everything except the password.
-  const rows = parsed.valid.map((s) => ({ row: s.row, username: s.username, fullName: s.fullName, batch: s.batch, track: s.track }));
+  const rows = parsed.valid.map((s) => ({ row: s.row, username: s.username, fullName: s.fullName, batch: s.batch, track: s.track, willInvite: s.contactEmail !== "" }));
   return { ok: true, rows, errors: parsed.errors };
 }
 
@@ -132,6 +132,7 @@ export async function previewStudentsImport(csvText: string): Promise<ImportPrev
  * created. Then each row is created in turn; a row that fails at that point (for example a
  * username taken in the meantime) is reported in `failed` and the others are still created.
  * Re-running the same file is safe: rows created before are reported as taken, never doubled.
+ * Each created student with a contact email is mailed an invite; `invites` counts the outcomes.
  */
 export async function importStudents(csvText: string, opts: { trainerId?: string | null } = {}): Promise<ImportStudentsResult> {
   const caller = await requireRole("staff");
@@ -148,13 +149,25 @@ export async function importStudents(csvText: string, opts: { trainerId?: string
 
   const created: { row: number; username: string }[] = [];
   const failed: { row: number; username: string; message: string }[] = [];
+  const invites: ImportInvites = { invited: 0, noEmail: 0, failed: 0, failedUsernames: [] };
   for (const { row, ...student } of parsed.valid) {
     const result = await createStudentAccount(client, student, { trainerId: owner.trainerId });
-    if (result.ok) created.push({ row, username: student.username });
-    else failed.push({ row, username: student.username, message: result.message });
+    if (!result.ok) {
+      failed.push({ row, username: student.username, message: result.message });
+      continue;
+    }
+    created.push({ row, username: student.username });
+    // Same helper as the Add student form. A failed mail never undoes the student; staff resend.
+    const invite = await sendInvite(result.studentId);
+    if (invite === "sent") invites.invited += 1;
+    else if (invite === "skipped") invites.noEmail += 1;
+    else {
+      invites.failed += 1;
+      invites.failedUsernames.push(student.username);
+    }
   }
   if (created.length > 0) revalidateStudents();
-  return { ok: true, created, failed };
+  return { ok: true, created, failed, invites };
 }
 
 /**

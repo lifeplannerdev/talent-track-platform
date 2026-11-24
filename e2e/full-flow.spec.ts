@@ -77,6 +77,7 @@ test("full flow: staff set up a nursing student and a bilingual exam, the studen
   await add.getByLabel("Batch").fill("E2E-FLOW");
   await add.getByLabel("Track").selectOption("nursing");
   await add.getByLabel("First password").fill(STUDENT_FLOW.password);
+  await add.getByLabel("Contact email").fill("flow@example.test");
   await add.getByRole("button", { name: "Create student" }).click();
   await expect(add.getByTestId("add-student-success")).toContainText(`Student ${STUDENT_FLOW.username} created`);
   await expect(page.locator("body")).not.toContainText(STUDENT_FLOW.password);

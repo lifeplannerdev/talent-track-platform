@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { UserPlusIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/require-role";
-import { listStudents } from "@/lib/staff-manage";
+import { listActiveTrainers, listStudents } from "@/lib/staff-manage";
 import { PageHeader, SectionHeading } from "@/components/app/page-header";
 import { staffMain } from "@/components/app/styles";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,8 @@ function first(v: string | string[] | undefined): string {
 }
 
 async function StudentList({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireRole("staff");
+  const profile = await requireRole("staff");
+  const isAdmin = profile.role === "admin";
   const sp = await searchParams;
   const filters: Search = { q: first(sp.q), batch: first(sp.batch), track: first(sp.track) };
   const { rows, batches } = await listStudents(filters);
@@ -88,6 +89,7 @@ async function StudentList({ searchParams }: { searchParams: Promise<Record<stri
               <TableHead>Student</TableHead>
               <TableHead>Batch</TableHead>
               <TableHead>Track</TableHead>
+              {isAdmin ? <TableHead>Trainer</TableHead> : null}
               <TableHead>Curriculums</TableHead>
               <TableHead>
                 <span className="sr-only">Details</span>
@@ -103,6 +105,7 @@ async function StudentList({ searchParams }: { searchParams: Promise<Record<stri
                 </TableCell>
                 <TableCell>{r.batch ?? "–"}</TableCell>
                 <TableCell>{trackLabel(r.track)}</TableCell>
+                {isAdmin ? <TableCell data-testid="student-trainer">{r.trainerName ?? "–"}</TableCell> : null}
                 <TableCell className="whitespace-normal">
                   {r.assignments.length === 0 ? (
                     <span className="text-muted-foreground">None</span>
@@ -146,13 +149,15 @@ function ListSkeleton() {
 }
 
 async function StaffForms() {
-  await requireRole("staff");
+  const profile = await requireRole("staff");
+  // Only an admin picks a trainer; a trainer's students always belong to that trainer.
+  const trainers = profile.role === "admin" ? await listActiveTrainers() : null;
   return (
     <section aria-labelledby="add-heading" className="flex scroll-mt-20 flex-col gap-3">
       <SectionHeading id="add-heading">Add students</SectionHeading>
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        <AddStudentForm />
-        <ImportStudents />
+        <AddStudentForm trainers={trainers} />
+        <ImportStudents trainers={trainers} isTrainer={profile.role === "trainer"} />
       </div>
     </section>
   );
@@ -163,7 +168,7 @@ export default function StudentsPage(props: PageProps<"/staff/students">) {
     <main className={staffMain}>
       <PageHeader
         title="Students"
-        description="Students sign in with the username and password you give them. Nursing gets Pflege Ausbildung and Life in Germany; every other track gets Life in Germany."
+        description="Students sign in with their username and password. Nursing gets Pflege Ausbildung and Life in Germany; every other track gets Life in Germany."
         actions={
           <a href="#add-heading" className={buttonVariants({ variant: "outline" })}>
             <UserPlusIcon data-icon="inline-start" />

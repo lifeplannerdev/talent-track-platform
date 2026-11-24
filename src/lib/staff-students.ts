@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isUuid } from "@/lib/attempts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { usernameToEmail } from "@/lib/auth/username";
 import type { NewStudent, Track } from "@/lib/csv/students";
@@ -21,6 +22,13 @@ const DEFAULT_NAMES: Record<string, string> = {
 /** Curriculum ids a new student gets, in position order. */
 export function curriculumsForTrack(track: Track): string[] {
   return track === "nursing" ? [PFLEGE_CURRICULUM_ID, LIFE_CURRICULUM_ID] : [LIFE_CURRICULUM_ID];
+}
+
+/** The id when `id` is an active trainer (as seen by `client`), else null. Used for every owner choice. */
+export async function findActiveTrainer(client: SupabaseClient, id: unknown): Promise<string | null> {
+  if (!isUuid(id)) return null;
+  const { data } = await client.from("profiles").select("id").eq("id", id).eq("role", "trainer").eq("active", true).maybeSingle();
+  return data?.id ?? null;
 }
 
 export type CreateAccountResult = { ok: true; studentId: string } | { ok: false; message: string };

@@ -65,7 +65,9 @@ function CandidateTable({ rows, testId }: { rows: ExtraAttemptRow[]; testId: str
 }
 
 async function CandidateLists() {
-  await requireRole("staff");
+  const profile = await requireRole("staff");
+  // The Curriculums page is admin only: a trainer gets the sentence without the link.
+  const isAdmin = profile.role === "admin";
   const rows = await listExtraAttemptCandidates();
   const blocked = rows.filter((r) => r.reason === "blocked");
   const short = rows.filter((r) => r.reason === "no_exam_sets_left");
@@ -101,11 +103,18 @@ async function CandidateLists() {
         </SectionHeading>
         <p className="max-w-prose text-sm text-muted-foreground">
           These students still have attempts but have had every exam set of the curriculum, so they are told to contact
-          their trainer. Allow repeating exam sets here, or add exam sets on the{" "}
-          <Link href="/staff/curriculums" className={linkClass}>
-            Curriculums
-          </Link>{" "}
-          page.
+          their trainer. Allow repeating exam sets here
+          {isAdmin ? (
+            <>
+              , or add exam sets on the{" "}
+              <Link href="/staff/curriculums" className={linkClass}>
+                Curriculums
+              </Link>{" "}
+              page.
+            </>
+          ) : (
+            ", or ask an admin to add exam sets."
+          )}
         </p>
         {short.length === 0 ? (
           <Empty className="border" data-testid="short-empty">

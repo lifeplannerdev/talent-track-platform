@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require-role";
-import { getStudentDetail } from "@/lib/staff-manage";
+import { getStudentDetail, listActiveTrainers } from "@/lib/staff-manage";
 import { ChevronLeftIcon, ClipboardListIcon, LibraryIcon } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import { AttemptStatusBadge, ResultScore } from "@/components/app/result-score";
@@ -21,14 +21,19 @@ import { AddCurriculumForm, MoveButtons, RemoveCurriculumButton } from "./assign
 import { DeleteStudentForm } from "./delete-student-form";
 import { ResendInviteCard } from "./resend-invite-card";
 import { ResetPasswordForm } from "./reset-password-form";
+import { StudentDetailsCard } from "./student-details-card";
+import { TrainerCard } from "./trainer-card";
 
 export const metadata: Metadata = { title: "Student | Talent Track Platform" };
 
 async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
-  await requireRole("staff");
+  const profile = await requireRole("staff");
+  const isAdmin = profile.role === "admin";
   const { id } = await params;
+  // RLS hides another trainer's student: getStudentDetail returns null and the page is "not found".
   const s = await getStudentDetail(id);
   if (!s) notFound();
+  const trainers = isAdmin ? await listActiveTrainers() : null;
   const order = s.assignments.map((a) => a.curriculumId);
 
   return (
@@ -204,9 +209,11 @@ async function StudentDetail({ params }: { params: Promise<{ id: string }> }) {
         )}
       </section>
 
-      <ResendInviteCard studentId={s.id} studentName={s.fullName} />
+      <StudentDetailsCard studentId={s.id} studentName={s.fullName} details={s.details} />
+      {trainers ? <TrainerCard studentId={s.id} studentName={s.fullName} trainerId={s.trainerId} trainers={trainers} /> : null}
+      <ResendInviteCard studentId={s.id} studentName={s.fullName} contactEmail={s.details?.contactEmail ?? null} />
       <ResetPasswordForm studentId={s.id} studentName={s.fullName} />
-      <DeleteStudentForm studentId={s.id} studentName={s.fullName} username={s.username} />
+      {isAdmin ? <DeleteStudentForm studentId={s.id} studentName={s.fullName} username={s.username} /> : null}
     </div>
   );
 }

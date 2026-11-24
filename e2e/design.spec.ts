@@ -23,7 +23,7 @@ import {
   startExam,
   takeExam,
 } from "./helpers";
-import { adminDb, seed } from "./seed";
+import { adminDb, inviteLinkFor, seed } from "./seed";
 
 // Design review: every main screen at 375 px and desktop gets (1) a check that the page itself
 // never scrolls sideways (wide tables scroll inside their own wrapper), (2) an axe scan for
@@ -242,5 +242,17 @@ test("staff screens: dashboard, attempts, evaluation, blocked, extra attempts, s
   await page.goto(`/staff/questions?examSet=${set!.id}`);
   await review(page, info, "20-staff-questions", findings);
 
+  finish(info, findings);
+});
+
+test("set-password page: public invite page with a valid and an invalid link at 375 px and desktop", async ({ page }, info) => {
+  const findings: Finding[] = [];
+  // The link comes from the seed helper (same code as the real invite), never over HTTP.
+  await page.goto(await inviteLinkFor(STUDENT_CONSENTED.username));
+  await expect(page.getByRole("heading", { name: "Choose your password" })).toBeVisible();
+  await review(page, info, "21-set-password", findings);
+  await page.goto("/set-password");
+  await expect(page.getByText("This link is no longer valid")).toBeVisible();
+  await review(page, info, "21-set-password-invalid", findings);
   finish(info, findings);
 });

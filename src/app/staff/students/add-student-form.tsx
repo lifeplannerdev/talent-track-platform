@@ -9,31 +9,56 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { createStudent } from "./actions";
+import {
+  ContactSection,
+  CourseSection,
+  EMPTY_DETAILS,
+  FormSection,
+  NotesSection,
+  PassportSection,
+  type DetailsKey,
+} from "./student-details-fields";
 import { linkClass } from "./ui";
 
-const EMPTY = { username: "", fullName: "", batch: "", track: "nursing", password: "" };
+const EMPTY_ACCOUNT = { username: "", fullName: "", batch: "", track: "nursing", password: "", trainerId: "" };
+type AccountKey = keyof typeof EMPTY_ACCOUNT;
+
+const INVITE_NOTE = {
+  sent: "An invite email with a link to choose a password was sent.",
+  failed: "The invite email could not be sent. Open the student and use Resend invite.",
+  skipped: "",
+} as const;
 
 // Controlled fields: React resets uncontrolled forms after an action, which would wipe the
 // staff's input on a validation error. The password lives only in this component's state and is
-// sent once to the server action (never in a URL).
-export function AddStudentForm() {
-  const [values, setValues] = useState(EMPTY);
+// sent once to the server action (never in a URL). `trainers` is given to an admin only (the
+// trainer picker); a trainer's students always belong to that trainer.
+export function AddStudentForm({ trainers }: { trainers: { id: string; name: string }[] | null }) {
+  const [account, setAccount] = useState(EMPTY_ACCOUNT);
+  const [details, setDetails] = useState(EMPTY_DETAILS);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ id: string; username: string } | null>(null);
+  const [created, setCreated] = useState<{ id: string; username: string; invite: keyof typeof INVITE_NOTE } | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const set = (key: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
-    setValues((v) => ({ ...v, [key]: e.target.value }));
+  const setA = (key: AccountKey) => (e: { target: { value: string } }) => setAccount((v) => ({ ...v, [key]: e.target.value }));
+  const setD = (key: DetailsKey) => (e: { target: { value: string } }) => setDetails((v) => ({ ...v, [key]: e.target.value }));
 
   const submit = () =>
     startTransition(async () => {
       setError(null);
       setCreated(null);
       try {
-        const result = await createStudent(values);
+        const { contactEmail, ...rest } = details;
+        const result = await createStudent({
+          ...account,
+          trainerId: trainers ? account.trainerId || null : undefined,
+          contactEmail,
+          details: rest,
+        });
         if (result.ok) {
-          setCreated({ id: result.studentId, username: values.username.trim().toLowerCase() });
-          setValues(EMPTY);
+          setCreated({ id: result.studentId, username: account.username.trim().toLowerCase(), invite: result.invite });
+          setAccount(EMPTY_ACCOUNT);
+          setDetails(EMPTY_DETAILS);
         } else {
           setError(result.message);
         }
@@ -46,11 +71,13 @@ export function AddStudentForm() {
     <Card>
       <CardHeader>
         <CardTitle>Add student</CardTitle>
-        <CardDescription>Choose the first password yourself and give it to the student in person.</CardDescription>
+        <CardDescription>
+          Choose the first password yourself. The contact email gets an invite with a link where the student chooses their own password.
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={submit} className="flex flex-col gap-4" aria-label="Add student">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form action={submit} className="flex flex-col gap-5" aria-label="Add student">
+          <FormSection title="Account">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-username">Username</Label>
               <Input
@@ -58,8 +85,8 @@ export function AddStudentForm() {
                 name="username"
                 required
                 autoComplete="off"
-                value={values.username}
-                onChange={set("username")}
+                value={account.username}
+                onChange={setA("username")}
                 aria-describedby="new-username-hint"
               />
               <p id="new-username-hint" className="text-xs text-muted-foreground">
@@ -68,20 +95,20 @@ export function AddStudentForm() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-fullname">Full name</Label>
-              <Input id="new-fullname" name="fullName" required value={values.fullName} onChange={set("fullName")} />
+              <Input id="new-fullname" name="fullName" required autoComplete="off" value={account.fullName} onChange={setA("fullName")} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-batch">Batch</Label>
-              <Input id="new-batch" name="batch" value={values.batch} onChange={set("batch")} />
+              <Input id="new-batch" name="batch" autoComplete="off" value={account.batch} onChange={setA("batch")} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-track">Track</Label>
-              <NativeSelect id="new-track" name="track" value={values.track} onChange={set("track")} className="w-full">
+              <NativeSelect id="new-track" name="track" value={account.track} onChange={setA("track")} className="w-full">
                 <NativeSelectOption value="nursing">Nursing</NativeSelectOption>
                 <NativeSelectOption value="other">Other</NativeSelectOption>
               </NativeSelect>
             </div>
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-password">First password</Label>
               <Input
                 id="new-password"
@@ -90,15 +117,43 @@ export function AddStudentForm() {
                 required
                 minLength={8}
                 autoComplete="new-password"
-                value={values.password}
-                onChange={set("password")}
+                value={account.password}
+                onChange={setA("password")}
                 aria-describedby="new-password-hint"
               />
               <p id="new-password-hint" className="text-xs text-muted-foreground">
                 At least 8 characters.
               </p>
             </div>
-          </div>
+            {trainers ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="new-trainer">Trainer</Label>
+                <NativeSelect
+                  id="new-trainer"
+                  name="trainerId"
+                  data-testid="trainer-select"
+                  value={account.trainerId}
+                  onChange={setA("trainerId")}
+                  className="w-full"
+                  aria-describedby="new-trainer-hint"
+                >
+                  <NativeSelectOption value="">No trainer</NativeSelectOption>
+                  {trainers.map((t) => (
+                    <NativeSelectOption key={t.id} value={t.id}>
+                      {t.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                <p id="new-trainer-hint" className="text-xs text-muted-foreground">
+                  Only this trainer and admins can see the student.
+                </p>
+              </div>
+            ) : null}
+          </FormSection>
+          <ContactSection values={details} onChange={setD} idPrefix="new" />
+          <PassportSection values={details} onChange={setD} idPrefix="new" />
+          <CourseSection values={details} onChange={setD} idPrefix="new" />
+          <NotesSection values={details} onChange={setD} idPrefix="new" />
           <div aria-live="polite" className="flex flex-col gap-2">
             {error ? (
               <Alert variant="destructive">
@@ -106,9 +161,9 @@ export function AddStudentForm() {
               </Alert>
             ) : null}
             {created ? (
-              <Alert variant="success">
+              <Alert variant={created.invite === "failed" ? "warning" : "success"}>
                 <AlertDescription data-testid="add-student-success">
-                  Student {created.username} created.{" "}
+                  Student {created.username} created. {INVITE_NOTE[created.invite]}{" "}
                   <Link href={`/staff/students/${created.id}`} className={linkClass}>
                     Open student
                   </Link>

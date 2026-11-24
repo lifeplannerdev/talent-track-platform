@@ -29,3 +29,11 @@ export const STAFF_EXAM_SET = "E2E Staff Set";
 export const STUDENT_FLOW = { username: "e2e.flownurse", password: "e2e-flownurse-pass-1", fullName: "E2E Jürgen Fluss" };
 export const FLOW_CURRICULUM = "E2E Flow Curriculum";
 export const FLOW_EXAM_SET = "E2E Flow Prüfung";
+// Roles (v2 phase 1): two trainers, each with one student, so scope can be checked in both directions.
+// STUDENT_OF_ONE belongs to TRAINER_ONE (with a contact email), STUDENT_OF_TWO to TRAINER_TWO.
+export const TRAINER_ONE = { username: "e2e.trainer1", email: "e2e-trainer1@example.test", password: "e2e-trainer1-pass-1", fullName: "E2E Trainer One" };
+export const TRAINER_TWO = { username: "e2e.trainer2", email: "e2e-trainer2@example.test", password: "e2e-trainer2-pass-1", fullName: "E2E Trainer Two" };
+export const STUDENT_OF_ONE = { username: "e2e.ofone", password: "e2e-ofone-pass-1", fullName: "E2E Student Of One", contactEmail: "ofone@example.test" };
+export const STUDENT_OF_TWO = { username: "e2e.oftwo", password: "e2e-oftwo-pass-1", fullName: "E2E Student Of Two", contactEmail: "oftwo@example.test" };
+// A student a trainer adds through the form (deleted again by the spec).
+export const STUDENT_BY_TRAINER = { username: "e2e.bytrainer", password: "e2e-bytrainer-pass-1", fullName: "E2E Von Trainer", contactEmail: "bytrainer@example.test" };

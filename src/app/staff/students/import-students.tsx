@@ -6,17 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { importStudents, previewStudentsImport, type ImportPreview, type ImportStudentsResult } from "./actions";
 import { linkClass } from "./ui";
 
-const TEMPLATE = "username,full_name,batch,track,password\r\n";
+const TEMPLATE = "username,full_name,batch,track,password,contact_email,phone,passport_number,destination_country,german_level,programme_start\r\n";
 const TEMPLATE_HREF = `data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}`;
 
 // The CSV text (which contains first passwords) stays in this component's state and is sent only
 // to the server actions, which process it in memory. Previews and results never contain passwords.
-export function ImportStudents() {
+export function ImportStudents({ trainers, isTrainer }: { trainers: { id: string; name: string }[] | null; isTrainer: boolean }) {
+  const [trainerId, setTrainerId] = useState("");
   const [csv, setCsv] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportStudentsResult | null>(null);
@@ -64,7 +66,7 @@ export function ImportStudents() {
       const snapshot = checkedCsv.current;
       if (snapshot === null) return;
       try {
-        const r = await importStudents(snapshot);
+        const r = await importStudents(snapshot, trainers ? { trainerId: trainerId || null } : {});
         setResult(r);
         if (r.ok && r.failed.length === 0 && latestCsv.current === snapshot) {
           latestCsv.current = "";
@@ -84,14 +86,28 @@ export function ImportStudents() {
       <CardHeader>
         <CardTitle>Import CSV</CardTitle>
         <CardDescription>
-          Columns: username, full_name, batch, track (nursing or other), password. Check the file first; nothing is created
-          until every row is valid.{" "}
+          Columns: username, full_name, batch, track (nursing or other), password. Optional: contact_email, phone,
+          passport_number, destination_country, german_level, programme_start (yyyy-mm-dd). Students with a contact email get
+          an invite. Check the file first; nothing is created until every row is valid.{" "}
           <a href={TEMPLATE_HREF} download="students-template.csv" className={linkClass}>
             Download template
           </a>
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {trainers ? (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="import-trainer">Trainer for these students</Label>
+            <NativeSelect id="import-trainer" data-testid="import-trainer-select" value={trainerId} onChange={(e) => setTrainerId(e.target.value)} className="w-full sm:w-72">
+              <NativeSelectOption value="">No trainer</NativeSelectOption>
+              {trainers.map((t) => (
+                <NativeSelectOption key={t.id} value={t.id}>
+                  {t.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="students-file">CSV file</Label>
           <Input id="students-file" type="file" accept=".csv,text/csv" onChange={(e) => readFile(e.target.files?.[0])} />
@@ -140,13 +156,21 @@ export function ImportStudents() {
               </Alert>
             ) : (
               <p className="text-sm" data-testid="students-import-ready">
-                {preview.rows.length} student{preview.rows.length === 1 ? "" : "s"} ready to create.
+                {preview.rows.length} student{preview.rows.length === 1 ? "" : "s"} ready to create;{" "}
+                {preview.rows.filter((r) => r.willInvite).length} will get an invite.
               </p>
             )
           ) : null}
 
+          {preview && !result && isTrainer ? (
+            <p className="text-sm text-muted-foreground" data-testid="students-import-trainer-note">
+              The check for taken usernames only covers your own students. A username used by someone else is reported after
+              the import.
+            </p>
+          ) : null}
+
           {preview && preview.rows.length > 0 && !result ? (
-            <Table className="min-w-[28rem]">
+            <Table className="min-w-[32rem]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Row</TableHead>
@@ -154,6 +178,7 @@ export function ImportStudents() {
                   <TableHead>Name</TableHead>
                   <TableHead>Batch</TableHead>
                   <TableHead>Track</TableHead>
+                  <TableHead>Invite</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -164,6 +189,7 @@ export function ImportStudents() {
                     <TableCell>{r.fullName}</TableCell>
                     <TableCell>{r.batch || "–"}</TableCell>
                     <TableCell>{r.track}</TableCell>
+                    <TableCell>{r.willInvite ? "Invite by email" : "no invite (no email)"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -177,6 +203,17 @@ export function ImportStudents() {
                   Created {result.created.length} student{result.created.length === 1 ? "" : "s"}
                   {result.failed.length > 0 ? `; ${result.failed.length} could not be created` : "."}
                 </AlertTitle>
+                <AlertDescription>
+                  <p data-testid="students-import-invites">
+                    Invites: {result.invites.invited} sent, {result.invites.noEmail} without email (no invite)
+                    {result.invites.failed > 0 ? `, ${result.invites.failed} failed` : ""}.
+                  </p>
+                  {result.invites.failed > 0 ? (
+                    <p className="mt-1">
+                      The invite could not be sent for {result.invites.failedUsernames.join(", ")}. The students exist; open each one and use Resend invite.
+                    </p>
+                  ) : null}
+                </AlertDescription>
                 {result.failed.length > 0 ? (
                   <AlertDescription>
                     <ul className="list-disc pl-4">

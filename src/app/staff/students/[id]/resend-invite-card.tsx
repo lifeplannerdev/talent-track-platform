@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { resendInvite } from "../actions";
 
 /** Emails the student a fresh link to choose a password (needs a contact email on the student). */
-export function ResendInviteCard({ studentId, studentName }: { studentId: string; studentName: string }) {
+export function ResendInviteCard({ studentId, studentName, contactEmail }: { studentId: string; studentName: string; contactEmail: string | null }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -31,7 +31,14 @@ export function ResendInviteCard({ studentId, studentName }: { studentId: string
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Button type="button" variant="outline" onClick={send} disabled={pending}>
+        <p className="mb-3 text-sm" data-testid="invite-status">
+          {contactEmail ? (
+            <>Invites go to {contactEmail}. Whether the student has chosen a password is not tracked here.</>
+          ) : (
+            <>No contact email, so no invite can be sent. Add one under Details first.</>
+          )}
+        </p>
+        <Button type="button" variant="outline" onClick={send} disabled={pending || !contactEmail}>
           {pending ? "Sending…" : "Resend invite"}
         </Button>
         <div aria-live="polite" className="mt-3">

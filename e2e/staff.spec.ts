@@ -1,7 +1,20 @@
 import { expect, test } from "@playwright/test";
 import { usernameToEmail } from "../src/lib/auth/username";
-import { BLOCK_CURRICULUM, BLOCK_OTHER_CURRICULUM, STAFF, STAFF_CURRICULUM, STAFF_EXAM_SET, STUDENT_BLOCK, STUDENT_CREATED } from "./fixtures";
-import { curriculumCard, signIn } from "./helpers";
+import {
+  BLOCK_CURRICULUM,
+  BLOCK_OTHER_CURRICULUM,
+  STAFF,
+  STAFF_CURRICULUM,
+  STAFF_EXAM_SET,
+  STUDENT_BLOCK,
+  STUDENT_BY_TRAINER,
+  STUDENT_CREATED,
+  STUDENT_OF_ONE,
+  STUDENT_OF_TWO,
+  TRAINER_ONE,
+  TRAINER_TWO,
+} from "./fixtures";
+import { curriculumCard, expectNoHorizontalOverflow, signIn } from "./helpers";
 import { adminDb, seed } from "./seed";
 
 // Staff management end to end: create a nursing student, create a curriculum and exam set,
@@ -50,6 +63,7 @@ test("staff create a nursing student, a curriculum with its attempts per student
   await add.getByLabel("Batch").fill("E2E-B1");
   await add.getByLabel("Track").selectOption("nursing");
   await add.getByLabel("First password").fill(STUDENT_CREATED.password);
+  await add.getByLabel("Contact email").fill("t8nurse@example.test");
   await add.getByRole("button", { name: "Create student" }).click();
   await expect(page.getByTestId("add-student-success")).toContainText(`Student ${STUDENT_CREATED.username} created.`);
   // The password is never shown or put into the URL.
@@ -240,4 +254,147 @@ test("the staff nav keeps the current section in view after the screen rotates",
       return box !== null && box.x >= 0 && box.x + box.width <= 375;
     })
     .toBe(true);
+});
+
+// v2 phase 1: trainers see and manage only their own students; admins see everyone and assign trainers.
+
+async function expectNoLoading(page: import("@playwright/test").Page) {
+  await expect(page.locator('[role="status"][aria-label^="Loading"]')).toHaveCount(0);
+}
+
+test("a trainer adds a student with a contact email, sees only their own students and cannot open another trainer's student", async ({ page }) => {
+  await signIn(page, TRAINER_ONE.email, TRAINER_ONE.password, /\/staff$/);
+
+  // No admin-only navigation, and no admin-only link on the Extra attempts page.
+  const nav = page.getByRole("navigation", { name: "Staff" });
+  await expect(nav.getByRole("link", { name: "Students", exact: true })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Curriculums", exact: true })).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "Questions", exact: true })).toHaveCount(0);
+  await page.goto("/staff/grants");
+  await expectNoLoading(page);
+  await expect(page.locator('a[href^="/staff/curriculums"], a[href^="/staff/questions"]')).toHaveCount(0);
+
+  await page.goto("/staff/students");
+  await expect(page.getByTestId("students-table")).toBeVisible();
+  // Own student only, no Trainer column or picker.
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_OF_ONE.fullName })).toHaveCount(1);
+  await expect(page.getByText(STUDENT_OF_TWO.fullName)).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Trainer" })).toHaveCount(0);
+
+  const add = page.getByRole("form", { name: "Add student" });
+  await expect(add.getByTestId("trainer-select")).toHaveCount(0);
+  await expect(add.getByRole("group", { name: "Passport and travel" })).toBeVisible();
+  await add.getByLabel("Username").fill(STUDENT_BY_TRAINER.username);
+  await add.getByLabel("Full name").fill(STUDENT_BY_TRAINER.fullName);
+  await add.getByLabel("First password").fill(STUDENT_BY_TRAINER.password);
+  // Contact email is required: the form does not submit without it.
+  await add.getByRole("button", { name: "Create student" }).click();
+  await expect(add.getByTestId("add-student-success")).toHaveCount(0);
+  await add.getByLabel("Contact email").fill(STUDENT_BY_TRAINER.contactEmail);
+  await add.getByLabel("Phone", { exact: true }).fill("+91 98765 43210");
+  await add.getByLabel("Passport number").fill("P7654321");
+  await expect(add.getByLabel("Passport number")).toHaveAttribute("autocomplete", "off");
+  await add.getByLabel("German level").selectOption("A2");
+  await add.getByRole("button", { name: "Create student" }).click();
+  await expect(add.getByTestId("add-student-success")).toContainText(`Student ${STUDENT_BY_TRAINER.username} created.`);
+  await expect(page.locator("body")).not.toContainText(STUDENT_BY_TRAINER.password);
+
+  // The new student is the trainer's own: the list shows it, the page shows the saved details.
+  const { data: created } = await adminDb().from("profiles").select("id, trainer_id").eq("username", STUDENT_BY_TRAINER.username).single();
+  const { data: trainerProfile } = await adminDb().from("profiles").select("id").eq("username", TRAINER_ONE.username).single();
+  expect(created!.trainer_id).toBe(trainerProfile!.id);
+  await page.goto("/staff/students");
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_BY_TRAINER.fullName })).toHaveCount(1);
+  await page.goto(`/staff/students/${created!.id}`);
+  await expect(page.getByTestId("student-name")).toHaveText(STUDENT_BY_TRAINER.fullName);
+  await expect(page.getByTestId("invite-status")).toContainText(STUDENT_BY_TRAINER.contactEmail);
+  const details = page.getByRole("form", { name: "Student details" });
+  await expect(details.getByLabel("Contact email")).toHaveValue(STUDENT_BY_TRAINER.contactEmail);
+  await expect(details.getByLabel("Passport number")).toHaveValue("P7654321");
+  // Edit and save the details.
+  await details.getByLabel("Qualification").fill("GNM");
+  await details.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByTestId("details-message")).toHaveText("Details saved.");
+  await page.reload();
+  await expect(page.getByRole("form", { name: "Student details" }).getByLabel("Qualification")).toHaveValue("GNM");
+  // A refused value is explained next to the form.
+  await page.getByRole("form", { name: "Student details" }).getByLabel("Contact email").fill("not-an-email");
+  await page.getByRole("form", { name: "Student details" }).getByLabel("Contact email").evaluate((el: HTMLInputElement) => el.form!.noValidate = true);
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByTestId("details-message")).toContainText("not a valid email");
+  // No admin-only controls for a trainer.
+  await expect(page.getByTestId("trainer-select")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete student" })).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
+
+  // Another trainer's student: not found, and none of its data reaches the page.
+  const other = await adminDb().from("profiles").select("id").eq("username", STUDENT_OF_TWO.username).single();
+  await page.goto(`/staff/students/${other.data!.id}`);
+  await expectNoLoading(page);
+  await expect(page.locator("body")).not.toContainText(STUDENT_OF_TWO.fullName);
+  await expect(page.locator("body")).not.toContainText(STUDENT_OF_TWO.contactEmail);
+  await expect(page.getByTestId("student-name")).toHaveCount(0);
+  await expect(page.getByRole("form", { name: "Student details" })).toHaveCount(0);
+
+  // The admin-only pages bounce a trainer back to the staff dashboard.
+  await page.goto("/staff/curriculums");
+  await expect(page).toHaveURL(/\/staff$/);
+});
+
+test("an admin sees every student, picks a trainer for a new one and can assign a trainer on the student page", async ({ page }) => {
+  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
+  await page.goto("/staff/students");
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_OF_ONE.fullName })).toContainText(TRAINER_ONE.fullName);
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_OF_TWO.fullName })).toContainText(TRAINER_TWO.fullName);
+
+  // Add student with a trainer.
+  const add = page.getByRole("form", { name: "Add student" });
+  await add.getByLabel("Username").fill(STUDENT_BY_TRAINER.username);
+  await add.getByLabel("Full name").fill(STUDENT_BY_TRAINER.fullName);
+  await add.getByLabel("First password").fill(STUDENT_BY_TRAINER.password);
+  await add.getByLabel("Contact email").fill(STUDENT_BY_TRAINER.contactEmail);
+  await add.getByTestId("trainer-select").selectOption({ label: TRAINER_TWO.fullName });
+  await add.getByRole("button", { name: "Create student" }).click();
+  await expect(add.getByTestId("add-student-success")).toContainText(`Student ${STUDENT_BY_TRAINER.username} created.`);
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_BY_TRAINER.fullName })).toContainText(TRAINER_TWO.fullName);
+
+  // Move STUDENT_OF_ONE to trainer two on the student page.
+  const { data: s } = await adminDb().from("profiles").select("id").eq("username", STUDENT_OF_ONE.username).single();
+  await page.goto(`/staff/students/${s!.id}`);
+  await expect(page.getByTestId("trainer-select")).toHaveValue(/[0-9a-f-]{36}/);
+  await page.getByTestId("trainer-select").selectOption({ label: TRAINER_TWO.fullName });
+  await page.getByRole("button", { name: "Save trainer" }).click();
+  await expect(page.getByTestId("trainer-message")).toHaveText("Trainer changed.");
+  await expect(page.getByRole("button", { name: "Delete student" })).toBeVisible();
+  await page.goto("/staff/students");
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_OF_ONE.fullName })).toContainText(TRAINER_TWO.fullName);
+
+  // Trainer one no longer sees the student; trainer two does.
+  await signIn(page, TRAINER_ONE.email, TRAINER_ONE.password, /\/staff$/);
+  await page.goto("/staff/students");
+  await expect(page.getByTestId("students-empty")).toBeVisible();
+  await signIn(page, TRAINER_TWO.email, TRAINER_TWO.password, /\/staff$/);
+  await page.goto("/staff/students");
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_OF_ONE.fullName })).toHaveCount(1);
+});
+
+test("the CSV import shows which rows get an invite, reports the invite counts, and warns a trainer about the username check", async ({ page }) => {
+  await signIn(page, TRAINER_ONE.email, TRAINER_ONE.password, /\/staff$/);
+  await page.goto("/staff/students");
+  const csv = [
+    "username,full_name,batch,track,password,contact_email",
+    `${STUDENT_BY_TRAINER.username},${STUDENT_BY_TRAINER.fullName},B1,other,${STUDENT_BY_TRAINER.password},${STUDENT_BY_TRAINER.contactEmail}`,
+    `e2e.bytrainer2,E2E Ohne Mail,B1,other,${STUDENT_BY_TRAINER.password}x,`,
+  ].join("\n");
+  await page.getByRole("textbox", { name: "Or paste the CSV" }).fill(csv);
+  await page.getByRole("button", { name: "Check file" }).click();
+  await expect(page.getByTestId("students-import-ready")).toContainText("2 students ready to create; 1 will get an invite.");
+  await expect(page.getByRole("row").filter({ hasText: STUDENT_BY_TRAINER.fullName })).toContainText("Invite by email");
+  await expect(page.getByRole("row").filter({ hasText: "e2e.bytrainer2" })).toContainText("no invite (no email)");
+  await expect(page.getByTestId("students-import-trainer-note")).toContainText("only covers your own students");
+  await page.getByRole("button", { name: "Create 2 students" }).click();
+  await expect(page.getByTestId("students-import-result")).toContainText("Created 2 students");
+  await expect(page.getByTestId("students-import-invites")).toContainText("1 sent, 1 without email (no invite)");
+  const { data: second } = await adminDb().from("profiles").select("id").eq("username", "e2e.bytrainer2").single();
+  await adminDb().auth.admin.deleteUser(second!.id);
 });
