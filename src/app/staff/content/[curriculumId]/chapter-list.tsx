@@ -9,6 +9,7 @@ import {
   isDirty,
   rowsFromServer,
   sortRows,
+  removeRow,
   toggleMarker,
   type ChapterRow,
 } from "@/lib/book/chapter-editor";
@@ -46,6 +47,8 @@ export function ChaptersCard({
   const router = useRouter();
   const [initial, setInitial] = useState(() => rowsFromServer(chapters));
   const [rows, setRows] = useState<ChapterRow[]>(initial);
+  // Saved chapters removed since the last save: a marker put back on their page restores them (same id).
+  const [removed, setRemoved] = useState<ChapterRow[]>([]);
   // After a save the page refreshes with the server's chapters (new ones now have ids): adopt them.
   const serverSignature = JSON.stringify(chapters);
   const [seen, setSeen] = useState(serverSignature);
@@ -59,6 +62,7 @@ export function ChaptersCard({
     );
     setInitial(fromServer);
     setSyncing(false);
+    setRemoved([]);
   }
   // A save is only final for the editor once the server's chapters (with ids) are back.
 
@@ -105,6 +109,7 @@ export function ChaptersCard({
       });
       if (r.ok) {
         setSaved(true);
+        setRemoved([]);
         setSyncing(true);
         router.refresh();
       } else {
@@ -138,9 +143,9 @@ export function ChaptersCard({
             ranges={ranges}
             onToggle={(page) => {
               touched();
-              setRows((rs) =>
-                toggleMarker(rs, page, `new-${counter.current++}`),
-              );
+              const next = toggleMarker({ rows, removed }, page, `new-${counter.current++}`);
+              setRows(next.rows);
+              setRemoved(next.removed);
             }}
           />
 
@@ -204,7 +209,9 @@ export function ChaptersCard({
                       aria-label={`Remove chapter ${i + 1}`}
                       onClick={() => {
                         touched();
-                        setRows((rs) => rs.filter((x) => x.key !== r.key));
+                        const next = removeRow({ rows, removed }, r.key);
+                        setRows(next.rows);
+                        setRemoved(next.removed);
                       }}
                     >
                       <Trash2Icon aria-hidden="true" />
