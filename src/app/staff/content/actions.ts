@@ -7,7 +7,8 @@ import { requireAdmin } from "@/lib/auth/require-role";
 import { bookErrorMessage, finalizeBookUpload, saveChaptersFn, setBookStatusFn } from "@/lib/book/book-admin";
 import { validateChapters, type ChapterInput } from "@/lib/book/chapters";
 import { BOOK_MAX_PAGES } from "@/lib/book/limits";
-import { createUploadUrl, listFolderFiles, listUploadFolders, removeBookFiles } from "@/lib/book/storage";
+import { cleanupOldUploads } from "@/lib/book/cleanup";
+import { createUploadUrl, listFolderFiles } from "@/lib/book/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Book authoring. Admin only: every action calls requireAdmin() first and passes that profile id
@@ -28,21 +29,32 @@ function revalidateContent(curriculumId: string) {
   revalidatePath(`/staff/content/${curriculumId}`);
 }
 
-async function bookStatus(curriculumId: string): Promise<{ status: string; pageCount: number } | null> {
-  const { data } = await createAdminClient()
+type BookRead = { ok: true; book: { status: string; pageCount: number; uploadId: string | null } | null } | { ok: false };
+
+/** Reads the book row; a query error fails closed (callers refuse). */
+async function readBook(curriculumId: string): Promise<BookRead> {
+  const { data, error } = await createAdminClient()
     .from("books")
-    .select("status, page_count")
+    .select("status, page_count, upload_id")
     .eq("curriculum_id", curriculumId)
-    .maybeSingle<{ status: string; page_count: number }>();
-  return data ? { status: data.status, pageCount: data.page_count } : null;
+    .maybeSingle<{ status: string; page_count: number; upload_id: string | null }>();
+  if (error) {
+    console.error("readBook failed", error.code ?? "unknown");
+    return { ok: false };
+  }
+  return { ok: true, book: data ? { status: data.status, pageCount: data.page_count, uploadId: data.upload_id } : null };
 }
+
+const READ_FAILED = "The book could not be read. Please try again.";
 
 export async function startBookUpload(curriculumId: string): Promise<StartUploadResult> {
   await requireAdmin();
   if (!isUuid(curriculumId)) return { ok: false, message: BAD_REQUEST };
   const { data: curriculum } = await createAdminClient().from("curriculums").select("id").eq("id", curriculumId).maybeSingle();
   if (!curriculum) return { ok: false, message: bookErrorMessage("no_curriculum") };
-  if ((await bookStatus(curriculumId))?.status === "published") return { ok: false, message: PUBLISHED };
+  const read = await readBook(curriculumId);
+  if (!read.ok) return { ok: false, message: READ_FAILED };
+  if (read.book?.status === "published") return { ok: false, message: PUBLISHED };
   return { ok: true, uploadId: randomUUID() };
 }
 
@@ -55,7 +67,9 @@ export async function mintUploadUrls(input: { curriculumId: string; uploadId: st
   if (pages.some((p) => !Number.isInteger(p) || p < 1 || p > BOOK_MAX_PAGES) || new Set(pages).size !== pages.length) {
     return { ok: false, message: `Page numbers must be whole numbers from 1 to ${BOOK_MAX_PAGES}.` };
   }
-  if ((await bookStatus(curriculumId))?.status === "published") return { ok: false, message: PUBLISHED };
+  const read = await readBook(curriculumId);
+  if (!read.ok) return { ok: false, message: READ_FAILED };
+  if (read.book?.status === "published") return { ok: false, message: PUBLISHED };
 
   const urls: MintedUrl[] = [];
   for (const page of pages) {
@@ -98,14 +112,17 @@ export async function finishBookUpload(input: {
     return { ok: false, message: "Some pages did not finish uploading. Choose the PDF again." };
   }
 
+  const before = await readBook(curriculumId);
+  if (!before.ok) return { ok: false, message: READ_FAILED };
+  const previousUploadId = before.book?.uploadId ?? null;
   const result = await finalizeBookUpload(admin.id, curriculumId, uploadId, rows);
   if (!result.ok) return result;
 
-  // The swap succeeded: drop the previous version and any abandoned attempts. A failure here only
-  // leaves unused files behind, so it is logged and does not fail the action.
+  // The swap succeeded: drop the previous live folder and old abandoned ones (never a folder that
+  // is live now or a young one another admin may still be uploading). A failure only leaves
+  // unused files behind, so it is logged and does not fail the action.
   try {
-    const stale = (await listUploadFolders(curriculumId)).filter((f) => f !== uploadId);
-    for (const folder of stale) await removeBookFiles(await listFolderFiles(curriculumId, folder));
+    await cleanupOldUploads({ curriculumId, newUploadId: uploadId, previousUploadId });
   } catch (e) {
     console.error("finishBookUpload: removing old files failed", e instanceof Error ? e.message : "unknown");
   }
@@ -120,7 +137,9 @@ export async function saveChapterStarts(input: { curriculumId: string; chapters:
   if (chapters.some((c) => typeof c?.title !== "string" || (c.id !== undefined && !isUuid(c.id)))) {
     return { ok: false, message: BAD_REQUEST };
   }
-  const book = await bookStatus(curriculumId);
+  const read = await readBook(curriculumId);
+  if (!read.ok) return { ok: false, message: READ_FAILED };
+  const book = read.book;
   if (!book) return { ok: false, message: bookErrorMessage("no_book") };
 
   const checked = validateChapters(chapters, book.pageCount);

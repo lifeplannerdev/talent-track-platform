@@ -19,6 +19,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 import { usernameToEmail } from "@/lib/auth/username";
 import { BOOK_BUCKET } from "@/lib/book/storage";
+import { cleanupOldUploads } from "@/lib/book/cleanup";
 import { getBookForEditor, listContent } from "@/lib/book/read";
 import {
   finishBookUpload,
@@ -124,13 +125,17 @@ describe("admin only", () => {
     const cid = await makeCurriculum();
     const staged = await stageUpload(cid, 1);
     session.client = who === "trainer" ? trainer.client : student.client;
-    const redirect = who === "trainer" ? "REDIRECT /staff" : /REDIRECT/;
+    const redirect = who === "trainer" ? "REDIRECT /staff" : "REDIRECT /exam/start";
     await expect(startBookUpload(cid)).rejects.toThrow(redirect);
     await expect(mintUploadUrls({ curriculumId: cid, uploadId: randomUUID(), pages: [1] })).rejects.toThrow(redirect);
     await expect(finishBookUpload(staged)).rejects.toThrow(redirect);
     await expect(saveChapterStarts({ curriculumId: cid, chapters: [{ title: "A", startPage: 1 }] })).rejects.toThrow(redirect);
     await expect(setBookPublished({ curriculumId: cid, published: true })).rejects.toThrow(redirect);
     expect((await db.from("books").select("curriculum_id").eq("curriculum_id", cid)).data).toEqual([]);
+    expect((await db.from("chapters").select("id").eq("curriculum_id", cid)).data).toEqual([]);
+    const { data: folders } = await bucket.list(cid, { limit: 100 });
+    expect(folders!.map((f) => f.name)).toEqual([staged.uploadId]); // only the pre-staged one: nothing created or removed
+    expect(await filesOf(cid, staged.uploadId)).toHaveLength(2);
   });
 });
 
@@ -178,7 +183,7 @@ describe("startBookUpload and mintUploadUrls", () => {
 });
 
 describe("finishBookUpload", () => {
-  it("swaps pages atomically, removes the previous upload and abandoned attempts, keeps chapter titles", async () => {
+  it("swaps pages atomically, removes the previous upload, keeps young abandoned ones, chapter titles", async () => {
     const cid = await makeCurriculum();
     const first = await stageUpload(cid, 3);
     expect(await finishBookUpload(first)).toEqual({ ok: true });
@@ -192,7 +197,7 @@ describe("finishBookUpload", () => {
     expect(await finishBookUpload(second)).toEqual({ ok: true });
 
     expect(await filesOf(cid, first.uploadId)).toEqual([]);
-    expect(await filesOf(cid, abandoned.uploadId)).toEqual([]);
+    expect(await filesOf(cid, abandoned.uploadId)).toHaveLength(4); // young: kept (another admin may be uploading)
     expect(await filesOf(cid, second.uploadId)).toHaveLength(4);
     const { data: pages } = await db.from("book_pages").select("path").eq("curriculum_id", cid);
     expect(pages).toHaveLength(2);
@@ -239,6 +244,57 @@ describe("finishBookUpload", () => {
     const staged = await stageUpload(cid, 1);
     const bad = await finishBookUpload({ ...staged, pages: [{ page: 1, width: 0, height: 5 }] });
     expect(bad).toEqual({ ok: false, message: "The uploaded pages are not valid. Choose the PDF again." });
+  });
+});
+
+describe("cleanup after finalize", () => {
+  const hours = (h: number) => h * 3600_000;
+
+  it("never deletes the live folder when another admin finalized in between", async () => {
+    const cid = await makeCurriculum();
+    const a = await stageUpload(cid, 1);
+    const b = await stageUpload(cid, 1);
+    expect(await finishBookUpload(b)).toEqual({ ok: true });
+    expect(await filesOf(cid, a.uploadId)).toHaveLength(2); // young abandoned folder kept
+    expect(await finishBookUpload(a)).toEqual({ ok: true });
+    expect(await filesOf(cid, b.uploadId)).toEqual([]); // previous live folder removed
+    // B's late cleanup, even far in the future: A is live and untouched.
+    await cleanupOldUploads({ curriculumId: cid, newUploadId: b.uploadId, previousUploadId: null, now: Date.now() + hours(48) });
+    expect(await filesOf(cid, a.uploadId)).toHaveLength(2);
+    const book = await getBookForEditor(cid);
+    expect((await fetch(book!.pages[0].thumbUrl)).status).toBe(200);
+    // Even when it is wrongly named as the previous folder.
+    await cleanupOldUploads({ curriculumId: cid, newUploadId: b.uploadId, previousUploadId: a.uploadId });
+    expect(await filesOf(cid, a.uploadId)).toHaveLength(2);
+  });
+
+  it("keeps a young abandoned folder and removes an old one", async () => {
+    const cid = await makeCurriculum();
+    const abandoned = await stageUpload(cid, 1);
+    const live = await stageUpload(cid, 1);
+    expect(await finishBookUpload(live)).toEqual({ ok: true });
+    expect(await filesOf(cid, abandoned.uploadId)).toHaveLength(2);
+    await cleanupOldUploads({ curriculumId: cid, newUploadId: live.uploadId, previousUploadId: null, now: Date.now() + hours(23) });
+    expect(await filesOf(cid, abandoned.uploadId)).toHaveLength(2);
+    const removed = await cleanupOldUploads({ curriculumId: cid, newUploadId: live.uploadId, previousUploadId: null, now: Date.now() + hours(25) });
+    expect(removed).toEqual([abandoned.uploadId]);
+    expect(await filesOf(cid, abandoned.uploadId)).toEqual([]);
+    expect(await filesOf(cid, live.uploadId)).toHaveLength(2);
+  });
+
+  it("removes the previous live folder after a swap and nothing after a failed finalize", async () => {
+    const cid = await makeCurriculum();
+    const first = await stageUpload(cid, 1);
+    await finishBookUpload(first);
+    const second = await stageUpload(cid, 1);
+    expect(await finishBookUpload(second)).toEqual({ ok: true });
+    expect(await filesOf(cid, first.uploadId)).toEqual([]);
+    // Failed finalize (bad dimensions): the live folder and the new one both stay.
+    const third = await stageUpload(cid, 1);
+    const res = await finishBookUpload({ ...third, pages: [{ page: 1, width: 0, height: 1 }] });
+    expect(res.ok).toBe(false);
+    expect(await filesOf(cid, second.uploadId)).toHaveLength(2);
+    expect(await filesOf(cid, third.uploadId)).toHaveLength(2);
   });
 });
 

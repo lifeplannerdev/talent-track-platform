@@ -65,3 +65,21 @@ export async function listFolderFiles(curriculumId: string, uploadId: string): P
   const prefix = `${curriculumId}/${uploadId}`;
   return (await listNames(prefix)).filter((r) => !r.isFolder).map((r) => `${prefix}/${r.name}`);
 }
+
+/** Newest file timestamp (ms) in an upload folder, or null when it cannot be determined. */
+export async function folderNewestAt(curriculumId: string, uploadId: string): Promise<number | null> {
+  const bucket = createAdminClient().storage.from(BOOK_BUCKET);
+  let newest: number | null = null;
+  for (let offset = 0; ; offset += LIST_PAGE) {
+    const { data, error } = await bucket.list(`${curriculumId}/${uploadId}`, { limit: LIST_PAGE, offset });
+    if (error) throw new Error(error.name ?? "storage_list_failed");
+    for (const f of data ?? []) {
+      if (f.id === null) continue;
+      const t = Math.max(Date.parse(f.updated_at ?? "") || 0, Date.parse(f.created_at ?? "") || 0);
+      if (!t) return null; // age unknown: the caller keeps the folder
+      newest = Math.max(newest ?? 0, t);
+    }
+    if (!data || data.length < LIST_PAGE) break;
+  }
+  return newest;
+}
