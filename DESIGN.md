@@ -144,7 +144,8 @@ are never applied) and plays once without blocking input or shifting layout.
   underlined.
 - **Chrome:** staff pages get the header from `src/app/staff/layout.tsx` (wordmark, `StaffNav`,
   sign out; sticky from `lg`). Sections: Dashboard, Attempts (read-only list and evaluation),
-  Blocked, Extra attempts, Students, Curriculums, Questions. Below `lg` the nav is one row under the wordmark that scrolls
+  Blocked, Extra attempts, Students, Curriculums, Questions, Team; Curriculums, Questions and Team are admin only
+  (`visibleNav`, `adminOnly`), so a trainer's nav has five links. Below `lg` the nav is one row under the wordmark that scrolls
   sideways inside itself and keeps the current section in view; the current section has a 2 px
   Königsblau underline and `aria-current="page"`. Student pages use `StudentHeader` (56 px); the
   exam page has its own sticky bar with a progress line. A "Skip to main content" link in the root
@@ -202,6 +203,38 @@ are never applied) and plays once without blocking input or shifting layout.
   once allowed). Success is announced at page level (`grant-success`), a refusal next to the button.
 - **Curriculum settings:** name and "Attempts per student" (1 to 20, standard 2) side by side
   above the exam sets; a warning `Alert` when fewer exam sets can be given than students have attempts.
+- **Add student form** (`/staff/students`, "Add student" card): one form of titled sections, each a
+  `fieldset` with a `legend` (`FormSection`: semibold 14 px title, optional one-line muted hint):
+  Account (username, full name, batch, track, first password, and for an admin a Trainer picker;
+  a trainer's students always belong to them), Contact (contact email is the one required detail:
+  "The invite email goes to the contact email."), Passport and travel (hint "Private: only an admin
+  and the student's trainer can see these."), Course and Notes. Fields are controlled so a
+  validation error never wipes the input. Success is a `success` `Alert` (`warning` when the invite mail failed) with a link to the new
+  student and one sentence on the invite ("An invite email ... was sent." or, when the mail
+  failed, "... could not be sent. Open the student and use Resend invite."). Import CSV sits under
+  it with a trainer picker for admins and a preview; the result lists invited, no email and failed
+  counts. Files over 200 students are refused with a plain message.
+- **Student page cards** (`/staff/students/[id]`, after the results): "Details" (`student-details-card`,
+  the same sections as the form, "Save details", a `details-message` alert), "Trainer" (admin only:
+  a picker and a save, "Only the trainer and admins can see <name>. Changing it takes effect at
+  once."), "Invite" (`invite-status`: where invites go, or "No contact email, so no invite can be
+  sent"; outline "Resend invite" button, disabled without an email; the result in a live region,
+  `resend-invite-message`), then Reset password, and Delete student for admins only. Cards use the
+  plain `Card`; no extra colour.
+- **Set password** (`/set-password?token_hash=...`, public, `src/app/set-password`): the sign-in
+  layout (centred `Card`, `enter` animation, `shadow-panel`), h1 "Choose your password", one
+  sentence ("You will sign in with your username and this password."), the new password field and
+  a primary `size="lg"` button. A missing, used or expired link shows one destructive message
+  ("This link is no longer valid. Ask your trainer to send you a new invite.") with a link to
+  sign in; a saved password that could not end other sessions says so in plain words. It is in the
+  axe and 375 px overflow checks of `e2e/design.spec.ts`.
+- **Team** (`/staff/team`, admin only): `PageHeader` "Team" with one sentence on scope, a framed
+  table (Trainer, Email, Status badge Active `success` / Inactive `outline`, plus a `warning` badge "Not signed in yet" next to Active until the trainer has signed in once, Students, Actions) and
+  "Add a trainer" below (a `Card` with email, username and full name; the trainer chooses their
+  own password through the invite). Row actions are outline `sm` buttons with sr-only names
+  ("Resend invite to <name>"), Deactivate / Reactivate, and a "Move to..." select that moves all of
+  the trainer's students; Deactivate is refused with a sentence while students remain. Results
+  and errors go to a live region next to the row.
 - **No template chrome:** no eyebrow labels above headings, no "A · B · C" meta strings (use
   commas or separate facts), sentence case everywhere.
 - **Button links:** `buttonVariants()` returns merged classes (variant classes win over the base),
