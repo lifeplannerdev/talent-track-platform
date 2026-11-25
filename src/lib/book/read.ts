@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { signReadUrls } from "@/lib/book/storage";
 
 // Staff readers (session client, RLS). Only ACTIVE chapters (archived_at is null) are counted or
-// returned. Thumbnails are signed by the service role for a few minutes.
+// returned. Thumbnails are signed by the service role (an hour for the admin editor).
 
 export type BookStatus = "none" | "draft" | "published";
 export type ContentRow = { curriculumId: string; name: string; status: BookStatus; pageCount: number; chapterCount: number };
@@ -15,7 +15,9 @@ export type EditorBook = {
   pages: { page: number; thumbUrl: string; width: number; height: number }[];
 };
 
-const THUMB_TTL_SECONDS = 300;
+// Admin editor only: thumbnails load lazily and the editor stays open while the admin works, so sign
+// them for an hour. Students get 300 s in their own reader code, unchanged.
+const EDITOR_THUMB_TTL_SECONDS = 3600;
 
 export async function listContent(): Promise<ContentRow[]> {
   const supabase = await createClient();
@@ -61,7 +63,7 @@ export async function getBookForEditor(curriculumId: string): Promise<EditorBook
   if (pages.error) throw new Error(`Could not read pages: ${pages.error.code}`);
   if (chapters.error) throw new Error(`Could not read chapters: ${chapters.error.code}`);
 
-  const urls = await signReadUrls((pages.data ?? []).map((p) => p.thumb_path as string), THUMB_TTL_SECONDS);
+  const urls = await signReadUrls((pages.data ?? []).map((p) => p.thumb_path as string), EDITOR_THUMB_TTL_SECONDS);
   return {
     status: book.status as "draft" | "published",
     pageCount: book.page_count,

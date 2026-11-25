@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { EXAM_CURRICULUM_OPEN, STAFF, TRAINER_ONE } from "./fixtures";
 import { makePdf } from "./fixtures/make-pdf";
 import { curriculumId, signIn, staffNav } from "./helpers";
-import { adminDb, seed } from "./seed";
+import { adminDb, removeBookFiles, seed } from "./seed";
 
 // Staff Content: books and chapters. Admin only. Real browser conversion (pdf.js worker, canvas
 // WebP), real uploads to the local Storage, real database checks through the service role.
@@ -13,6 +13,10 @@ const CURRICULUM = EXAM_CURRICULUM_OPEN;
 
 test.beforeEach(async () => {
   await seed();
+});
+
+test.afterAll(async () => {
+  await removeBookFiles(await curriculumId(CURRICULUM));
 });
 
 const pdfFile = (pages: number, name = "book.pdf") => ({
@@ -126,6 +130,14 @@ test("editing a title and moving a marker keeps the chapter ids", async ({ page 
   const after = await chaptersInDb();
   expect(after.map((c) => c.id)).toEqual(before.map((c) => c.id));
   expect(after.map((c) => [c.title, c.start_page, c.archived_at])).toEqual([["Eins neu", 1, null], ["Zwei", 5, null]]);
+
+  // A slip of the finger on the marker and its undo give the same chapter back (same id, same title).
+  await page.getByRole("button", { name: "Page 5: Chapter starts" }).click();
+  await expect(page.getByTestId("chapter-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "Page 5: Start here" }).click();
+  await expect(page.getByTestId("chapter-row")).toHaveCount(2);
+  await expect(page.getByRole("textbox", { name: "Title of chapter 2" })).toHaveValue("Zwei");
+  await expect(page.getByRole("button", { name: "Save chapters" })).toBeDisabled();
 
   // Removing a marker retires the chapter (kept in the database, gone from the list).
   await page.getByRole("button", { name: "Remove chapter 2" }).click();

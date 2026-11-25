@@ -175,12 +175,13 @@ describe("getChapterForReading", () => {
   });
 
   it("refuses a url after its lifetime (injectable ttl)", async () => {
-    const r = await getChapterForReading(student, cA, chA.get("One")!, { ttlSeconds: 1 });
+    const r = await getChapterForReading(student, cA, chA.get("One")!, { ttlSeconds: 3 });
     if (!r.ok) throw new Error("expected ok");
+    // The token's expiry has second granularity: with 3 s the first fetch is always still inside it.
     expect((await fetch(r.pages[0].url)).status).toBe(200);
-    await new Promise((res) => setTimeout(res, 2500));
+    await new Promise((res) => setTimeout(res, 5000));
     expect((await fetch(r.pages[0].url)).status).not.toBe(200);
-  });
+  }, 20_000);
 });
 
 describe("listLearningPaths", () => {

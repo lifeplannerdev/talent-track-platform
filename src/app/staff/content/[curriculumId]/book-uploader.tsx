@@ -6,6 +6,7 @@ import { FileUpIcon, LockIcon } from "lucide-react";
 import { cn } from "cn";
 import { convertPdf, PdfError, type ConvertedPage } from "@/lib/book/convert-pdf";
 import { checkPdfFile } from "@/lib/book/limits";
+import { putWithRetry } from "@/lib/book/upload-put";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,25 +21,13 @@ type Phase =
   | { kind: "uploading"; from: number; to: number; total: number }
   | { kind: "saving"; total: number };
 
-async function put(url: string, blob: Blob) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const res = await fetch(url, { method: "PUT", headers: { "content-type": "image/webp" }, body: blob });
-      if (res.ok) return;
-      if (attempt >= 1) throw new Error(`upload ${res.status}`);
-    } catch (e) {
-      if (attempt >= 1) throw e;
-    }
-  }
-}
-
 async function uploadBatch(curriculumId: string, uploadId: string, batch: ConvertedPage[]) {
   const minted = await mintUploadUrls({ curriculumId, uploadId, pages: batch.map((p) => p.page) });
   if (!minted.ok) throw new UploadProblem(minted.message);
   const jobs = batch.flatMap((p) => {
     const m = minted.urls.find((u) => u.page === p.page);
     if (!m) throw new UploadProblem("Upload links could not be created. Please try again.");
-    return [() => put(m.imageUrl, p.image), () => put(m.thumbUrl, p.thumb)];
+    return [() => putWithRetry(m.imageUrl, p.image), () => putWithRetry(m.thumbUrl, p.thumb)];
   });
   for (let i = 0; i < jobs.length; i += PARALLEL_PUTS) {
     await Promise.all(jobs.slice(i, i + PARALLEL_PUTS).map((j) => j()));
