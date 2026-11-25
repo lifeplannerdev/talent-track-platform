@@ -29,8 +29,15 @@ create table public.book_pages (
 create table public.chapters (
   id uuid primary key default gen_random_uuid(),
   curriculum_id uuid not null references public.books (curriculum_id) on delete cascade,
-  title text not null check (length(btrim(title)) > 0),
-  start_page integer not null check (start_page >= 1),
+  title text not null check (length(btrim(title)) between 1 and 120),
+  -- A chapter is never hard-deleted by the app (history may point at it): removing it from the list
+  -- retires it (archived_at set, start_page released = NULL, title and id kept). Active chapters
+  -- have a start page; NULLs never collide in the unique constraint, so it covers active chapters
+  -- only while staying deferrable (start pages can swap inside one save_chapters call).
+  start_page integer,
+  archived_at timestamptz,
+  constraint chapters_active_start check (
+    (archived_at is null and start_page >= 1) or (archived_at is not null and start_page is null)),
   constraint chapters_start_unique unique (curriculum_id, start_page) deferrable initially immediate
 );
 
@@ -106,7 +113,9 @@ begin
          (e ->> 'width')::integer, (e ->> 'height')::integer
   from jsonb_array_elements(p_pages) e;
 
-  delete from public.chapters where curriculum_id = p_curriculum and start_page > v_count;
+  -- Chapters beyond the new page count are retired, not deleted.
+  update public.chapters set archived_at = now(), start_page = null
+  where curriculum_id = p_curriculum and archived_at is null and start_page > v_count;
 
   update public.books
   set page_count = v_count, upload_id = p_upload, status = 'draft',
@@ -115,10 +124,11 @@ begin
 end;
 $$;
 
--- p_chapters: array of {id?, title, start_page}. Chapter identity is stable: an element with an id
--- updates that chapter (which must belong to this curriculum), one without inserts a new chapter,
--- chapters missing from the list are deleted. An empty list clears a draft book and is refused
--- (no_chapters) for a published one.
+-- p_chapters: the ACTIVE chapters, an array of {id?, title, start_page}. Chapter identity is stable:
+-- an element with an id updates that chapter (active or archived, it must belong to this
+-- curriculum; an archived one is restored), one without inserts a new chapter, active chapters
+-- missing from the list are retired (never deleted). An empty list retires everything for a draft
+-- book and is refused (no_chapters) for a published one.
 create function public.save_chapters(p_admin uuid, p_curriculum uuid, p_chapters jsonb)
 returns void
 language plpgsql
@@ -143,7 +153,8 @@ begin
     if v_status = 'published' then
       raise exception 'no_chapters';
     end if;
-    delete from public.chapters where curriculum_id = p_curriculum;
+    update public.chapters set archived_at = now(), start_page = null
+    where curriculum_id = p_curriculum and archived_at is null;
     update public.books set updated_by = p_admin, updated_at = now() where curriculum_id = p_curriculum;
     return;
   end if;
@@ -151,7 +162,7 @@ begin
   -- Shape first (CASE guards the casts).
   if not (select coalesce(bool_and(
             case when jsonb_typeof(e) <> 'object' then false
-                 else jsonb_typeof(e -> 'title') = 'string' and length(btrim(e ->> 'title')) > 0
+                 else jsonb_typeof(e -> 'title') = 'string' and length(btrim(e ->> 'title')) between 1 and 120
                   and jsonb_typeof(e -> 'start_page') = 'number' and (e ->> 'start_page') ~ '^[0-9]{1,6}$'
                   and (e -> 'id' is null or jsonb_typeof(e -> 'id') = 'null'
                        or (jsonb_typeof(e -> 'id') = 'string'
@@ -174,7 +185,7 @@ begin
     raise exception 'invalid_chapters';
   end if;
   -- Ids: distinct and all belonging to this curriculum.
-  if (select count(*) <> count(distinct (e ->> 'id')) from jsonb_array_elements(p_chapters) e where e ->> 'id' is not null)
+  if (select count(*) <> count(distinct lower(e ->> 'id')) from jsonb_array_elements(p_chapters) e where e ->> 'id' is not null)
      or exists (
        select 1 from jsonb_array_elements(p_chapters) e
        where e ->> 'id' is not null
@@ -186,11 +197,12 @@ begin
 
   -- Chapters may swap start pages inside this call: check uniqueness at the end.
   set constraints public.chapters_start_unique deferred;
-  delete from public.chapters
-  where curriculum_id = p_curriculum
+  update public.chapters
+  set archived_at = now(), start_page = null
+  where curriculum_id = p_curriculum and archived_at is null
     and id not in (select (e ->> 'id')::uuid from jsonb_array_elements(p_chapters) e where e ->> 'id' is not null);
   update public.chapters c
-  set title = btrim(e ->> 'title'), start_page = (e ->> 'start_page')::integer
+  set title = btrim(e ->> 'title'), start_page = (e ->> 'start_page')::integer, archived_at = null
   from jsonb_array_elements(p_chapters) e
   where e ->> 'id' is not null and c.id = (e ->> 'id')::uuid and c.curriculum_id = p_curriculum;
   insert into public.chapters (curriculum_id, title, start_page)
@@ -221,7 +233,7 @@ begin
     raise exception 'invalid_status';
   end if;
   if p_status = 'published' and not exists (
-       select 1 from public.chapters where curriculum_id = p_curriculum and start_page = 1
+       select 1 from public.chapters where curriculum_id = p_curriculum and archived_at is null and start_page = 1
      ) then
     raise exception 'no_chapters';
   end if;

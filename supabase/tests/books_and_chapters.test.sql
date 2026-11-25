@@ -1,7 +1,7 @@
 -- Phase 2a, migration 0028: books, book_pages, chapters, the three service-role functions and the
 -- private book-pages bucket (pgTAP). Run: npm run db:test
 begin;
-select plan(101);
+select plan(125);
 
 -- Fixtures: a1 admin, a2 inactive admin, a3 trainer, b1 student.
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
@@ -130,14 +130,14 @@ select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-00000000
   'P0001', 'invalid_chapters', 'a malformed id is a named error');
 select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', '[1]')$$,
   'P0001', 'invalid_chapters', 'a non-object element is a named error');
-select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 0, 'rejections changed nothing');
+select is((select count(*)::int from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 0, 'rejections changed nothing');
 
 -- set_book_status ------------------------------------------------------------------------
 select throws_ok($$select public.set_book_status('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', 'published')$$,
   'P0001', 'no_chapters', 'publishing without chapters raises no_chapters');
 select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1',
   '[{"title":"One","start_page":1},{"title":"Two","start_page":4},{"title":"Three","start_page":8}]')$$, 'valid chapters are saved');
-select is((select string_agg(title || ':' || start_page, ',' order by start_page) from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1'),
+select is((select string_agg(title || ':' || start_page, ',' order by start_page) from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1'),
   'One:1,Two:4,Three:8', 'three chapters stored');
 create temp table ch as select title, id from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1';
 grant select on ch to public;
@@ -153,7 +153,7 @@ select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-000000002
   jsonb_build_object('id', (select id from ch where title = 'Two'), 'title', 'Two b', 'start_page', 4),
   jsonb_build_object('id', (select id from ch where title = 'Three'), 'title', 'Three', 'start_page', 8)))$$, 'adding a marker saves');
 select is((select count(*)::int from public.chapters c join ch on ch.id = c.id where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 3, 'ids unchanged after adding a marker before');
-select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 4, 'four chapters now');
+select is((select count(*)::int from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 4, 'four chapters now');
 create temp table half as select id from public.chapters where title = 'Half' and curriculum_id = '10000000-0000-0000-0000-0000000028c1';
 grant select on half to public;
 select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', jsonb_build_array(
@@ -167,8 +167,8 @@ select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-000000002
   jsonb_build_object('id', (select id from ch where title = 'One'), 'title', 'One', 'start_page', 1),
   jsonb_build_object('id', (select id from ch where title = 'Two'), 'title', 'Two b', 'start_page', 2),
   jsonb_build_object('id', (select id from ch where title = 'Three'), 'title', 'Three', 'start_page', 8)))$$, 'removing a marker saves');
-select is((select count(*)::int from public.chapters c join ch on ch.id = c.id where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 3, 'only the removed chapter is gone');
-select is((select count(*)::int from public.chapters where id = (select id from half)), 0, 'Half was deleted');
+select is((select count(*)::int from public.chapters c join ch on ch.id = c.id where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 3, 'the other chapters keep their ids');
+select is((select title || '/' || coalesce(start_page::text, 'null') || '/' || (archived_at is not null) from public.chapters where id = (select id from half)), 'Half/null/true', 'Half was retired, not deleted (id and title kept)');
 
 select lives_ok($$select public.finalize_book_upload('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c2', gen_random_uuid(), pg_temp.pages(3))$$, 'second curriculum gets a book');
 select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c2', '[{"title":"Other","start_page":1}]')$$, 'second curriculum gets a chapter');
@@ -184,7 +184,7 @@ select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-00000000
   jsonb_build_object('id', (select id from ch where title = 'One'), 'title', 'One', 'start_page', 1),
   jsonb_build_object('id', (select id from ch where title = 'One'), 'title', 'One', 'start_page', 2)))$$,
   'P0001', 'invalid_chapters', 'a repeated id is rejected');
-select is((select string_agg(title || ':' || start_page, ',' order by start_page) from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1'),
+select is((select string_agg(title || ':' || start_page, ',' order by start_page) from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1'),
   'One:1,Two b:2,Three:8', 'rejections changed nothing');
 select is((select title from public.chapters where id = (select id from other)), 'Other', 'the other curriculum chapter is untouched');
 select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', jsonb_build_array(
@@ -192,35 +192,85 @@ select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-000000002
   jsonb_build_object('id', (select id from ch where title = 'Two'), 'title', 'Two', 'start_page', 4),
   jsonb_build_object('id', (select id from ch where title = 'Three'), 'title', 'Three', 'start_page', 8)))$$, 'restore One, Two, Three');
 select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c2', '[]')$$, 'an empty list clears a draft book');
-select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c2'), 0, 'draft book has no chapters');
+select is((select count(*)::int from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c2'), 0, 'draft book has no active chapters');
 select lives_ok($$select public.set_book_status('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', 'published')$$, 'publishing works with chapters');
 select is((select status from public.books where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 'published', 'status is published');
 select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', '[]')$$,
   'P0001', 'no_chapters', 'an empty list on a published book raises no_chapters');
-select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 3, 'published book kept its chapters');
+select is((select count(*)::int from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1'), 3, 'published book kept its chapters');
 select throws_ok($$select public.set_book_status('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', 'archived')$$,
   'P0001', 'invalid_status', 'an unknown status is rejected');
 select throws_ok($$select public.finalize_book_upload('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', gen_random_uuid(), pg_temp.pages(5))$$,
   'P0001', 'book_published', 'uploading over a published book raises book_published');
-select is((select count(*)::int from public.book_pages where curriculum_id = '10000000-0000-0000-0000-0000000028c1') || '/' || (select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), '10/3', 'book_published left pages and chapters intact');
+select is((select count(*)::int from public.book_pages where curriculum_id = '10000000-0000-0000-0000-0000000028c1') || '/' || (select count(*)::int from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1'), '10/3', 'book_published left pages and chapters intact');
 select lives_ok($$select public.set_book_status('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', 'draft')$$, 'unpublishing works');
 select throws_ok($$select public.finalize_book_upload('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', gen_random_uuid(), '[{"page":2,"path":"p","thumb":"t","width":1,"height":1}]')$$,
   'P0001', 'invalid_pages', 'a bad re-upload is rejected');
-select is((select count(*)::int from public.book_pages where curriculum_id = '10000000-0000-0000-0000-0000000028c1') || '/' || (select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1') || '/' || (select page_count from public.books where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), '10/3/10', 'invalid_pages left pages and chapters intact');
+select is((select count(*)::int from public.book_pages where curriculum_id = '10000000-0000-0000-0000-0000000028c1') || '/' || (select count(*)::int from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1') || '/' || (select page_count from public.books where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), '10/3/10', 'invalid_pages left pages and chapters intact');
 
 -- Second upload with fewer pages ----------------------------------------------------------
 select lives_ok($$select public.finalize_book_upload('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c1', '60000000-0000-0000-0000-000000000002', pg_temp.pages(5))$$,
   're-upload with 5 pages works');
-select is((select string_agg(start_page::text, ',' order by start_page) from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c1'),
-  '1,4', 'chapters beyond the new page count are deleted, the others stay');
+select is((select string_agg(start_page::text, ',' order by start_page) from public.chapters where archived_at is null and curriculum_id = '10000000-0000-0000-0000-0000000028c1'),
+  '1,4', 'chapters beyond the new page count are retired, the others stay active');
 select is((select page_count || '/' || status || '/' || (select count(*) from public.book_pages where curriculum_id = '10000000-0000-0000-0000-0000000028c1')
            from public.books where curriculum_id = '10000000-0000-0000-0000-0000000028c1'), '5/draft/5', 'pages replaced, still draft');
+
+-- History is permanent: chapters are retired, never deleted ------------------------------------
+select lives_ok($$select public.finalize_book_upload('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', gen_random_uuid(), pg_temp.pages(6))$$, 'third book, 6 pages');
+select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3',
+  '[{"title":"A","start_page":1},{"title":"B","start_page":3},{"title":"C","start_page":5}]')$$, 'three chapters on the third book');
+create temp table t3 as select title, id from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c3';
+grant select on t3 to public;
+select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', jsonb_build_array(
+  jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', 'A', 'start_page', 1),
+  jsonb_build_object('id', (select id from t3 where title = 'C'), 'title', 'C', 'start_page', 5)))$$, 'omitting B retires it');
+select is((select title || '/' || coalesce(start_page::text, 'null') || '/' || (archived_at is not null) from public.chapters where id = (select id from t3 where title = 'B')),
+  'B/null/true', 'retired chapter keeps id and title, start page released');
+select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c3'), 3, 'no row was deleted');
+select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c3' and archived_at is null), 2, 'two active chapters');
+select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', '[]')$$, 'empty list retires every chapter of a draft');
+select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c3'), 3, 'still three rows, all retired');
+select throws_ok($$select public.set_book_status('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', 'published')$$,
+  'P0001', 'no_chapters', 'retired chapters do not count for publishing');
+select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', jsonb_build_array(
+  jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', 'A restored', 'start_page', 1),
+  jsonb_build_object('id', (select id from t3 where title = 'B'), 'title', 'B', 'start_page', 3)))$$, 'restoring by id works');
+select is((select (archived_at is null) || '/' || title || '/' || start_page from public.chapters where id = (select id from t3 where title = 'B')), 'true/B/3', 'B is active again');
+select is((select title from public.chapters where id = (select id from t3 where title = 'A')), 'A restored', 'restore applies the new title');
+select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', jsonb_build_array(
+  jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', 'A restored', 'start_page', 1),
+  jsonb_build_object('id', (select id from t3 where title = 'B'), 'title', 'B', 'start_page', 3),
+  jsonb_build_object('title', 'D', 'start_page', 5)))$$, 'a new chapter reuses the page retired C used');
+select isnt((select id from public.chapters where title = 'D' and curriculum_id = '10000000-0000-0000-0000-0000000028c3'), (select id from t3 where title = 'C'), 'D is a new chapter');
+select is((select archived_at is not null from public.chapters where id = (select id from t3 where title = 'C')), true, 'C stays retired');
+select lives_ok($$select public.set_book_status('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', 'published')$$, 'publish counts active chapters');
+select lives_ok($$select public.set_book_status('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', 'draft')$$, 'back to draft');
+select lives_ok($$select public.finalize_book_upload('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', gen_random_uuid(), pg_temp.pages(4))$$, 're-upload with 4 pages');
+select is((select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c3') || '/' ||
+          (select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c3' and archived_at is null), '4/2',
+  'chapters beyond the page count are retired, not deleted');
+select is((select title || '/' || coalesce(start_page::text, 'null') from public.chapters where title = 'D' and curriculum_id = '10000000-0000-0000-0000-0000000028c3'), 'D/null', 'D kept its title, start released');
+select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', jsonb_build_array(
+  jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', 'A', 'start_page', 1),
+  jsonb_build_object('id', (select id from t3 where title = 'C'), 'title', 'C', 'start_page', 5)))$$,
+  'P0001', 'invalid_chapters', 'a restored chapter must still fit the page count');
+select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', jsonb_build_array(
+  jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', 'A', 'start_page', 1),
+  jsonb_build_object('id', upper((select id::text from t3 where title = 'A')), 'title', 'A2', 'start_page', 2)))$$,
+  'P0001', 'invalid_chapters', 'the same id in another case is a duplicate');
+select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3',
+  jsonb_build_array(jsonb_build_object('title', repeat('x', 121), 'start_page', 1)))$$,
+  'P0001', 'invalid_chapters', 'a 121-character title is rejected');
+select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3',
+  jsonb_build_array(jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', repeat('x', 120), 'start_page', 1)))$$, 'a 120-character title is accepted');
+
 
 -- Direct access ---------------------------------------------------------------------------
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000028a3","role":"authenticated"}', true);
 set local role authenticated;
-select is((select count(*)::int from public.books), 2, 'trainer reads books');
-select is((select count(*)::int from public.book_pages) + (select count(*)::int from public.chapters), 10, 'trainer reads pages and chapters');
+select is((select count(*)::int from public.books), 3, 'trainer reads books');
+select is((select count(*)::int from public.book_pages) + (select count(*)::int from public.chapters), 21, 'trainer reads pages and chapters');
 select throws_ok($$insert into public.books (curriculum_id) values ('10000000-0000-0000-0000-0000000028c2')$$, '42501', null, 'staff cannot insert books');
 select throws_ok($$update public.chapters set title = 'x'$$, '42501', null, 'staff cannot update chapters');
 select throws_ok($$delete from public.book_pages$$, '42501', null, 'staff cannot delete book_pages');
