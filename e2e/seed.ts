@@ -123,6 +123,14 @@ export async function seed() {
   }
   for (const u of list.users.filter((u) => u.email && staffEmails.includes(u.email))) await remove(u.id);
 
+  // The default curriculums may carry the demo book (node scripts/demo-seed.mjs); a student of these
+  // specs must start without a learning path, so the home stays the exam start page.
+  for (const id of ["00000000-0000-4000-8000-00000000c001", "00000000-0000-4000-8000-00000000c002"]) {
+    await removeBookFiles(id);
+    await db.from("chapters").delete().eq("curriculum_id", id);
+    await db.from("books").delete().eq("curriculum_id", id);
+  }
+
   const create = async (email: string, password: string, meta: Record<string, string>) => {
     const { data, error } = await db.auth.admin.createUser({ email, password, email_confirm: true, app_metadata: meta });
     if (error) throw error;

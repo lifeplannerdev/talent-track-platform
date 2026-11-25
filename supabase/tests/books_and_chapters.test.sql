@@ -281,8 +281,8 @@ select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-000000002
 -- Direct access ---------------------------------------------------------------------------
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000028a3","role":"authenticated"}', true);
 set local role authenticated;
-select is((select count(*)::int from public.books), 3, 'trainer reads books');
-select is((select count(*)::int from public.book_pages) + (select count(*)::int from public.chapters), 21, 'trainer reads pages and chapters');
+select is((select count(*)::int from public.books where curriculum_id::text like '10000000-0000-0000-0000-0000000028c%'), 3, 'trainer reads books');
+select is((select count(*)::int from public.book_pages where curriculum_id::text like '10000000-0000-0000-0000-0000000028c%') + (select count(*)::int from public.chapters where curriculum_id::text like '10000000-0000-0000-0000-0000000028c%'), 21, 'trainer reads pages and chapters');
 select throws_ok($$insert into public.books (curriculum_id) values ('10000000-0000-0000-0000-0000000028c2')$$, '42501', null, 'staff cannot insert books');
 select throws_ok($$update public.chapters set title = 'x'$$, '42501', null, 'staff cannot update chapters');
 select throws_ok($$delete from public.book_pages$$, '42501', null, 'staff cannot delete book_pages');

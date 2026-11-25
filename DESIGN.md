@@ -245,6 +245,10 @@ are never applied) and plays once without blocking input or shifting layout.
   (`print-color-adjust: exact`); badges, table heads and frames are forced to black; sections,
   rows and fact lists do not break across pages, so a normal report fits one sheet.
 
+## Content pages (phase 2A, admin only)
+
+`/staff/content` is a list of cards per curriculum with a No book / Draft / Published badge and page and chapter counts. `/staff/content/[curriculumId]` stacks three framed cards on the staff canvas: Book (dropzone or Choose PDF; status text "Converting page n of N" then "Uploading pages a to b", token-styled progress bar, Cancel; Replace PDF only while a draft), Chapters (a thumbnail strip with a "Start here" marker per chapter, a title and a Start page number input per chapter, live ranges "Pages 1–3 (3 pages)", inline validation) and Publish. The strip scrolls sideways inside itself (it is `relative`, so nothing inside can widen the page at 375 px); the file picker stays disabled until hydration; the chapter editor is locked while a save settles. Same tokens and conventions as the other staff pages, no new colours.
+
 ## Book reader (phase 2A)
 
 Full-screen exception to the narrow student column: `/learn/[curriculumId]/read/[chapterId]` (`src/components/reader/`). Editorial desk: `--background` desk, white pages with `shadow-panel`, a faint spine shadow in the centre of a spread, calm chrome (outline buttons, 44 px on touch, Lexend counter). Spread from 900 px wide landscape, otherwise one page (`chooseMode`). Chrome fades after 3.5 s idle and returns on pointer, touch or key; it never fades while a control has focus or the page strip is open. Reduced motion: no flip animation (instant turn, no shadows or corner curls), chrome always visible. Pages keep their own shape (`object-fit: contain` inside the first page's box). The strip (`reader-thumbs.tsx`) overlays the desk; Enlarge shows pages at 2x in a scrollable, drag-to-pan view.

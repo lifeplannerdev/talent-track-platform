@@ -9,6 +9,7 @@
 //   trainer, with contact email demo.student@example.test) with the two default
 //   curriculums (Pflege Ausbildung, Life in Germany; migration 0010), each with two exam sets of
 //   3 questions drawn from 6 German/English questions (correct option b = "Nein"), pass mark 90 %.
+// - a published demo book for Pflege Ausbildung (4 generated pages, 2 chapters), replaced on every run.
 // TEST credentials only; passwords and keys are never printed.
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
@@ -45,6 +46,60 @@ const must = async (promise, what) => {
   if (error) throw new Error(`${what}: ${error.message}`);
   return data;
 };
+
+
+const BOOK_BUCKET = "book-pages";
+const DEMO_BOOK_PAGES = 4;
+const DEMO_BOOK_CHAPTERS = [
+  { title: "Willkommen in der Pflege", start: 1 },
+  { title: "Im Gespräch mit Patienten", start: 3 },
+];
+
+async function demoPageImage(sharp, page, scale) {
+  const w = Math.round(600 * scale);
+  const h = Math.round(800 * scale);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 600 800">
+    <rect width="100%" height="100%" fill="#ffffff"/>
+    <rect x="12" y="12" width="576" height="776" fill="none" stroke="#2346a0" stroke-width="6"/>
+    <rect x="48" y="64" width="270" height="22" fill="#c7d2ee"/>
+    ${[0, 1, 2, 3, 4, 5].map((i) => `<rect x="48" y="${130 + i * 36}" width="${i % 2 ? 360 : 468}" height="12" fill="#e6eaf4"/>`).join("")}
+    <text x="300" y="744" font-family="sans-serif" font-size="56" text-anchor="middle" fill="#14213d">${page}</text>
+  </svg>`;
+  return sharp(Buffer.from(svg)).webp({ quality: 70 }).toBuffer();
+}
+
+// Replaces the demo book of the Pflege curriculum (files, pages and chapters) with a fresh published one.
+async function seedDemoBook(db, curriculumId) {
+  const { default: sharp } = await import("sharp");
+  const bucket = db.storage.from(BOOK_BUCKET);
+  const folders = await must(bucket.list(curriculumId, { limit: 1000 }), "list old book folders");
+  for (const folder of folders) {
+    const files = await must(bucket.list(`${curriculumId}/${folder.name}`, { limit: 1000 }), "list old book files");
+    const paths = files.map((f) => `${curriculumId}/${folder.name}/${f.name}`);
+    if (paths.length > 0) await must(bucket.remove(paths), "remove old book files");
+  }
+  await must(db.from("chapters").delete().eq("curriculum_id", curriculumId), "remove old chapters");
+  await must(db.from("books").delete().eq("curriculum_id", curriculumId), "remove old book");
+  const uploadId = crypto.randomUUID();
+  await must(
+    db.from("books").insert({ curriculum_id: curriculumId, status: "published", page_count: DEMO_BOOK_PAGES, upload_id: uploadId }),
+    "create demo book",
+  );
+  const rows = [];
+  for (let n = 1; n <= DEMO_BOOK_PAGES; n++) {
+    const path = `${curriculumId}/${uploadId}/${n}.webp`;
+    const thumbPath = `${curriculumId}/${uploadId}/${n}.thumb.webp`;
+    for (const [p, scale] of [[path, 1], [thumbPath, 0.25]]) {
+      await must(bucket.upload(p, await demoPageImage(sharp, n, scale), { contentType: "image/webp", upsert: true }), "upload demo page");
+    }
+    rows.push({ curriculum_id: curriculumId, page_number: n, path, thumb_path: thumbPath, width: 600, height: 800 });
+  }
+  await must(db.from("book_pages").insert(rows), "create demo pages");
+  await must(
+    db.from("chapters").insert(DEMO_BOOK_CHAPTERS.map((c) => ({ curriculum_id: curriculumId, title: c.title, start_page: c.start }))),
+    "create demo chapters",
+  );
+}
 
 async function main() {
   try {
@@ -136,6 +191,8 @@ async function main() {
       "assign curriculum",
     );
   }
+
+  await seedDemoBook(db, CURRICULUMS[0].id);
 
   console.log("Demo data ready: admin demo-staff@example.test, trainer demo-trainer@example.test and student demo.student (passwords in scripts/demo-seed.mjs).");
 }

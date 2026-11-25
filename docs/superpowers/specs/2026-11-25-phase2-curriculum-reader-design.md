@@ -106,3 +106,14 @@ Exact DDL and function bodies, image size and quality tuning after trying the re
 ## Open owner decisions
 
 None blocking. (The sample PDF is received; the real curriculum files are uploaded in the app by an admin once 2A is built.)
+
+## Status: Slice 2A implemented (2026-11-25)
+
+Built and covered by pgTAP, unit and e2e tests: private `book-pages` bucket and tables (migration 0028), browser-side PDF conversion and upload, chapter strip editor with permanent history (retire, never delete), publish and replace rules, signed page links (300 s, one `not_found` reason), the pathway home at `/learn`, and the full-screen reader. Every chapter is open and the Main exam node is display-only; exercises, gating, progress and telemetry are slice 2B. Details live in CLAUDE.md ("Curriculum books") and DESIGN.md.
+
+Known gaps (small, deliberately deferred):
+- `save_chapters` compares ids case-sensitively, so two ids that differ only in letter case count as different; `validateChapters` does not check that ids are UUIDs (the editor only sends valid ids or none). Note for 2B: never upsert chapters by start page, only by id.
+- `mintUploadUrls` does not check that the curriculum exists (an admin could leave orphan files). A signing failure while reading shows an empty thumbnail silently.
+- Reader: arrow, Home and End keys are also handled inside the page strip and the zoomed view; focus falls to the page after a thumbnail jump closes the strip; faded chrome can still be clicked; switching between spread and single page can move the exact page (3-4 becomes 3); reduced motion is read when the reader is created, not live; thumbnails are not lazy and a broken thumbnail is not handled; if a refresh after a failed image brings no new pages, later errors are ignored; the retry state is not reset if the reader is reused for another chapter within a minute.
+- `/learn` redirects a student without a book only after streaming starts (a brief header flash); `/exam/start` runs one extra learning-path query for its header; the "Main exam" node copy ("Request opens when every chapter is done") describes a later mechanic and should be softened.
+- Test gaps: the idle chrome fade and the reduced-motion and no-JS behaviour of the pathway are only lightly covered; the mixed-page-shape reader e2e measures against its root; no test for a one-chapter book range.
