@@ -14,6 +14,7 @@ import {
   spreadStart,
   visibleIndexes,
 } from "./reader-model";
+import { decideImageError, type RetryState } from "./retry-policy";
 import { ReaderThumbs } from "./reader-thumbs";
 import { useReaderLayout } from "./use-reader-layout";
 import type { PageFlip } from "page-flip";
@@ -78,7 +79,7 @@ export function BookReader({
   const pagesRef = useRef(pages);
   const modeRef = useRef(mode);
   const reducedRef = useRef(reduced);
-  const retriedRef = useRef<ReaderPage[] | null>(null);
+  const retryRef = useRef<RetryState>(null);
   const onExpiredRef = useRef(onExpired);
   const stripOpenRef = useRef(stripOpen);
   const onCloseRef = useRef(onClose);
@@ -151,12 +152,10 @@ export function BookReader({
         img.addEventListener("error", () => {
           if (cancelled) return;
           const latest = pagesRef.current;
-          if (retriedRef.current !== latest) {
-            retriedRef.current = latest;
-            onExpiredRef.current?.();
-          } else {
-            setBrokenFor(latest);
-          }
+          const decision = decideImageError(retryRef.current, Date.now(), latest);
+          retryRef.current = decision.state;
+          if (decision.action === "refresh") onExpiredRef.current?.();
+          else if (decision.action === "broken") setBrokenFor(latest);
         });
         el.appendChild(img);
         imgs.push(img);
@@ -432,7 +431,7 @@ export function BookReader({
       </div>
 
       {broken && (
-        <p role="alert" className="absolute inset-x-4 bottom-24 z-30 mx-auto w-fit max-w-full rounded-md bg-destructive-muted px-3 py-2 text-sm text-destructive ring-1 ring-destructive/30">
+        <p role="alert" data-testid="reader-broken" className="absolute inset-x-4 bottom-24 z-30 mx-auto w-fit max-w-full rounded-md bg-destructive-muted px-3 py-2 text-sm text-destructive ring-1 ring-destructive/30">
           A page could not be loaded. Check your connection and reload.
         </p>
       )}

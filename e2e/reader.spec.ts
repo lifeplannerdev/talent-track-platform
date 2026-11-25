@@ -199,6 +199,23 @@ test.describe("student reader", () => {
     const first = page.getByTestId("reader-page-1");
     await expect.poll(() => first.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
     await expect(counter(page)).toHaveText(isNarrow(page) ? "1 / 5" : "1\u20132 / 5");
+    await expect(page.getByTestId("reader-broken")).toHaveCount(0);
+  });
+
+  test("a page that keeps failing refreshes once, then says so", async ({ page }) => {
+    // Pages 1 and 2 of the chapter (book pages 6 and 7) fail on every request, as when expiring together.
+    await page.route(/\/storage\/v1\/object\/sign\/book-pages\/.*\/[67]\.webp/, (route) => route.abort());
+    let refreshes = 0;
+    page.on("request", (r) => {
+      if (r.url().includes(`/learn/${openId}/read/${chapterTwo}`) && r.url().includes("_rsc=")) refreshes += 1;
+    });
+    await page.goto(readerUrl(openId, chapterTwo));
+    await expect(page.getByTestId("reader-broken")).toContainText("A page could not be loaded");
+    expect(refreshes).toBe(1);
+    // Nothing keeps refreshing afterwards: after two frames the count is the same.
+    await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+    expect(refreshes).toBe(1);
+    await expect(page.getByTestId("book-reader")).toBeVisible();
   });
 
   test("screenshots", async ({ page }) => {
