@@ -20,6 +20,7 @@
 - Look: `DESIGN.md` tokens only, light theme only, 44 px touch targets (`pointer-coarse:`), no raw hex. Motion respects `prefers-reduced-motion` (page flip becomes an instant change, no pulses). The reader is a documented full-screen exception to the narrow student column.
 - Reuse, do not duplicate: `requireAdmin`/`requireRole`, `PageHeader`, `StudentHeader`, `Skeleton`, shadcn components, `createAdminClient`. Mixed page sizes in one PDF must work (size every page from its own width and height).
 - Frontend tasks (5, 7, 8) use the approved skills: `frontend-design`, `impeccable`, `ui-ux-pro-max`, `shadcn`. Models: Sonnet; Haiku only for doc-only steps; Opus only if a task blocks.
+- History is permanent: chapters are retired (`archived_at`), never hard-deleted once they could have history; ids are stable; readers, ranges and editors use active chapters only; the unique start-page rule covers active chapters only (spec: "History is permanent").
 - Never commit the real curriculum PDF (the owner's file `Deutscher_Fleischer_Berufskurs_Complete_Edition_plus_Fisch.pdf`, 51 pages, A4, 2.5 MB); tests use a small generated PDF fixture; the real file is a manual check (path from the owner).
 - The working tree may hold unrelated uncommitted edits (`.claude/`, `demo-video/`): never stage them. Commits carry no attribution lines.
 
