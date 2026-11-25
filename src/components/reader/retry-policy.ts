@@ -4,13 +4,17 @@
 // pages have arrived is real: show the message, and refresh again only after the cooldown.
 
 export const RETRY_COOLDOWN_MS = 60_000;
+// A refresh that has brought no fresh pages after this long failed (offline): stop waiting, show the message.
+export const REFRESH_WAIT_MS = 8_000;
 
 export type RetryState = { startedAt: number; pagesToken: unknown } | null;
 export type RetryDecision = { action: "refresh" | "ignore" | "broken"; state: RetryState };
 
 export function decideImageError(state: RetryState, now: number, pagesToken: unknown): RetryDecision {
   if (state === null) return { action: "refresh", state: { startedAt: now, pagesToken } };
-  if (state.pagesToken === pagesToken) return { action: "ignore", state };
+  if (state.pagesToken === pagesToken) {
+    return now - state.startedAt >= REFRESH_WAIT_MS ? { action: "broken", state } : { action: "ignore", state };
+  }
   if (now - state.startedAt < RETRY_COOLDOWN_MS) return { action: "broken", state };
   return { action: "refresh", state: { startedAt: now, pagesToken } };
 }

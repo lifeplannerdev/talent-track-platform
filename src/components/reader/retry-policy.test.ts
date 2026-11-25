@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideImageError, RETRY_COOLDOWN_MS } from "./retry-policy";
+import { decideImageError, REFRESH_WAIT_MS, RETRY_COOLDOWN_MS } from "./retry-policy";
 
 describe("decideImageError", () => {
   const first = {};
@@ -15,6 +15,12 @@ describe("decideImageError", () => {
     const started = decideImageError(null, 1000, first).state;
     expect(decideImageError(started, 1100, first).action).toBe("ignore");
     expect(decideImageError(started, 1200, first).action).toBe("ignore");
+  });
+
+  it("reports a failure when the refresh brought no fresh pages within the wait (offline)", () => {
+    const started = decideImageError(null, 1000, first).state;
+    expect(decideImageError(started, 1000 + REFRESH_WAIT_MS - 1, first).action).toBe("ignore");
+    expect(decideImageError(started, 1000 + REFRESH_WAIT_MS, first).action).toBe("broken");
   });
 
   it("reports a failure after the fresh pages arrived, without refreshing again", () => {

@@ -14,7 +14,7 @@ import {
   spreadStart,
   visibleIndexes,
 } from "./reader-model";
-import { decideImageError, type RetryState } from "./retry-policy";
+import { decideImageError, REFRESH_WAIT_MS, type RetryState } from "./retry-policy";
 import { ReaderThumbs } from "./reader-thumbs";
 import { useReaderLayout } from "./use-reader-layout";
 import type { PageFlip } from "page-flip";
@@ -74,6 +74,10 @@ export function BookReader({
   const barRef = useRef<HTMLDivElement>(null);
   const deskRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+  const stripToggleRef = useRef<HTMLButtonElement>(null);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomedRef = useRef(zoomed);
   const flipRef = useRef<PageFlip | null>(null);
   const imgsRef = useRef<HTMLImageElement[]>([]);
   const pagesRef = useRef(pages);
@@ -92,6 +96,7 @@ export function BookReader({
     modeRef.current = mode;
     reducedRef.current = reduced;
     onExpiredRef.current = onExpired;
+    zoomedRef.current = zoomed;
   });
 
   const scale = zoomed ? ZOOM : 1;
@@ -154,8 +159,14 @@ export function BookReader({
           const latest = pagesRef.current;
           const decision = decideImageError(retryRef.current, Date.now(), latest);
           retryRef.current = decision.state;
-          if (decision.action === "refresh") onExpiredRef.current?.();
-          else if (decision.action === "broken") setBrokenFor(latest);
+          if (decision.action === "refresh") {
+            onExpiredRef.current?.();
+            // If the refresh never brings fresh pages (offline), say so instead of loading forever.
+            if (refreshTimer.current) clearTimeout(refreshTimer.current);
+            refreshTimer.current = setTimeout(() => {
+              if (pagesRef.current === latest) setBrokenFor(latest);
+            }, REFRESH_WAIT_MS);
+          } else if (decision.action === "broken") setBrokenFor(latest);
         });
         el.appendChild(img);
         imgs.push(img);
@@ -261,7 +272,10 @@ export function BookReader({
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       const target = e.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-      switch (e.key) {
+      // Inside the enlarged desk or the page strip the arrows scroll; page turns stay on the buttons.
+      const scrolling =
+        !!target && ((zoomedRef.current && !!deskRef.current?.contains(target)) || !!stripRef.current?.contains(target));
+      switch (scrolling && e.key !== "Escape" ? "" : e.key) {
         case "ArrowRight":
           e.preventDefault();
           goNext();
@@ -279,7 +293,10 @@ export function BookReader({
           goTo(pagesRef.current.length - 1);
           break;
         case "Escape":
-          if (stripOpenRef.current) setStripOpen(false);
+          if (stripOpenRef.current) {
+            setStripOpen(false);
+            stripToggleRef.current?.focus({ preventScroll: true });
+          }
           else onCloseRef.current();
           break;
       }
@@ -287,6 +304,13 @@ export function BookReader({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [goNext, goPrev, goTo]);
+
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
 
   // Take focus once so the keyboard works at once; never moves it afterwards.
   useEffect(() => {
@@ -358,7 +382,7 @@ export function BookReader({
   const chromeHidden = !chromeVisible && !reduced;
   const chromeClass = cn(
     "transition-opacity duration-300 focus-within:opacity-100",
-    chromeHidden ? "opacity-0" : "opacity-100",
+    chromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
     reduced && "transition-none",
   );
 
@@ -377,6 +401,7 @@ export function BookReader({
       <div
         ref={barRef}
         data-testid="reader-bar"
+        inert={chromeHidden}
         className={cn("relative z-20 flex h-16 shrink-0 items-center gap-2 px-3 sm:px-5", chromeClass)}
       >
         <Button variant="outline" size="lg" onClick={onClose} aria-label="Close reader" className="px-3 sm:px-4">
@@ -389,6 +414,7 @@ export function BookReader({
           size="icon-lg"
           aria-label={stripOpen ? "Hide page strip" : "Show page strip"}
           aria-expanded={stripOpen}
+          ref={stripToggleRef}
           onClick={() => setStripOpen((v) => !v)}
         >
           <GalleryHorizontalEndIcon aria-hidden="true" />
@@ -407,7 +433,10 @@ export function BookReader({
       {/* Desk and book */}
       <div
         ref={deskRef}
-        className={cn("relative flex min-h-0 flex-1 overflow-auto", zoomed ? "cursor-grab active:cursor-grabbing" : "overflow-hidden")}
+        tabIndex={zoomed ? 0 : undefined}
+        role={zoomed ? "region" : undefined}
+        aria-label={zoomed ? "Enlarged pages, scroll with the arrow keys" : undefined}
+        className={cn("relative flex min-h-0 flex-1 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset", zoomed ? "cursor-grab active:cursor-grabbing" : "overflow-hidden")}
         onPointerDown={onPanDown}
         onPointerMove={onPanMove}
         onPointerUp={onPanUp}
@@ -439,6 +468,7 @@ export function BookReader({
       {/* Page strip */}
       {stripOpen && (
         <div
+          ref={stripRef}
           role="region"
           aria-label="Pages"
           className="absolute inset-x-0 bottom-20 z-30 mx-auto max-w-3xl rounded-t-xl bg-card shadow-overlay ring-1 ring-border"
@@ -450,13 +480,14 @@ export function BookReader({
             onJump={(i) => {
               goTo(i);
               setStripOpen(false);
+              stripToggleRef.current?.focus({ preventScroll: true });
             }}
           />
         </div>
       )}
 
       {/* Bottom toolbar */}
-      <div className={cn("relative z-20 flex h-20 shrink-0 items-center justify-center gap-3 px-3", chromeClass)}>
+      <div inert={chromeHidden} className={cn("relative z-20 flex h-20 shrink-0 items-center justify-center gap-3 px-3", chromeClass)}>
         <Button variant="outline" size="icon-lg" aria-label="Previous page" disabled={atStart} onClick={goPrev}>
           <ChevronLeftIcon aria-hidden="true" />
         </Button>

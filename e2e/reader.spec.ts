@@ -110,6 +110,29 @@ test.describe("student reader", () => {
     await expect(page.getByRole("button", { name: "Go to page 5" })).toHaveAttribute("aria-current", "page");
   });
 
+  test("after a thumbnail jump focus returns to the strip button", async ({ page }) => {
+    await openReader(page);
+    await page.getByRole("button", { name: "Show page strip" }).click();
+    await page.getByRole("button", { name: "Go to page 3" }).click();
+    await expect(page.getByRole("button", { name: "Show page strip" })).toBeFocused();
+  });
+
+  test("the enlarged view scrolls with the keyboard and the arrows do not turn the page there", async ({ page }) => {
+    await openReader(page);
+    await page.getByRole("button", { name: "Enlarge pages" }).click();
+    const desk = page.getByRole("region", { name: /Enlarged pages/ });
+    await desk.focus();
+    const before = await counter(page).textContent();
+    await expect.poll(() => desk.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => desk.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    expect(await counter(page).textContent()).toBe(before);
+    // Back out of the desk: the arrows turn pages again.
+    await page.getByRole("button", { name: "Enlarge pages" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(counter(page)).not.toHaveText(before ?? "");
+  });
+
   test("Escape and Close go back to the learning path", async ({ page }) => {
     await openReader(page);
     await page.keyboard.press("Escape");
@@ -219,6 +242,14 @@ test.describe("student reader", () => {
     await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
     expect(refreshes).toBe(1);
     await expect(page.getByTestId("book-reader")).toBeVisible();
+  });
+
+  test("a refresh that cannot reach the server ends in the message, not a skeleton", async ({ page }) => {
+    await page.route(/\/storage\/v1\/object\/sign\/book-pages\/.*\/[67]\.webp/, (route) => route.abort());
+    // The refresh request hangs (a connection that stalls): the page never gets fresh urls.
+    await page.route(/_rsc=/, () => {});
+    await page.goto(readerUrl(openId, chapterTwo));
+    await expect(page.getByTestId("reader-broken")).toContainText("A page could not be loaded", { timeout: 15_000 });
   });
 
   test("screenshots", async ({ page }) => {
