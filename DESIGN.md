@@ -1,6 +1,6 @@
 # Talent Track Platform design system
 
-The visual rules for Talent Track Platform, powered by F.L.A.G (the letters exactly as given; F.L.A.G is the Foreign Languages Academy Gurukulam, spelled out once, in the landing footer). Tokens live in `src/app/globals.css`;
+The visual rules for Talent Track Platform, powered by F.L.A.G. (the letters and the final dot exactly as given; F.L.A.G. is the Foreign Languages Academy Gurukulam, spelled out once, in the landing footer). Tokens live in `src/app/globals.css`;
 shared pieces in `src/components/app/` and the shadcn components in `src/components/ui/`.
 Screenshots of every main screen at 375 px and desktop are in `docs/design-review/`.
 
@@ -206,9 +206,7 @@ are never applied) and plays once without blocking input or shifting layout.
   commas or separate facts), sentence case everywhere.
 - **Button links:** `buttonVariants()` returns merged classes (variant classes win over the base),
   so `<Link className={buttonVariants({ variant: "outline" })}>` keeps its border.
-- **Wordmark:** "Talent Track Platform" in heavy Lexend with "Powered by F.L.A.G" underneath (`compact` drops the
-  second line; the name never wraps and is 16 px below sm so it fits 320 px beside Sign out) and a Königsblau square holding a check stroke. `PoweredBy` writes "Powered by F.L.A.G"
-  (shown on the landing page, login, student and staff footers; the landing footer also spells out the name). No logo files exist; do not invent one.
+- **Wordmark (shared T):** the name is one lockup, `NameLockup` in `src/components/app/wordmark.tsx`: a single Königsblau T (Lexend 800) that "Talent" and "Track" share (its stem serves both words; "alent" and "rack" are stacked beside it) and "Platform" after it (`inline`, header size; `Wordmark compact` is the footer size) or under it (`layout="stacked"`, landing hero and sign-in panel). The T is the one blue accent; "Platform" is quiet beside it in headers and ink when stacked. The drawing is `aria-hidden` and the full name "Talent Track Platform" is read once as sr-only text, so headings, search, translation-off and tests still see the name; the name never wraps and fits 320 px beside Sign out. The T is the mark: no logo square and no logo file (the check stroke lives on in the validation seal). `PoweredBy` writes "Powered by F.L.A.G." (shown on the landing page, login, student and staff footers; the landing footer also spells out the name).
 - **Print:** the result report prints on A4 (14/16 mm margins, 11 pt) with no app chrome
   (`print:hidden` on headers and buttons); the letterhead rule and the bars keep their ink
   (`print-color-adjust: exact`); badges, table heads and frames are forced to black; sections,

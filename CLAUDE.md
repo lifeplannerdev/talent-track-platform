@@ -1,6 +1,6 @@
-# Talent Track Platform (powered by F.L.A.G)
+# Talent Track Platform (powered by F.L.A.G.)
 
-Exam platform for students in Kerala, India (repo and package name still `talenttrackplatform`; the product name in the UI is "Talent Track Platform", never abbreviated; F.L.A.G is written exactly so and means Foreign Languages Academy Gurukulam, spelled out once on the landing footer). Spec: `docs/superpowers/specs/2026-11-13-talenttrackplatform-design.md`. Phase 1 plan: `docs/superpowers/plans/2026-11-13-talenttrack-phase1.md`.
+Exam platform for students in Kerala, India (repo and package name still `talenttrackplatform`; the product name in the UI is "Talent Track Platform", never abbreviated; F.L.A.G. is written exactly so, with the final dot, and means Foreign Languages Academy Gurukulam, spelled out once on the landing footer). Spec: `docs/superpowers/specs/2026-11-13-talenttrackplatform-design.md`. Phase 1 plan: `docs/superpowers/plans/2026-11-13-talenttrack-phase1.md`.
 
 ## Stack
 Next.js 16 (App Router, TypeScript, Tailwind 4), shadcn/ui (Base UI), Supabase (Postgres, Auth, Storage), Vitest, Playwright. Versions are pinned in `package.json`.
@@ -111,3 +111,4 @@ Superpowers (TDD). Project log lives on the Monday board named "TalentTrackPlatf
 - First staff account: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... STAFF_EMAIL=... STAFF_USERNAME=... STAFF_FULL_NAME=... STAFF_PASSWORD=... node scripts/create-staff.ts` (values from the environment, not arguments; prints only the new id, never the password or key; staff sign in with the email). Later staff can be added the same way.
 - Data erasure (DPDP): use Delete student on the student page (`deleteStudent`); it removes the account and all of the student's data.
 
+- Name lockup (owner sketch, approved): the name is drawn with one Königsblau T shared by "Talent" and "Track" (`NameLockup` in `src/components/app/wordmark.tsx`; `Wordmark` is the header size, `compact` the footer size, `layout="stacked"` puts "Platform" under it for the landing hero and sign-in panel). The drawing is aria-hidden and the full name is read once as sr-only text; the name itself never changes. There is no logo square and no logo file.

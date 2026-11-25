@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PoweredBy, Wordmark } from "@/components/app/wordmark";
+import { NameLockup, PoweredBy, Wordmark } from "@/components/app/wordmark";
 import { Seal } from "@/components/landing/seal";
 import { Reveal } from "@/components/landing/reveal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,8 +17,8 @@ export default function LoginPage() {
         </Link>
         <Reveal className="flex flex-col gap-6">
           <Seal className="size-20" />
-          <p className="max-w-[14ch] font-heading text-5xl leading-[1] font-bold tracking-[-0.04em] text-balance text-foreground">
-            Talent Track Platform
+          <p>
+            <NameLockup layout="stacked" className="text-[clamp(2.75rem,4.6vw,4.75rem)]" />
           </p>
           <p className="max-w-[36ch] text-base leading-relaxed text-muted-foreground">
             Exams in German, your percentage the moment you submit.

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PoweredBy, Wordmark } from "@/components/app/wordmark";
+import { NameLockup, PoweredBy, Wordmark } from "@/components/app/wordmark";
 import { buttonVariants } from "@/components/ui/button";
 import { Reveal } from "@/components/landing/reveal";
 import { AnswerSheetSpecimen, ReviewSpecimen } from "@/components/landing/specimens";
 import { cn } from "cn";
 
-const TITLE = "Talent Track Platform, powered by F.L.A.G";
+const TITLE = "Talent Track Platform, powered by F.L.A.G.";
 const DESCRIPTION =
   "Talent Track Platform is where trainers set exams and students sit them: German questions, results as a percentage the moment you submit, and every attempt open to review.";
 
@@ -103,10 +103,10 @@ export default function LandingPage() {
             <div className="flex flex-col lg:col-span-7">
               <h1
                 id="hero-title"
-                className="enter font-heading text-[clamp(2.6rem,10.5vw,5.75rem)] leading-[0.96] font-bold tracking-[-0.04em] text-foreground"
+                className="enter text-[clamp(2.4rem,9.5vw,5.25rem)] leading-none"
                 style={{ "--enter-i": 0 } as React.CSSProperties}
               >
-                <span className="block">Talent</span> <span className="block">Track</span> <span className="block text-primary">Platform</span>
+                <NameLockup layout="stacked" />
               </h1>
               <p className="enter mt-6 flex flex-wrap items-center gap-x-4 gap-y-2" style={{ "--enter-i": 2 } as React.CSSProperties}>
                 <PoweredBy className="text-base" />
@@ -259,7 +259,7 @@ export default function LandingPage() {
           <div className="flex flex-col gap-3">
             <Wordmark compact />
             <PoweredBy />
-            <p className="text-sm text-muted-foreground">F.L.A.G is the Foreign Languages Academy Gurukulam.</p>
+            <p className="text-sm text-muted-foreground">F.L.A.G. is the Foreign Languages Academy Gurukulam.</p>
           </div>
           <div className="flex flex-col gap-1 sm:items-end">
             <Link href="/login" className="link-draw w-fit rounded-sm py-1 text-sm font-semibold text-primary">

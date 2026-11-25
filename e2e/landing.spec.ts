@@ -17,9 +17,9 @@ test("the landing page is public, has one h1 and the brand words", async ({ page
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Talent\s+Track\s+Platform/);
   await expect(page).toHaveTitle(/Talent Track Platform/);
   const main = page.getByRole("main");
-  await expect(main.getByText("Powered by F.L.A.G").first()).toBeVisible();
+  await expect(main.getByText("Powered by F.L.A.G.").first()).toBeVisible();
   await expect(page.getByRole("contentinfo")).toContainText("Foreign Languages Academy Gurukulam");
-  await expect(page.getByText("Powered by F.L.A.G").first()).toBeVisible();
+  await expect(page.getByText("Powered by F.L.A.G.").first()).toBeVisible();
   await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /Talent Track Platform/);
   await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /.+/);
   for (const landmark of ["banner", "main", "contentinfo"] as const) {
