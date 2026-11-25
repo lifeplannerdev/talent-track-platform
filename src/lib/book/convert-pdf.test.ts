@@ -16,6 +16,7 @@ function setup(sizes: Size[], over: Partial<{ type: string; failOnPage: number }
   const surfaces: { width: number; height: number; released: boolean; page: number | null }[] = []
   const pagesCleaned: number[] = []
   let destroyed = 0
+  const draws: number[] = []
   const live = () => surfaces.filter((s) => !s.released).length
   let maxLive = 0
 
@@ -28,6 +29,7 @@ function setup(sizes: Size[], over: Partial<{ type: string; failOnPage: number }
         height,
         async draw(surface, scale) {
           if (over.failOnPage === n) throw new Error("render exploded")
+          draws.push(n)
           const s = surface as Surface & { rec: (typeof surfaces)[number] }
           s.rec.page = n
           expect(s.width).toBe(Math.round(width * scale))
@@ -53,6 +55,9 @@ function setup(sizes: Size[], over: Partial<{ type: string; failOnPage: number }
         width,
         height,
         rec,
+        drawFrom(source: Surface) {
+          rec.page = (source as Surface & { rec: typeof rec }).rec.page
+        },
         async encode(type: string, quality: number) {
           expect(type).toBe("image/webp")
           expect(quality).toBe(0.82)
@@ -65,7 +70,7 @@ function setup(sizes: Size[], over: Partial<{ type: string; failOnPage: number }
       return surface
     },
   }
-  return { deps, surfaces, pagesCleaned, destroyed: () => destroyed, maxLive: () => maxLive }
+  return { deps, surfaces, pagesCleaned, draws, destroyed: () => destroyed, maxLive: () => maxLive }
 }
 
 const file = () => new File([new Uint8Array([1, 2, 3])], "book.pdf", { type: "application/pdf" })
@@ -109,6 +114,13 @@ describe("convertPdf", () => {
     expect(pages[0].image.type).toBe("image/webp")
   })
 
+  it("renders each page once and scales that image down for the thumbnail", async () => {
+    const t = setup([[595, 842], [842, 595]])
+    const pages = await collect(convertPdf(file(), {}, t.deps))
+    expect(t.draws).toEqual([1, 2])
+    expect(await pages[0].thumb.text()).toBe("p1-160x226")
+  })
+
   it("reports progress from 0 to total", async () => {
     const t = setup([[595, 842], [595, 842]])
     const onProgress = vi.fn()
@@ -116,12 +128,12 @@ describe("convertPdf", () => {
     expect(onProgress.mock.calls).toEqual([[0, 2], [1, 2], [2, 2]])
   })
 
-  it("holds one page at a time and releases canvases and page objects", async () => {
+  it("holds one page (image and thumbnail canvas) at a time and releases canvases and page objects", async () => {
     const t = setup(Array.from({ length: 5 }, () => [595, 842] as Size))
     await collect(convertPdf(file(), {}, t.deps))
     expect(t.surfaces).toHaveLength(10)
     expect(t.surfaces.every((s) => s.released)).toBe(true)
-    expect(t.maxLive()).toBe(1)
+    expect(t.maxLive()).toBe(2) // the image canvas and its thumbnail, never two pages
     expect(t.pagesCleaned).toEqual([1, 2, 3, 4, 5])
     expect(t.destroyed()).toBe(1)
   })
@@ -229,7 +241,7 @@ describe("convertPdf", () => {
     expect(err).toBeInstanceOf(PdfError)
     expect(err.code).toBe("webp_unsupported")
     expect(err.message).toBe(
-      "This browser cannot create WebP images. Use a current Chrome, Edge, Firefox or Safari.",
+      "This browser cannot create WebP images. Use a current Chrome, Edge or Firefox on a computer to upload books.",
     )
     expect(t.surfaces.every((s) => s.released)).toBe(true)
     expect(t.destroyed()).toBe(1)

@@ -16,7 +16,7 @@ const MESSAGES: Record<PdfErrorCode, string> = {
   empty: "This PDF has no pages.",
   too_many_pages: `This PDF has more than ${BOOK_MAX_PAGES} pages. Split it into smaller books.`,
   webp_unsupported:
-    "This browser cannot create WebP images. Use a current Chrome, Edge, Firefox or Safari.",
+    "This browser cannot create WebP images. Use a current Chrome, Edge or Firefox on a computer to upload books.",
 }
 
 export class PdfError extends Error {
@@ -52,6 +52,8 @@ export function planScales(pageWidth: number, pageHeight: number): { image: Plan
 export interface Surface {
   readonly width: number
   readonly height: number
+  /** Paint another surface onto this one, scaled to fill it (used for the thumbnail). */
+  drawFrom(source: Surface): void
   /** Encode what was drawn; null when the browser cannot produce the type. */
   encode(type: string, quality: number): Promise<Blob | null>
   /** Free the pixel memory now. */
@@ -79,14 +81,15 @@ export interface ConvertDeps {
 
 // Real implementations ------------------------------------------------------------------
 
-type DomSurface = Surface & { canvas: HTMLCanvasElement | OffscreenCanvas }
+// The pdf.js render target is a DOM canvas (pdf.js 6 renders into a canvas element), so this
+// path is browser main thread only. There is deliberately no OffscreenCanvas path.
+type DomSurface = Surface & { canvas: HTMLCanvasElement }
 
 function createDomSurface(width: number, height: number): DomSurface {
-  const useDom = typeof document !== "undefined"
-  const canvas = useDom ? document.createElement("canvas") : new OffscreenCanvas(width, height)
+  const canvas = document.createElement("canvas")
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
+  const ctx = canvas.getContext("2d")
   if (!ctx) throw new PdfError("corrupt")
   // Pages are transparent by default; WebP keeps alpha, so paint the paper first.
   ctx.fillStyle = "#ffffff"
@@ -95,11 +98,14 @@ function createDomSurface(width: number, height: number): DomSurface {
     canvas,
     width,
     height,
+    drawFrom(source) {
+      const from = (source as DomSurface).canvas
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = "high"
+      ctx.drawImage(from, 0, 0, width, height)
+    },
     encode(type, quality) {
-      if (canvas instanceof HTMLCanvasElement) {
-        return new Promise((resolve) => canvas.toBlob(resolve, type, quality))
-      }
-      return (canvas as OffscreenCanvas).convertToBlob({ type, quality })
+      return new Promise((resolve) => canvas.toBlob(resolve, type, quality))
     },
     release() {
       // Setting the size to 0 frees the backing bitmap right away (Safari keeps it otherwise).
@@ -134,7 +140,7 @@ async function loadWithPdfjs(data: Uint8Array): Promise<PdfSource> {
         async draw(surface, scale) {
           const viewport = page.getViewport({ scale })
           const { canvas } = surface as DomSurface
-          await page.render({ canvas: canvas as HTMLCanvasElement, viewport }).promise
+          await page.render({ canvas, viewport }).promise
         },
         cleanup() {
           page.cleanup()
@@ -169,11 +175,19 @@ async function encodeWebp(surface: Surface): Promise<Blob> {
   return blob
 }
 
-async function renderToWebp(page: PageSource, plan: Plan, deps: ConvertDeps): Promise<Blob> {
-  const surface = deps.createSurface(plan.width, plan.height)
+/** Renders the page once at image size, then scales that canvas down for the thumbnail. */
+async function renderPage(page: PageSource, plans: ReturnType<typeof planScales>, deps: ConvertDeps) {
+  const surface = deps.createSurface(plans.image.width, plans.image.height)
   try {
-    await page.draw(surface, plan.scale)
-    return await encodeWebp(surface)
+    await page.draw(surface, plans.image.scale)
+    const image = await encodeWebp(surface)
+    const small = deps.createSurface(plans.thumb.width, plans.thumb.height)
+    try {
+      small.drawFrom(surface)
+      return { image, thumb: await encodeWebp(small) }
+    } finally {
+      small.release()
+    }
   } finally {
     surface.release()
   }
@@ -206,8 +220,7 @@ export async function* convertPdf(
       let converted: ConvertedPage
       try {
         const plan = planScales(page.width, page.height)
-        const image = await renderToWebp(page, plan.image, deps)
-        const thumb = await renderToWebp(page, plan.thumb, deps)
+        const { image, thumb } = await renderPage(page, plan, deps)
         converted = { page: n, image, thumb, width: plan.image.width, height: plan.image.height }
       } finally {
         page.cleanup()
