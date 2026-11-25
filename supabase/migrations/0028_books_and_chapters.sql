@@ -36,8 +36,12 @@ create table public.chapters (
   -- only while staying deferrable (start pages can swap inside one save_chapters call).
   start_page integer,
   archived_at timestamptz,
+  -- The page a retired chapter started on (kept for history; NULL while active).
+  retired_start_page integer,
   constraint chapters_active_start check (
-    (archived_at is null and start_page >= 1) or (archived_at is not null and start_page is null)),
+    (archived_at is null and start_page is not null and start_page >= 1)
+    or (archived_at is not null and start_page is null)),
+  constraint chapters_retired_page check (archived_at is not null or retired_start_page is null),
   constraint chapters_start_unique unique (curriculum_id, start_page) deferrable initially immediate
 );
 
@@ -114,7 +118,7 @@ begin
   from jsonb_array_elements(p_pages) e;
 
   -- Chapters beyond the new page count are retired, not deleted.
-  update public.chapters set archived_at = now(), start_page = null
+  update public.chapters set archived_at = now(), retired_start_page = start_page, start_page = null
   where curriculum_id = p_curriculum and archived_at is null and start_page > v_count;
 
   update public.books
@@ -153,7 +157,7 @@ begin
     if v_status = 'published' then
       raise exception 'no_chapters';
     end if;
-    update public.chapters set archived_at = now(), start_page = null
+    update public.chapters set archived_at = now(), retired_start_page = start_page, start_page = null
     where curriculum_id = p_curriculum and archived_at is null;
     update public.books set updated_by = p_admin, updated_at = now() where curriculum_id = p_curriculum;
     return;
@@ -198,11 +202,12 @@ begin
   -- Chapters may swap start pages inside this call: check uniqueness at the end.
   set constraints public.chapters_start_unique deferred;
   update public.chapters
-  set archived_at = now(), start_page = null
+  set archived_at = now(), retired_start_page = start_page, start_page = null
   where curriculum_id = p_curriculum and archived_at is null
     and id not in (select (e ->> 'id')::uuid from jsonb_array_elements(p_chapters) e where e ->> 'id' is not null);
   update public.chapters c
-  set title = btrim(e ->> 'title'), start_page = (e ->> 'start_page')::integer, archived_at = null
+  set title = btrim(e ->> 'title'), start_page = (e ->> 'start_page')::integer, archived_at = null,
+      retired_start_page = null
   from jsonb_array_elements(p_chapters) e
   where e ->> 'id' is not null and c.id = (e ->> 'id')::uuid and c.curriculum_id = p_curriculum;
   insert into public.chapters (curriculum_id, title, start_page)

@@ -1,7 +1,7 @@
 -- Phase 2a, migration 0028: books, book_pages, chapters, the three service-role functions and the
 -- private book-pages bucket (pgTAP). Run: npm run db:test
 begin;
-select plan(125);
+select plan(134);
 
 -- Fixtures: a1 admin, a2 inactive admin, a3 trainer, b1 student.
 insert into auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
@@ -251,6 +251,18 @@ select is((select count(*)::int from public.chapters where curriculum_id = '1000
           (select count(*)::int from public.chapters where curriculum_id = '10000000-0000-0000-0000-0000000028c3' and archived_at is null), '4/2',
   'chapters beyond the page count are retired, not deleted');
 select is((select title || '/' || coalesce(start_page::text, 'null') from public.chapters where title = 'D' and curriculum_id = '10000000-0000-0000-0000-0000000028c3'), 'D/null', 'D kept its title, start released');
+select is((select retired_start_page from public.chapters where id = (select id from t3 where title = 'C')), 5, 'retiring (empty draft list) recorded the old start page');
+select is((select retired_start_page from public.chapters where title = 'D' and curriculum_id = '10000000-0000-0000-0000-0000000028c3'), 5, 'retiring by re-upload recorded the old start page');
+select is((select retired_start_page from public.chapters where id = (select id from t3 where title = 'B')), null, 'restoring B cleared retired_start_page');
+select throws_ok($$insert into public.chapters (curriculum_id, title, start_page) values ('10000000-0000-0000-0000-0000000028c3', 'N', null)$$, '23514', null, 'an active chapter without a start page is rejected (insert)');
+select throws_ok($$update public.chapters set start_page = null where id = (select id from t3 where title = 'B')$$, '23514', null, 'an active chapter without a start page is rejected (update)');
+select throws_ok($$update public.chapters set retired_start_page = 2 where id = (select id from t3 where title = 'B')$$, '23514', null, 'an active chapter cannot carry retired_start_page');
+select lives_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', jsonb_build_array(
+  jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', 'A restored', 'start_page', 1),
+  jsonb_build_object('id', (select id from t3 where title = 'C'), 'title', 'C', 'start_page', 3)))$$,
+  'restoring C into the page B held, with B retired in the same call');
+select is((select (archived_at is null) || '/' || start_page || '/' || coalesce(retired_start_page::text, 'null') from public.chapters where id = (select id from t3 where title = 'C')), 'true/3/null', 'C is active on page 3');
+select is((select (archived_at is not null) || '/' || coalesce(start_page::text, 'null') || '/' || retired_start_page from public.chapters where id = (select id from t3 where title = 'B')), 'true/null/3', 'B was retired and remembers page 3');
 select throws_ok($$select public.save_chapters('00000000-0000-0000-0000-0000000028a1', '10000000-0000-0000-0000-0000000028c3', jsonb_build_array(
   jsonb_build_object('id', (select id from t3 where title = 'A'), 'title', 'A', 'start_page', 1),
   jsonb_build_object('id', (select id from t3 where title = 'C'), 'title', 'C', 'start_page', 5)))$$,
