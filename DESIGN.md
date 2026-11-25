@@ -144,7 +144,7 @@ are never applied) and plays once without blocking input or shifting layout.
   underlined.
 - **Chrome:** staff pages get the header from `src/app/staff/layout.tsx` (wordmark, `StaffNav`,
   sign out; sticky from `lg`). Sections: Dashboard, Attempts (read-only list and evaluation),
-  Blocked, Extra attempts, Students, Curriculums, Questions, Team; Curriculums, Questions and Team are admin only
+  Blocked, Extra attempts, Students, Curriculums, Questions, Content, Team; Curriculums, Questions, Content and Team are admin only
   (`visibleNav`, `adminOnly`), so a trainer's nav has five links. Below `lg` the nav is one row under the wordmark that scrolls
   sideways inside itself and keeps the current section in view; the current section has a 2 px
   Königsblau underline and `aria-current="page"`. Student pages use `StudentHeader` (56 px); the

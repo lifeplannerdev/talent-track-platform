@@ -14,6 +14,7 @@ export const STAFF_NAV: readonly { href: string; label: string; adminOnly?: bool
   { href: "/staff/students", label: "Students" },
   { href: "/staff/curriculums", label: "Curriculums", adminOnly: true },
   { href: "/staff/questions", label: "Questions", adminOnly: true },
+  { href: "/staff/content", label: "Content", adminOnly: true },
   { href: "/staff/team", label: "Team", adminOnly: true },
 ];
 

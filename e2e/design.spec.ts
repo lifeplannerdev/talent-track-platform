@@ -23,6 +23,7 @@ import {
   startExam,
   takeExam,
 } from "./helpers";
+import { makePdf } from "./fixtures/make-pdf";
 import { adminDb, inviteLinkFor, seed } from "./seed";
 
 // Design review: every main screen at 375 px and desktop gets (1) a check that the page itself
@@ -257,5 +258,28 @@ test("set-password page: public invite page with a valid and an invalid link at 
   await page.goto("/set-password");
   await expect(page.getByText("This link is no longer valid")).toBeVisible();
   await review(page, info, "21-set-password-invalid", findings);
+  finish(info, findings);
+});
+
+test("staff content: list and book editor (empty, with pages and chapters) at 375 px and desktop", async ({ page }, info) => {
+  const findings: Finding[] = [];
+  await signIn(page, STAFF.email, STAFF.password, /\/staff$/);
+  await page.goto("/staff/content");
+  await expect(page.getByTestId("content-card").first()).toBeVisible();
+  await review(page, info, "22-staff-content-list", findings);
+
+  await page.goto(`/staff/content/${await curriculumId(EXAM_CURRICULUM_OPEN)}`);
+  await expect(page.getByTestId("book-empty")).toBeVisible();
+  await review(page, info, "22-staff-content-empty", findings);
+
+  await expect(page.getByTestId("book-file")).toBeEnabled();
+  await page.getByTestId("book-file").setInputFiles({ name: "book.pdf", mimeType: "application/pdf", buffer: Buffer.from(makePdf(8)) });
+  await expect(page.getByTestId("page-thumb")).toHaveCount(8, { timeout: 120_000 });
+  await page.getByRole("button", { name: "Page 1: Start here" }).click();
+  await page.getByRole("button", { name: "Page 5: Start here" }).click();
+  await page.getByRole("textbox", { name: "Title of chapter 1" }).fill("Grundlagen");
+  await page.getByRole("textbox", { name: "Title of chapter 2" }).fill("Alltag und Beruf");
+  await expect(page.locator("img[alt='Page 8']")).toBeVisible();
+  await review(page, info, "22-staff-content-editor", findings);
   finish(info, findings);
 });
