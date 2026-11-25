@@ -245,6 +245,10 @@ are never applied) and plays once without blocking input or shifting layout.
   (`print-color-adjust: exact`); badges, table heads and frames are forced to black; sections,
   rows and fact lists do not break across pages, so a normal report fits one sheet.
 
+## Book reader (phase 2A)
+
+Full-screen exception to the narrow student column: `/learn/[curriculumId]/read/[chapterId]` (`src/components/reader/`). Editorial desk: `--background` desk, white pages with `shadow-panel`, a faint spine shadow in the centre of a spread, calm chrome (outline buttons, 44 px on touch, Lexend counter). Spread from 900 px wide landscape, otherwise one page (`chooseMode`). Chrome fades after 3.5 s idle and returns on pointer, touch or key; it never fades while a control has focus or the page strip is open. Reduced motion: no flip animation (instant turn, no shadows or corner curls), chrome always visible. Pages keep their own shape (`object-fit: contain` inside the first page's box). The strip (`reader-thumbs.tsx`) overlays the desk; Enlarge shows pages at 2x in a scrollable, drag-to-pan view.
+
 ## Rules for future UI work
 
 1. Use the tokens; never raw hex in components (add a token in `globals.css` first).

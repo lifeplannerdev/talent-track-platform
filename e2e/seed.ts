@@ -218,3 +218,95 @@ export async function inviteLinkFor(username: string): Promise<string> {
   if (!made.ok) throw new Error("could not make an invite link");
   return made.link;
 }
+
+// ---- Book fixtures (phase 2: reader) ----
+const BOOK_BUCKET = "book-pages";
+
+export type SeedPageSize = { width: number; height: number };
+export type SeedBookOptions = {
+  /** Chapters by start page; default one chapter "Chapter 1" from page 1. */
+  chapters?: { title: string; start: number }[];
+  /** Size of each page (1-based page number); default 600 x 800 (portrait). */
+  size?: (page: number) => SeedPageSize;
+  status?: "draft" | "published";
+};
+
+/** Looks a seeded curriculum up by its name. */
+export async function curriculumIdByName(name: string): Promise<string> {
+  const { data, error } = await adminDb().from("curriculums").select("id").eq("name", name).single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+async function pageImage(page: number, size: SeedPageSize, scale: number): Promise<Buffer> {
+  const { default: sharp } = await import("sharp");
+  const w = Math.round(size.width * scale);
+  const h = Math.round(size.height * scale);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${size.width} ${size.height}">
+    <rect width="100%" height="100%" fill="#ffffff"/>
+    <rect x="12" y="12" width="${size.width - 24}" height="${size.height - 24}" fill="none" stroke="#2346a0" stroke-width="6"/>
+    <rect x="48" y="64" width="${size.width * 0.45}" height="22" fill="#c7d2ee"/>
+    ${[0, 1, 2, 3, 4, 5].map((i) => `<rect x="48" y="${130 + i * 36}" width="${size.width * (i % 2 ? 0.6 : 0.78)}" height="12" fill="#e6eaf4"/>`).join("")}
+    <text x="${size.width / 2}" y="${size.height - 56}" font-family="sans-serif" font-size="56" text-anchor="middle" fill="#14213d">${page}</text>
+  </svg>`;
+  return sharp(Buffer.from(svg)).webp({ quality: 70 }).toBuffer();
+}
+
+/**
+ * Writes a generated book for the curriculum (page and thumbnail webp files into the bucket, rows
+ * with the service role) and publishes it (unless `status: 'draft'`). Replaces any earlier book of
+ * the curriculum. Call `removeBookFiles(curriculumId)` in teardown: the rows cascade with the curriculum.
+ */
+export async function seedBook(
+  curriculumId: string,
+  pageCount: number,
+  opts: SeedBookOptions = {},
+): Promise<{ uploadId: string; chapterIds: string[] }> {
+  const db = adminDb();
+  await removeBookFiles(curriculumId);
+  await db.from("books").delete().eq("curriculum_id", curriculumId);
+  const uploadId = crypto.randomUUID();
+  const sizeOf = opts.size ?? (() => ({ width: 600, height: 800 }));
+  const { error: bookError } = await db
+    .from("books")
+    .insert({ curriculum_id: curriculumId, status: opts.status ?? "published", page_count: pageCount, upload_id: uploadId });
+  if (bookError) throw bookError;
+  const rows = [];
+  for (let n = 1; n <= pageCount; n++) {
+    const size = sizeOf(n);
+    const path = `${curriculumId}/${uploadId}/${n}.webp`;
+    const thumbPath = `${curriculumId}/${uploadId}/${n}.thumb.webp`;
+    for (const [p, scale] of [[path, 1], [thumbPath, 0.25]] as const) {
+      const { error } = await db.storage.from(BOOK_BUCKET).upload(p, await pageImage(n, size, scale), { contentType: "image/webp", upsert: true });
+      if (error) throw error;
+    }
+    rows.push({ curriculum_id: curriculumId, page_number: n, path, thumb_path: thumbPath, width: size.width, height: size.height });
+  }
+  const { error: pagesError } = await db.from("book_pages").insert(rows);
+  if (pagesError) throw pagesError;
+  const chapters = opts.chapters ?? [{ title: "Chapter 1", start: 1 }];
+  await db.from("chapters").delete().eq("curriculum_id", curriculumId);
+  const { data, error: chapterError } = await db
+    .from("chapters")
+    .insert(chapters.map((c) => ({ curriculum_id: curriculumId, title: c.title, start_page: c.start })))
+    .select("id, start_page")
+    .order("start_page");
+  if (chapterError) throw chapterError;
+  return { uploadId, chapterIds: (data ?? []).map((c) => c.id as string) };
+}
+
+/** Removes every storage object under the curriculum's folder (test teardown). */
+export async function removeBookFiles(curriculumId: string): Promise<void> {
+  const bucket = adminDb().storage.from(BOOK_BUCKET);
+  const { data: folders, error } = await bucket.list(curriculumId, { limit: 1000 });
+  if (error) throw error;
+  for (const folder of folders ?? []) {
+    const { data: files, error: listError } = await bucket.list(`${curriculumId}/${folder.name}`, { limit: 1000 });
+    if (listError) throw listError;
+    const paths = (files ?? []).map((f) => `${curriculumId}/${folder.name}/${f.name}`);
+    if (paths.length > 0) {
+      const { error: removeError } = await bucket.remove(paths);
+      if (removeError) throw removeError;
+    }
+  }
+}
