@@ -18,7 +18,7 @@
 - Caps: PDF at most 50 MiB and 400 pages, rejected with a clear message. Page images WebP, long edge about 1600 px, quality about 0.82 (builder tunes with the real sample); thumbnails about 160 px wide.
 - Chapter rules in one pure module: starts strictly increasing, first chapter starts at page 1, a chapter ends where the next begins, the last ends at the final page. Replacing a PDF requires the book to be unpublished first and clears chapter starts beyond the new page count.
 - Look: `DESIGN.md` tokens only, light theme only, 44 px touch targets (`pointer-coarse:`), no raw hex. Motion respects `prefers-reduced-motion` (page flip becomes an instant change, no pulses). The reader is a documented full-screen exception to the narrow student column.
-- Reuse, do not duplicate: `requireAdmin`/`requireRole`, `PageHeader`, `StudentHeader`, `Skeleton`, shadcn components, `createAdminClient`, `formatPercent` not needed here. Mixed page sizes in one PDF must work (size every page from its own width and height).
+- Reuse, do not duplicate: `requireAdmin`/`requireRole`, `PageHeader`, `StudentHeader`, `Skeleton`, shadcn components, `createAdminClient`. Mixed page sizes in one PDF must work (size every page from its own width and height).
 - Frontend tasks (5, 7, 8) use the approved skills: `frontend-design`, `impeccable`, `ui-ux-pro-max`, `shadcn`. Models: Sonnet; Haiku only for doc-only steps; Opus only if a task blocks.
 - Never commit the real curriculum PDF (the owner's file `Deutscher_Fleischer_Berufskurs_Complete_Edition_plus_Fisch.pdf`, 51 pages, A4, 2.5 MB); tests use a small generated PDF fixture; the real file is a manual check (path from the owner).
 - The working tree may hold unrelated uncommitted edits (`.claude/`, `demo-video/`): never stage them. Commits carry no attribution lines.
@@ -63,13 +63,13 @@
 ### Task 3: PDF to page images (client module)
 
 **Files:**
-- Create: `src/lib/book/convert-pdf.ts`, `src/lib/book/convert-pdf.test.ts`, `src/lib/book/limits.ts`, `e2e/fixtures/make-pdf.ts` (generates a small valid multi-page PDF in code, no new dependency), `e2e/book-convert.spec.ts`
+- Create: `src/lib/book/convert-pdf.ts`, `src/lib/book/convert-pdf.test.ts`, `src/lib/book/limits.ts`, `e2e/fixtures/make-pdf.ts` (generates a small valid multi-page PDF in code, no new dependency)
 - Modify: `package.json` (add `pdfjs-dist`)
 
 **Interfaces:**
 - Produces in `limits.ts`: `BOOK_MAX_PDF_BYTES = 50 * 1024 * 1024`, `BOOK_MAX_PAGES = 400`, `checkPdfFile(file: { size: number; type?: string; name: string }): string | null` (error message or null). In `convert-pdf.ts` (browser only): `type ConvertedPage = { page: number; image: Blob; thumb: Blob; width: number; height: number }`; `convertPdf(file: File, opts: { onProgress?: (done: number, total: number) => void; signal?: AbortSignal }): AsyncGenerator<ConvertedPage, void, void>` yielding pages in order so the caller uploads while converting and memory stays flat (one canvas at a time, released after each page); throws `PdfError` with `code: 'password' | 'corrupt' | 'empty' | 'too_many_pages'`.
 
-- [ ] **Step 1: Write failing tests**: `checkPdfFile` rejects 50 MiB + 1 byte, non-PDF names, empty files; accepts a normal one; messages are plain English. In `e2e/book-convert.spec.ts` (Playwright, a tiny test page or the real `/staff/content` uploader once Task 5 exists: until then a minimal test route is NOT added; write this e2e in Task 5 instead and keep Task 3 unit-only plus a manual check) the unit test mocks nothing browser-specific.
+- [ ] **Step 1: Write failing tests**: `checkPdfFile` rejects 50 MiB + 1 byte, non-PDF names, empty files; accepts a normal one; messages are plain English. The browser-level conversion is exercised end to end in Task 5's e2e (no test-only route is added); Task 3 is unit-only plus `makePdf` itself (deterministic bytes, starts with `%PDF-`, page count as asked, landscape pages when `landscapeEvery` is set).
 - [ ] **Step 2: Run** `npx vitest run src/lib/book` and see it fail.
 - [ ] **Step 3: Implement** `limits.ts` and `convert-pdf.ts`: dynamic `import("pdfjs-dist")` only inside `convertPdf` (never at module top, never on the server), the worker via the bundler-supported `new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url)` (confirm the current setup for Next 16 with the Context7 docs), `OffscreenCanvas` when available else a DOM canvas, scale so the long edge is about 1600 px (thumb about 160 px wide), `canvas.toBlob("image/webp", 0.82)`, abort checked between pages. Add `e2e/fixtures/make-pdf.ts` exporting `makePdf(pages: number, opts?: { landscapeEvery?: number }): Uint8Array` (hand-written minimal PDF with a title string per page; deterministic).
 - [ ] **Step 4: Run** unit tests (PASS), `npx tsc --noEmit`, `npm run build` (the dependency must not break the server build). **Step 5: Commit** `feat: client PDF to page images conversion`.
