@@ -62,7 +62,7 @@ export async function proxy(request: NextRequest) {
     staff
       ? "/staff"
       : profile.consent_at
-        ? "/exam/start"
+        ? "/learn"
         : "/consent";
 
   if (path === "/" || path === "/login") return redirectTo(home);

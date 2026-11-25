@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { InboxIcon } from "lucide-react";
 import { requireRole } from "@/lib/auth/require-role";
+import { listLearningPaths } from "@/lib/book/pages-access";
 import { greeting } from "@/lib/greeting";
 import { StudentFooter, StudentHeader } from "@/components/app/student-header";
 import { studentMain } from "@/components/app/styles";
@@ -93,10 +94,20 @@ function StartSkeleton() {
   );
 }
 
+// The Learn tab shows only for a student who has a learning path; the plain header stands in while
+// that is read (same height, so nothing moves).
+async function ExamStartHeader() {
+  const profile = await requireRole("student");
+  const hasPath = profile.consent_at ? (await listLearningPaths(profile.id)).length > 0 : false;
+  return <StudentHeader signOut nav={hasPath} />;
+}
+
 export default function ExamStartPage(props: PageProps<"/exam/start">) {
   return (
     <>
-      <StudentHeader signOut />
+      <Suspense fallback={<StudentHeader signOut />}>
+        <ExamStartHeader />
+      </Suspense>
       <main className={studentMain}>
         <Suspense fallback={<StartSkeleton />}>
           <StartContent searchParams={props.searchParams as Promise<{ error?: string }>} />

@@ -1,9 +1,14 @@
+import { Suspense } from "react";
 import { logout } from "@/app/login/actions";
 import { Button } from "@/components/ui/button";
 import { PoweredBy, Wordmark } from "./wordmark";
+import { StudentNav } from "./student-nav";
 
-/** Quiet top bar for the student pages outside the exam itself. Hidden in print. */
-export function StudentHeader({ signOut = false }: { signOut?: boolean }) {
+/**
+ * Quiet top bar for the student pages outside the exam itself. Hidden in print. `nav` adds the Learn
+ * and Exams tabs (only for a student who has a learning path; everyone else has just the exams).
+ */
+export function StudentHeader({ signOut = false, nav = false }: { signOut?: boolean; nav?: boolean }) {
   return (
     <>
       <header className="border-b bg-card print:hidden">
@@ -17,6 +22,11 @@ export function StudentHeader({ signOut = false }: { signOut?: boolean }) {
             </form>
           ) : null}
         </div>
+        {nav ? (
+          <Suspense fallback={<div aria-hidden="true" className="h-11 border-t" />}>
+            <StudentNav />
+          </Suspense>
+        ) : null}
       </header>
       <span id="main-content" tabIndex={-1} className="outline-none" />
     </>

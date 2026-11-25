@@ -249,6 +249,10 @@ are never applied) and plays once without blocking input or shifting layout.
 
 Full-screen exception to the narrow student column: `/learn/[curriculumId]/read/[chapterId]` (`src/components/reader/`). Editorial desk: `--background` desk, white pages with `shadow-panel`, a faint spine shadow in the centre of a spread, calm chrome (outline buttons, 44 px on touch, Lexend counter). Spread from 900 px wide landscape, otherwise one page (`chooseMode`). Chrome fades after 3.5 s idle and returns on pointer, touch or key; it never fades while a control has focus or the page strip is open. Reduced motion: no flip animation (instant turn, no shadows or corner curls), chrome always visible. Pages keep their own shape (`object-fit: contain` inside the first page's box). The strip (`reader-thumbs.tsx`) overlays the desk; Enlarge shows pages at 2x in a scrollable, drag-to-pan view.
 
+## Learning pathway (phase 2A)
+
+`/learn` (student home) and `/learn/[curriculumId]` (one pathway, the reader's Close target): per curriculum a `Reveal` section with a Lexend h2, "N chapters · N pages", a vertical line (`.line-grow`, grows down once) and an `ol` of chapter nodes: 36 px numbered dot (`.node-dot`, Königsblau outline, pops in), white card (`lift`, `shadow-card`) with the h3 title, page count and an outline "Read" button (`aria-label` "Read chapter N: title"). The last node is the display-only "Main exam" (dark flag dot, dashed muted card). Nodes stagger with `Reveal index`. Locked, current (pulsing) and done styles, progress bar and exercise state are reserved for slice 2B and not drawn. All motion lives in the scripting-enabled, no-reduced-motion block of `globals.css`. Student header: `StudentNav` (Learn, Exams) is a second row of underlined 44 px tabs with `aria-current="page"`; shown on the learning pages and on the exam start page only for a student who has a learning path; never on the exam. No `template.tsx` for `/learn`: it would also wrap the full-screen reader, so the pages wrap themselves in `PageFade`.
+
 ## Rules for future UI work
 
 1. Use the tokens; never raw hex in components (add a token in `globals.css` first).

@@ -60,12 +60,13 @@ export async function login(
     await supabase.auth.signOut();
     return { error: GENERIC_ERROR };
   }
-  // Go straight to the role's home (the proxy enforces the same rules on every request).
+  // Go straight to the role's home (the proxy enforces the same rules on every request). A student's
+  // home is /learn, which sends a student with nothing to learn on to /exam/start.
   redirect(
     isStaffRole(profile.role)
       ? "/staff"
       : profile.consent_at
-        ? "/exam/start"
+        ? "/learn"
         : "/consent",
   );
 }

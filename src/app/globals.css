@@ -233,6 +233,13 @@
   .bar-grow {
     transform-origin: left;
   }
+  /* Learning pathway: the connecting line grows down and each node dot pops in. */
+  .line-grow {
+    transform-origin: top;
+  }
+  .node-dot {
+    transform-origin: center;
+  }
   /* Link underline that draws in from the left. */
   .link-draw {
     background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat;
@@ -274,6 +281,18 @@
   }
   .reveal:not([data-in]) .bar-grow {
     transform: scaleX(0);
+  }
+  .line-grow {
+    transition: transform 1100ms var(--ease-out) 120ms;
+  }
+  .reveal:not([data-in]) .line-grow {
+    transform: scaleY(0);
+  }
+  .node-dot {
+    transition: transform var(--dur-slow) var(--ease-out);
+  }
+  .reveal:not([data-in]) .node-dot {
+    transform: scale(0.6);
   }
   .seal-pop {
     transform-origin: center;

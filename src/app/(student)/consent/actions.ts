@@ -14,5 +14,5 @@ export async function acceptConsent() {
     .eq("id", profile.id)
     .is("consent_at", null);
   if (error) throw new Error("Could not record consent");
-  redirect("/exam/start");
+  redirect("/learn");
 }

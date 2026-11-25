@@ -14,10 +14,12 @@ import { curriculumIdByName, removeBookFiles, seed, seedBook } from "./seed";
 
 // Full-screen book reader (phase 2A). A 10-page book in two chapters (pages 1-5, 6-10) for
 // STUDENT_EXAM_OPEN, a mixed portrait/landscape book for STUDENT_EXAM, and STUDENT_CONSENTED is not
-// assigned to either. The learning home (Task 8) does not exist yet, so closing is checked by URL only.
+// assigned to either. Closing lands on the curriculum's pathway (/learn/<id>).
 
 const SHOT_DIR = process.env.SHOT_DIR ?? path.join("docs", "design-review");
-const STUDENT_HOME = /\/exam\/start$/;
+// A student with a book lands on the learning home; one without goes on to the exam start page.
+const STUDENT_HOME = /\/learn$/;
+const NO_BOOK_HOME = /\/exam\/start$/;
 
 let openId: string;
 let mixedId: string;
@@ -112,6 +114,7 @@ test.describe("student reader", () => {
     await openReader(page);
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(new RegExp(`/learn/${openId}$`));
+    await expect(page.getByRole("region", { name: EXAM_CURRICULUM_OPEN })).toBeVisible();
     await page.goto(readerUrl(openId, chapterTwo));
     await page.getByRole("button", { name: "Close reader" }).click();
     await expect(page).toHaveURL(new RegExp(`/learn/${openId}$`));
@@ -248,7 +251,7 @@ test.describe("reduced motion", () => {
 
 test.describe("access", () => {
   test("a student without the curriculum gets the not-found page and no page data", async ({ page }) => {
-    await signIn(page, STUDENT_CONSENTED.username, STUDENT_CONSENTED.password, STUDENT_HOME);
+    await signIn(page, STUDENT_CONSENTED.username, STUDENT_CONSENTED.password, NO_BOOK_HOME);
     await page.goto(readerUrl(openId, chapterTwo));
     await expect(page.getByRole("heading", { name: "This page could not be found" })).toBeVisible();
     await expect(page.getByTestId("book-reader")).toHaveCount(0);
