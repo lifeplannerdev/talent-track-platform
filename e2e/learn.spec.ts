@@ -12,8 +12,8 @@ import {
   STUDENT_EXAM_OPEN,
   STUDENT_NEW,
 } from "./fixtures";
-import { expectNoHorizontalOverflow, signIn, startExam } from "./helpers";
-import { curriculumIdByName, removeBookFiles, seed, seedBook } from "./seed";
+import { curriculumCard, expectNoHorizontalOverflow, signIn, startExam } from "./helpers";
+import { adminDb, curriculumIdByName, removeBookFiles, seed, seedBook } from "./seed";
 
 // Learning home (phase 2A). STUDENT_EXAM_OPEN has one curriculum with a 10-page book in two chapters
 // (pages 1-5, 6-10). STUDENT_EXAM has two curriculums: one book with three chapters, the other still
@@ -112,6 +112,13 @@ test.describe("student with a book", () => {
     await signIn(page, STUDENT_EXAM_OPEN.username, STUDENT_EXAM_OPEN.password, LEARN);
   });
 
+  // A running exam sends /learn to the start page, so no test may leave one behind for the next login.
+  test.afterEach(async () => {
+    const db = adminDb();
+    const { data } = await db.from("profiles").select("id").eq("username", STUDENT_EXAM_OPEN.username).single();
+    if (data) await db.from("attempts").delete().eq("student_id", data.id).eq("status", "in_progress");
+  });
+
   test("login lands on the pathway: chapters in order, then the Main exam", async ({ page }) => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const section = page.getByRole("region", { name: EXAM_CURRICULUM_OPEN });
@@ -124,7 +131,7 @@ test.describe("student with a book", () => {
     await expect(nodes(page).nth(0)).toContainText("5 pages");
     await expect(nodes(page).nth(1)).toContainText("At the clinic");
     await expect(page.getByTestId("main-exam-node")).toContainText("Main exam");
-    await expect(page.getByTestId("main-exam-node")).toContainText("Request opens when every chapter is done");
+    await expect(page.getByTestId("main-exam-node")).toContainText("Coming later");
     // Nothing to act on yet: no progress, no locks, no exam button.
     await expect(page.getByTestId("main-exam-node").getByRole("link")).toHaveCount(0);
     await expect(page.getByTestId("main-exam-node").getByRole("button")).toHaveCount(0);
@@ -142,6 +149,18 @@ test.describe("student with a book", () => {
     await startExam(page, EXAM_CURRICULUM_OPEN);
     // The exam page keeps its own calm surface: no student navigation there.
     await expect(page.getByRole("navigation", { name: "Student" })).toHaveCount(0);
+  });
+
+  test("a student with an exam in progress is sent from /learn to the start page, where Resume is", async ({ page }) => {
+    await studentNav(page).getByRole("link", { name: "Exams" }).click();
+    await expect(page).toHaveURL(HOME);
+    await startExam(page, EXAM_CURRICULUM_OPEN);
+    await page.goto("/learn");
+    await expect(page).toHaveURL(HOME);
+    await expect(curriculumCard(page, EXAM_CURRICULUM_OPEN).getByTestId("resume-exam")).toBeVisible();
+    // The chapter list itself stays reachable and readable (only the plain /learn page redirects).
+    await page.goto(`/learn/${openId}`);
+    await expect(page).toHaveURL(new RegExp(`/learn/${openId}$`));
   });
 
   test("a chapter's Read link opens the reader at that chapter, and Close comes back", async ({ page }) => {

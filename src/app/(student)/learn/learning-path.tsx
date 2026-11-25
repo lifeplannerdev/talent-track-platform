@@ -61,7 +61,7 @@ export function LearningPathView({ path }: { path: LearningPath }) {
             </span>
             <div className="flex flex-col gap-0.5 rounded-xl border border-dashed bg-muted/50 p-4">
               <h3 className="text-lg leading-snug font-semibold">Main exam</h3>
-              <p className="text-sm text-muted-foreground">Request opens when every chapter is done</p>
+              <p className="text-sm text-muted-foreground">Coming later</p>
             </div>
           </Reveal>
         </ol>
