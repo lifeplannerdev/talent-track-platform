@@ -31,7 +31,7 @@ create table public.chapters (
   curriculum_id uuid not null references public.books (curriculum_id) on delete cascade,
   title text not null check (length(btrim(title)) > 0),
   start_page integer not null check (start_page >= 1),
-  unique (curriculum_id, start_page)
+  constraint chapters_start_unique unique (curriculum_id, start_page) deferrable initially immediate
 );
 
 alter table public.books enable row level security;
@@ -71,10 +71,26 @@ begin
   if v_count > 400 then
     raise exception 'too_many_pages';
   end if;
+  -- Shape first (CASE guards the casts): objects with numeric page/width/height and string paths.
+  if not (select coalesce(bool_and(
+            case when jsonb_typeof(e) <> 'object' then false
+                 else jsonb_typeof(e -> 'page') = 'number' and (e ->> 'page') ~ '^[0-9]{1,4}$'
+                  and jsonb_typeof(e -> 'width') = 'number' and (e ->> 'width') ~ '^[0-9]{1,6}$'
+                  and jsonb_typeof(e -> 'height') = 'number' and (e ->> 'height') ~ '^[0-9]{1,6}$'
+                  and jsonb_typeof(e -> 'path') = 'string' and length(btrim(e ->> 'path')) > 0
+                  and jsonb_typeof(e -> 'thumb') = 'string' and length(btrim(e ->> 'thumb')) > 0
+                  and (e ->> 'width')::integer > 0 and (e ->> 'height')::integer > 0
+            end), false)
+          from jsonb_array_elements(p_pages) e) then
+    raise exception 'invalid_pages';
+  end if;
   -- Pages must be exactly 1..n.
   if (select count(distinct (e ->> 'page')::integer) from jsonb_array_elements(p_pages) e
       where (e ->> 'page')::integer between 1 and v_count) <> v_count then
     raise exception 'invalid_pages';
+  end if;
+  if not exists (select 1 from public.curriculums where id = p_curriculum) then
+    raise exception 'no_curriculum';
   end if;
 
   -- First upload: create the row (no-op when it exists), then lock it.
@@ -99,6 +115,10 @@ begin
 end;
 $$;
 
+-- p_chapters: array of {id?, title, start_page}. Chapter identity is stable: an element with an id
+-- updates that chapter (which must belong to this curriculum), one without inserts a new chapter,
+-- chapters missing from the list are deleted. An empty list clears a draft book and is refused
+-- (no_chapters) for a published one.
 create function public.save_chapters(p_admin uuid, p_curriculum uuid, p_chapters jsonb)
 returns void
 language plpgsql
@@ -106,28 +126,41 @@ set search_path = ''
 as $$
 declare
   v_count integer;
+  v_status text;
 begin
   if p_admin is null
      or not exists (select 1 from public.profiles where id = p_admin and role = 'admin' and active) then
     raise exception 'not_admin';
   end if;
-  select page_count into v_count from public.books where curriculum_id = p_curriculum for update;
+  select page_count, status into v_count, v_status from public.books where curriculum_id = p_curriculum for update;
   if not found then
     raise exception 'no_book';
   end if;
-  if p_chapters is null or jsonb_typeof(p_chapters) <> 'array' or jsonb_array_length(p_chapters) = 0 then
+  if p_chapters is null or jsonb_typeof(p_chapters) <> 'array' then
     raise exception 'invalid_chapters';
   end if;
-  if exists (
-       select 1 from jsonb_array_elements(p_chapters) e
-       where jsonb_typeof(e -> 'title') is distinct from 'string'
-          or length(btrim(e ->> 'title')) = 0
-          or jsonb_typeof(e -> 'start_page') is distinct from 'number'
-          or (e ->> 'start_page') !~ '^[0-9]+$'
-     ) then
+  if jsonb_array_length(p_chapters) = 0 then
+    if v_status = 'published' then
+      raise exception 'no_chapters';
+    end if;
+    delete from public.chapters where curriculum_id = p_curriculum;
+    update public.books set updated_by = p_admin, updated_at = now() where curriculum_id = p_curriculum;
+    return;
+  end if;
+
+  -- Shape first (CASE guards the casts).
+  if not (select coalesce(bool_and(
+            case when jsonb_typeof(e) <> 'object' then false
+                 else jsonb_typeof(e -> 'title') = 'string' and length(btrim(e ->> 'title')) > 0
+                  and jsonb_typeof(e -> 'start_page') = 'number' and (e ->> 'start_page') ~ '^[0-9]{1,6}$'
+                  and (e -> 'id' is null or jsonb_typeof(e -> 'id') = 'null'
+                       or (jsonb_typeof(e -> 'id') = 'string'
+                           and (e ->> 'id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))
+            end), false)
+          from jsonb_array_elements(p_chapters) e) then
     raise exception 'invalid_chapters';
   end if;
-  if (select (p_chapters -> 0 ->> 'start_page')::integer) <> 1 then
+  if (p_chapters -> 0 ->> 'start_page')::integer <> 1 then
     raise exception 'invalid_chapters';
   end if;
   if exists (
@@ -140,11 +173,31 @@ begin
      ) then
     raise exception 'invalid_chapters';
   end if;
+  -- Ids: distinct and all belonging to this curriculum.
+  if (select count(*) <> count(distinct (e ->> 'id')) from jsonb_array_elements(p_chapters) e where e ->> 'id' is not null)
+     or exists (
+       select 1 from jsonb_array_elements(p_chapters) e
+       where e ->> 'id' is not null
+         and not exists (select 1 from public.chapters c
+                         where c.id = (e ->> 'id')::uuid and c.curriculum_id = p_curriculum)
+     ) then
+    raise exception 'invalid_chapters';
+  end if;
 
-  delete from public.chapters where curriculum_id = p_curriculum;
+  -- Chapters may swap start pages inside this call: check uniqueness at the end.
+  set constraints public.chapters_start_unique deferred;
+  delete from public.chapters
+  where curriculum_id = p_curriculum
+    and id not in (select (e ->> 'id')::uuid from jsonb_array_elements(p_chapters) e where e ->> 'id' is not null);
+  update public.chapters c
+  set title = btrim(e ->> 'title'), start_page = (e ->> 'start_page')::integer
+  from jsonb_array_elements(p_chapters) e
+  where e ->> 'id' is not null and c.id = (e ->> 'id')::uuid and c.curriculum_id = p_curriculum;
   insert into public.chapters (curriculum_id, title, start_page)
   select p_curriculum, btrim(e ->> 'title'), (e ->> 'start_page')::integer
-  from jsonb_array_elements(p_chapters) e;
+  from jsonb_array_elements(p_chapters) e
+  where e ->> 'id' is null;
+  set constraints public.chapters_start_unique immediate;
 
   update public.books set updated_by = p_admin, updated_at = now() where curriculum_id = p_curriculum;
 end;
@@ -187,6 +240,7 @@ grant execute on function public.set_book_status(uuid, uuid, text) to service_ro
 -- ---------------------------------------------------------------------------
 -- Private bucket for page images (no policies: service role only)
 -- ---------------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('book-pages', 'book-pages', false)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('book-pages', 'book-pages', false, 5242880, array['image/webp'])
+on conflict (id) do update
+  set public = false, file_size_limit = 5242880, allowed_mime_types = array['image/webp'];
